@@ -1,8 +1,8 @@
-# AGENTS.md - ClawBuddy 开发指南
+# AGENTS.md - NoDeskClaw 开发指南
 
 ## 项目概述
 
-ClawBuddy 是 OpenClaw 实例可视化管理系统，通过 Web 界面管理 K8s 集群上的 OpenClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
+NoDeskClaw 是 OpenClaw 实例可视化管理系统，通过 Web 界面管理 K8s 集群上的 OpenClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
 
 ## 技术栈
 
@@ -17,24 +17,24 @@ ClawBuddy 是 OpenClaw 实例可视化管理系统，通过 Web 界面管理 K8s
 ## 目录结构
 
 ```
-ClawBuddy/
-├── claw-buddy-backend/           # 后端 API 服务（Python 3.12 + FastAPI）
-├── claw-buddy-frontend/          # 管理后台前端（Vue 3）
-├── claw-buddy-portal/            # 用户门户前端（Vue 3 + Three.js）
-├── claw-buddy-llm-proxy/         # LLM 代理服务（Go）
-├── claw-buddy-artifacts/         # 镜像构建 & 部署制品
+NoDeskClaw/
+├── nodeskclaw-backend/           # 后端 API 服务（Python 3.12 + FastAPI）
+├── nodeskclaw-frontend/          # 管理后台前端（Vue 3）
+├── nodeskclaw-portal/            # 用户门户前端（Vue 3 + Three.js）
+├── nodeskclaw-llm-proxy/         # LLM 代理服务（Go）
+├── nodeskclaw-artifacts/         # 镜像构建 & 部署制品
 ├── openclaw/                     # OpenClaw 源码副本
-├── openclaw-channel-clawbuddy/   # Channel 插件
+├── openclaw-channel-nodeskclaw/   # Channel 插件
 ├── deploy/                       # K8s 部署配置
 └── docs/                         # 设计文档
 ```
 
 ## 构建/测试命令
 
-### 后端（claw-buddy-backend）
+### 后端（nodeskclaw-backend）
 
 ```bash
-cd claw-buddy-backend
+cd nodeskclaw-backend
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
 uv run pytest
@@ -44,10 +44,10 @@ uv run ruff check .
 uv run ruff check --fix .
 ```
 
-### 前端（claw-buddy-frontend / claw-buddy-portal）
+### 前端（nodeskclaw-frontend / nodeskclaw-portal）
 
 ```bash
-cd claw-buddy-frontend
+cd nodeskclaw-frontend
 npm install
 npm run dev
 npm run build
@@ -214,3 +214,40 @@ refactor(frontend): SSE 流 baseURL 统一走配置常量
 ### 文档同步
 
 代码和文档必须在同一次操作中同步完成。
+
+## 工具脚本
+
+### Git 统计脚本（scripts/git_stats/）
+
+生成 Git 仓库的 commit 数量和代码行数折线图。
+
+#### 安装
+
+```bash
+cd scripts/git_stats
+pip install -r requirements.txt
+```
+
+#### 使用
+
+```bash
+# 基本用法
+python git_stats.py --author "your.email@example.com" --granularity daily
+
+# 参数说明
+--repo REPO         # 仓库路径，默认当前目录
+--author AUTHOR     # 作者名称/邮箱
+--since DATE        # 开始日期，默认自动（第一个 commit）
+--until DATE        # 结束日期，默认自动（最后一个 commit）
+--granularity       # 时间粒度：daily/weekly/monthly，默认 monthly
+--output-dir DIR    # 输出目录
+```
+
+#### 输出图表
+
+| 文件 | 说明 |
+|------|------|
+| commit_counts.png | Commit 数量折线图 |
+| code_lines.png | 新增/删除代码行数折线图 |
+| total_lines.png | 累计净代码量折线图 |
+| code_breakdown.png | 目录占比饼图 |
