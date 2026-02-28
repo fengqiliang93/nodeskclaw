@@ -2,7 +2,7 @@
 # 构建 amd64 架构的 OpenClaw 镜像并推送到容器镜像仓库
 set -e
 
-REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>/nodeskclaw-base"
+REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>/nodeskclaw-openclaw-base"
 TAG="$(date +%Y%m%d)-$(git rev-parse --short HEAD 2>/dev/null || echo 'manual')"
 
 echo "构建镜像: ${REGISTRY}:${TAG} (linux/amd64)"

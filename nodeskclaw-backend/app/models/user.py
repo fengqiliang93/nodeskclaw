@@ -17,7 +17,6 @@ class UserRole(str, Enum):
 class User(BaseModel):
     __tablename__ = "users"
 
-    feishu_uid: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     email: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
@@ -38,3 +37,4 @@ class User(BaseModel):
     instances = relationship("Instance", back_populates="creator", foreign_keys="Instance.created_by")
     current_org = relationship("Organization", foreign_keys=[current_org_id])
     memberships = relationship("OrgMembership", back_populates="user", cascade="all, delete-orphan")
+    oauth_connections = relationship("UserOAuthConnection", back_populates="user", cascade="all, delete-orphan")

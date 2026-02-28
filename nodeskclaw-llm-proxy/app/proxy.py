@@ -60,7 +60,7 @@ def _build_auth_headers(provider: str, api_key: str, original_headers: dict) -> 
     headers = {}
     for k, v in original_headers.items():
         lower = k.lower()
-        if lower in ("host", "content-length", "transfer-encoding", "authorization", "x-api-key"):
+        if lower in ("host", "content-length", "transfer-encoding", "authorization", "x-api-key", "accept-encoding"):
             continue
         headers[k] = v
 
@@ -275,9 +275,23 @@ async def _handle_non_stream(
         if k.lower() not in ("content-encoding", "content-length", "transfer-encoding"):
             resp_headers[k] = v
 
+    if resp_body:
+        try:
+            parsed = json.loads(resp_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            from fastapi.responses import Response
+            return Response(
+                status_code=resp.status_code,
+                content=resp_body,
+                headers=resp_headers,
+                media_type=resp.headers.get("content-type", "application/json"),
+            )
+    else:
+        parsed = None
+
     return JSONResponse(
         status_code=resp.status_code,
-        content=json.loads(resp_body) if resp_body else None,
+        content=parsed,
         headers=resp_headers,
     )
 
@@ -320,6 +334,9 @@ async def _handle_stream(
     for k, v in resp.headers.items():
         if k.lower() not in ("content-encoding", "content-length", "transfer-encoding"):
             resp_headers[k] = v
+
+    resp_headers["cache-control"] = "no-transform"
+    resp_headers["x-accel-buffering"] = "no"
 
     return StreamingResponse(
         stream_generator(),

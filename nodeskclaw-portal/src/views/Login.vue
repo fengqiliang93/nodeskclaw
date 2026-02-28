@@ -12,24 +12,20 @@ const router = useRouter()
 const authStore = useAuthStore()
 const { t } = useI18n()
 
-// 状态
 const loading = ref(false)
 const error = ref('')
 const activeTab = ref<'email' | 'phone'>('email')
 const isRegister = ref(false)
 
-// 邮箱登录
 const emailForm = ref({ email: '', password: '', name: '' })
 const showPassword = ref(false)
 
-// 手机登录
 const phoneForm = ref({ phone: '', code: '' })
 const smsSending = ref(false)
 const smsCountdown = ref(0)
 let smsTimer: ReturnType<typeof setInterval> | null = null
 const locale = ref(getCurrentLocale())
 
-// 特性
 const features = [
   { icon: Zap, title: '一键部署', desc: '零配置启动你的 AI 助手' },
   { icon: Shield, title: '企业级安全', desc: '多租户隔离，数据独占' },
@@ -48,7 +44,15 @@ const canSubmitPhone = computed(() => {
   return phoneForm.value.phone.length >= 8 && phoneForm.value.code.length >= 4
 })
 
-// 无需 onMounted 初始化
+function handleOAuthLogin(provider: string) {
+  sessionStorage.setItem('oauth_provider', provider)
+  if (provider === 'feishu') {
+    const clientId = import.meta.env.VITE_FEISHU_APP_ID || ''
+    const redirectUri = encodeURIComponent(window.location.origin + `/login/callback/${provider}`)
+    const state = Math.random().toString(36).substring(2)
+    window.location.href = `https://passport.feishu.cn/suite/passport/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${state}`
+  }
+}
 
 async function handleEmailSubmit() {
   if (!canSubmitEmail.value || loading.value) return
@@ -334,6 +338,25 @@ watch(isRegister, () => { error.value = '' })
               未注册的手机号将自动创建账户
             </p>
           </form>
+
+          <!-- 第三方登录分割线 -->
+          <div class="relative my-2">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-border" />
+            </div>
+            <div class="relative flex justify-center text-xs">
+              <span class="bg-background px-2 text-muted-foreground">{{ t('auth.orContinueWith') }}</span>
+            </div>
+          </div>
+
+          <!-- 飞书登录 -->
+          <button
+            class="w-full h-10 rounded-lg border border-input bg-background text-sm font-medium hover:bg-accent transition-colors flex items-center justify-center gap-2"
+            @click="handleOAuthLogin('feishu')"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none"><path d="M3.536 7.382L13.539 4l1.636 5.676-11.64 3.03V7.383z" fill="#00D6B9"/><path d="M20.464 10.03L13.54 4l-3.073 5.676L20.464 17V10.03z" fill="#133C9A"/><path d="M5.172 12.706L10.465 9.676 20.464 17l-8.925 3.03-6.367-7.324z" fill="#3370FF"/><path d="M5.172 12.706L3.536 7.382l6.929 2.294-5.293 3.03z" fill="#00B2A6"/></svg>
+            {{ t('auth.feishuLogin') }}
+          </button>
 
           <!-- 错误提示 -->
           <Transition

@@ -10,6 +10,7 @@ from app.schemas.common import ApiResponse
 from app.schemas.organization import (
     AddMemberRequest,
     MemberInfo,
+    OAuthOrgSetupRequest,
     OrgCreate,
     OrgInfo,
     OrgUpdate,
@@ -96,6 +97,32 @@ async def delete_organization(
     """删除组织（超管）。"""
     await org_service.delete_org(org_id, db)
     return ApiResponse(message="组织已删除")
+
+
+# ── OAuth 自助开通 ─────────────────────────────────────────
+
+@router.post("/oauth-setup", response_model=ApiResponse[OrgInfo])
+async def oauth_org_setup(
+    body: OAuthOrgSetupRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """OAuth 登录后首次开通组织：创建组织并绑定 OAuth 租户。"""
+    data = await org_service.oauth_org_setup(current_user, body, db)
+    return ApiResponse(data=data)
+
+
+@router.post("/feishu-setup", response_model=ApiResponse[OrgInfo])
+async def feishu_org_setup(
+    body: OAuthOrgSetupRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """飞书开通组织（向后兼容别名）。"""
+    if not body.provider:
+        body.provider = "feishu"
+    data = await org_service.oauth_org_setup(current_user, body, db)
+    return ApiResponse(data=data)
 
 
 # ── 成员管理 ─────────────────────────────────────────────
