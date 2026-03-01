@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.router import api_router, webhook_router
+from app.api.router import admin_router, api_router, webhook_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 
@@ -97,10 +97,17 @@ async def lifespan(app: FastAPI):
             ))
             logger.info("自动迁移：已为 instances 表添加 storage_class 列")
 
-        # 迁移 3: 将 instances.storage_size 默认值改为 80Gi
-        await conn.execute(text(
-            "ALTER TABLE instances ALTER COLUMN storage_size SET DEFAULT '80Gi'"
+        # 迁移 3: 将 instances.storage_size 默认值改为 80Gi（条件执行，避免滚动更新锁竞争）
+        _def_check = await conn.execute(text(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_name = 'instances' AND column_name = 'storage_size'"
         ))
+        _def_row = _def_check.first()
+        if _def_row and "'80Gi'" not in str(_def_row[0] or ""):
+            await conn.execute(text(
+                "ALTER TABLE instances ALTER COLUMN storage_size SET DEFAULT '80Gi'"
+            ))
+            logger.info("自动迁移：已将 instances.storage_size 默认值改为 80Gi")
 
         # 迁移 4: 将 instances.name 的 unique 约束替换为 partial unique index（兼容软删除）
         # 旧约束 instances_name_key 不兼容软删除，已删除的记录会阻止同名重建
@@ -575,34 +582,42 @@ async def lifespan(app: FastAPI):
             ))
             logger.info("自动迁移：已为 clusters 表添加 proxy_endpoint 列")
 
-        # ── 迁移 21: 飞书租户绑定字段（原始添加，保留幂等逻辑供首次部署） ──
-        # 21a: organizations.feishu_tenant_key
-        col = await conn.execute(text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'organizations' AND column_name = 'feishu_tenant_key'"
+        # ── 迁移 21: 飞书租户绑定字段 ──
+        # 迁移 22 会将 feishu_tenant_key 搬迁到 user_oauth_connections / org_oauth_bindings 后删除，
+        # 所以如果 22 已执行（user_oauth_connections 表存在），21a/21b 的列不需要再添加。
+        _oauth_tbl = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'user_oauth_connections'"
         ))
-        if col.first() is None:
-            await conn.execute(text(
-                "ALTER TABLE organizations ADD COLUMN feishu_tenant_key VARCHAR(128)"
-            ))
-            await conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_feishu_tenant_key "
-                "ON organizations (feishu_tenant_key) WHERE feishu_tenant_key IS NOT NULL"
-            ))
-            logger.info("自动迁移：已为 organizations 表添加 feishu_tenant_key 列")
+        _skip_21_feishu = _oauth_tbl.first() is not None
 
-        # 21b: users.feishu_tenant_key
-        col = await conn.execute(text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'users' AND column_name = 'feishu_tenant_key'"
-        ))
-        if col.first() is None:
-            await conn.execute(text(
-                "ALTER TABLE users ADD COLUMN feishu_tenant_key VARCHAR(128)"
+        if not _skip_21_feishu:
+            # 21a: organizations.feishu_tenant_key
+            col = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'organizations' AND column_name = 'feishu_tenant_key'"
             ))
-            logger.info("自动迁移：已为 users 表添加 feishu_tenant_key 列")
+            if col.first() is None:
+                await conn.execute(text(
+                    "ALTER TABLE organizations ADD COLUMN feishu_tenant_key VARCHAR(128)"
+                ))
+                await conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_feishu_tenant_key "
+                    "ON organizations (feishu_tenant_key) WHERE feishu_tenant_key IS NOT NULL"
+                ))
+                logger.info("自动迁移：已为 organizations 表添加 feishu_tenant_key 列")
 
-        # 21c: org_memberships.job_title
+            # 21b: users.feishu_tenant_key
+            col = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'users' AND column_name = 'feishu_tenant_key'"
+            ))
+            if col.first() is None:
+                await conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN feishu_tenant_key VARCHAR(128)"
+                ))
+                logger.info("自动迁移：已为 users 表添加 feishu_tenant_key 列")
+
+        # 21c: org_memberships.job_title（独立字段，不受迁移 22 影响）
         col = await conn.execute(text(
             "SELECT 1 FROM information_schema.columns "
             "WHERE table_name = 'org_memberships' AND column_name = 'job_title'"
@@ -937,6 +952,18 @@ async def lifespan(app: FastAPI):
             await db.commit()
             logger.info("自动迁移：已为组织 %s 创建默认工作区并迁移 %d 个实例", org.name, idx)
 
+    # ── 迁移 10: instances 表添加 llm_providers (实例级 LLM 配置隔离) ──
+    async with engine.begin() as conn:
+        col = (await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='instances' AND column_name='llm_providers'"
+        ))).first()
+        if col is None:
+            await conn.execute(text(
+                "ALTER TABLE instances ADD COLUMN llm_providers JSONB"
+            ))
+            logger.info("自动迁移：已为 instances 表添加 llm_providers 列")
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。
@@ -1101,6 +1128,7 @@ register_exception_handlers(app)
 
 # ── Routers ──────────────────────────────────────────
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1/admin")
 app.include_router(webhook_router)
 
 if settings.DEBUG:

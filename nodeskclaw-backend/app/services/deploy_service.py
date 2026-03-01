@@ -284,6 +284,7 @@ async def deploy_instance(
         wp_api_key=f"nodeskclaw-wp-{_secrets.token_hex(32)}",
         env_vars=_json.dumps(env_vars),
         advanced_config=_json.dumps(req.advanced_config) if req.advanced_config else None,
+        llm_providers=[c.provider for c in req.llm_configs] if req.llm_configs else None,
         storage_class=req.storage_class,
         storage_size=req.storage_size,
         status=InstanceStatus.deploying,
@@ -293,6 +294,38 @@ async def deploy_instance(
     db.add(instance)
     await db.commit()
     await db.refresh(instance)
+
+    if req.llm_configs:
+        from app.models.base import not_deleted
+        from app.models.user_llm_config import UserLlmConfig
+
+        existing_result = await db.execute(
+            select(UserLlmConfig).where(
+                UserLlmConfig.user_id == user.id,
+                UserLlmConfig.org_id == org_id,
+                not_deleted(UserLlmConfig),
+            )
+        )
+        existing_map = {c.provider: c for c in existing_result.scalars().all()}
+
+        for item in req.llm_configs:
+            existing = existing_map.get(item.provider)
+            if existing:
+                existing.key_source = item.key_source
+                existing.selected_models = item.selected_models
+            else:
+                db.add(UserLlmConfig(
+                    user_id=user.id,
+                    org_id=org_id,
+                    provider=item.provider,
+                    key_source=item.key_source,
+                    selected_models=item.selected_models,
+                ))
+        await db.commit()
+        logger.info(
+            "已保存用户 LLM 配置: user=%s org=%s providers=%s",
+            user.id, org_id, [c.provider for c in req.llm_configs],
+        )
 
     # 创建部署记录
     max_rev = await db.execute(

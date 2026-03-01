@@ -31,14 +31,18 @@ router = APIRouter()
 @router.post("/oauth/callback", response_model=ApiResponse[LoginResponse])
 async def oauth_callback(body: OAuthCallbackRequest, db: AsyncSession = Depends(get_db)):
     """通用 OAuth 回调：provider + code 换取 JWT。"""
-    result = await auth_service.oauth_login(body.provider, body.code, db, redirect_uri=body.redirect_uri)
+    result = await auth_service.oauth_login(
+        body.provider, body.code, db, redirect_uri=body.redirect_uri, client_id=body.client_id
+    )
     return ApiResponse(data=result)
 
 
 @router.post("/feishu/callback", response_model=ApiResponse[LoginResponse])
 async def feishu_callback(body: FeishuCallbackRequest, db: AsyncSession = Depends(get_db)):
     """飞书 SSO 回调（向后兼容别名）。"""
-    result = await auth_service.oauth_login("feishu", body.code, db, redirect_uri=body.redirect_uri)
+    result = await auth_service.oauth_login(
+        "feishu", body.code, db, redirect_uri=body.redirect_uri, client_id=body.client_id
+    )
     return ApiResponse(data=result)
 
 
@@ -82,9 +86,26 @@ async def refresh(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/me", response_model=ApiResponse[UserInfo])
-async def me(current_user: User = Depends(get_current_user)):
-    """获取当前用户信息。"""
-    return ApiResponse(data=UserInfo.model_validate(current_user))
+async def me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户信息（含当前组织角色）。"""
+    from app.models.org_membership import OrgMembership
+
+    info = UserInfo.model_validate(current_user)
+    if current_user.current_org_id:
+        result = await db.execute(
+            select(OrgMembership.role).where(
+                OrgMembership.user_id == current_user.id,
+                OrgMembership.org_id == current_user.current_org_id,
+                OrgMembership.deleted_at.is_(None),
+            )
+        )
+        org_role = result.scalar_one_or_none()
+        if org_role:
+            info.org_role = org_role
+    return ApiResponse(data=info)
 
 
 @router.post("/logout", response_model=ApiResponse)

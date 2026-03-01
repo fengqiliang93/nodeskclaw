@@ -16,6 +16,7 @@ export interface UserInfo {
   role: string
   is_super_admin: boolean
   current_org_id: string | null
+  org_role: string | null
   last_login_at: string | null
   oauth_connections: OAuthConnectionInfo[]
 }
@@ -44,7 +45,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function oauthLogin(provider: string, code: string) {
     const redirect_uri = window.location.origin + `/login/callback/${provider}`
-    const res = await api.post('/auth/oauth/callback', { provider, code, redirect_uri })
+    const client_id = import.meta.env.VITE_FEISHU_APP_ID || undefined
+    const res = await api.post('/auth/oauth/callback', { provider, code, redirect_uri, client_id })
     const data = res.data.data
     setTokens(data.access_token, data.refresh_token)
     user.value = data.user
