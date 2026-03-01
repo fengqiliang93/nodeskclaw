@@ -26,11 +26,6 @@ logger = logging.getLogger(__name__)
 instance_read_router = APIRouter()
 instance_write_router = APIRouter()
 
-# Portal 用的完整 router，包含 read + write 全部路由
-router = APIRouter()
-router.include_router(instance_read_router)
-router.include_router(instance_write_router)
-
 
 @instance_read_router.get("/check-slug", response_model=ApiResponse[dict])
 async def check_slug(

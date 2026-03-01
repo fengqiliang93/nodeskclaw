@@ -6,8 +6,7 @@ import { useThreeScene } from '@/composables/useThreeScene'
 import { useOrbitControls } from '@/composables/useOrbitControls'
 import { useHexRaycaster } from '@/composables/useHexRaycaster'
 import { axialToWorld, HEX_SIZE } from '@/composables/useHexLayout'
-import AgentHex3D from './AgentHex3D.vue'
-import Blackboard3D from './Blackboard3D.vue'
+import { createGrabby, animateGrabby, disposeGrabby, disposeGrabbyShared, createMiniPhone, disposeMiniPhone } from './Grabby'
 import type { AgentBrief, TopologyNode } from '@/stores/workspace'
 
 const { t } = useI18n()
@@ -89,6 +88,8 @@ const LABEL_REF_DISTANCE = 12
 const _tmpWorldPos = new THREE.Vector3()
 
 const HEX_GEO = new THREE.CylinderGeometry(HEX_SIZE * 0.9, HEX_SIZE * 0.9, 0.3, 6)
+const AGENT_BASE_GEO = new THREE.CylinderGeometry(HEX_SIZE * 0.9, HEX_SIZE * 0.9, 0.08, 6)
+const AGENT_BASE_EDGE_GEO = new THREE.EdgesGeometry(AGENT_BASE_GEO)
 
 const STATUS_COLORS_3D: Record<string, number> = {
   running: 0x4ade80, active: 0x4ade80, learning: 0x60a5fa,
@@ -102,13 +103,17 @@ const DISCONNECTED_COLOR = 0x555566
 function createHexMesh(agent: AgentBrief): THREE.Group {
   const group = new THREE.Group()
   const { x, y } = axialToWorld(agent.hex_q, agent.hex_r)
-  group.position.set(x, 0.15, y)
+  group.position.set(x, 0.04, y)
   group.userData = { hexId: agent.instance_id, isHex: true, sseConnected: agent.sse_connected }
 
   const baseColor = STATUS_COLORS_3D[agent.status] ?? 0xa78bfa
   const color = agent.sse_connected ? baseColor : DISCONNECTED_COLOR
+  const themeHex = agent.theme_color
+    ? parseInt(agent.theme_color.replace('#', ''), 16)
+    : null
+  const robotColor = themeHex ?? color
 
-  const mat = new THREE.MeshStandardMaterial({
+  const baseMat = new THREE.MeshStandardMaterial({
     color,
     emissive: new THREE.Color(color),
     emissiveIntensity: agent.sse_connected ? 0.15 : 0.05,
@@ -117,10 +122,24 @@ function createHexMesh(agent: AgentBrief): THREE.Group {
     transparent: true,
     opacity: agent.sse_connected ? 0.9 : 0.5,
   })
+  const baseMesh = new THREE.Mesh(AGENT_BASE_GEO, baseMat)
+  baseMesh.userData = { hexId: agent.instance_id, isHex: true }
+  group.add(baseMesh)
 
-  const mesh = new THREE.Mesh(HEX_GEO, mat)
-  mesh.userData = { hexId: agent.instance_id, isHex: true }
-  group.add(mesh)
+  const edgeMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 })
+  group.add(new THREE.LineSegments(AGENT_BASE_EDGE_GEO, edgeMat))
+
+  const robot = createGrabby(robotColor)
+  robot.position.y = 0.04
+  group.add(robot)
+  group.userData.robot = robot
+
+  const phone = createMiniPhone(robotColor)
+  phone.position.set(0.45, 0.04, 0.35)
+  phone.rotation.y = -Math.PI / 6
+  phone.visible = agent.sse_connected
+  group.add(phone)
+  group.userData.phone = phone
 
   return group
 }
@@ -330,6 +349,8 @@ function createEmptyHexMesh(q: number, r: number): THREE.Group {
 
 function syncScene() {
   for (const [, group] of hexMeshes) {
+    if (group.userData.robot) disposeGrabby(group.userData.robot as THREE.Group)
+    if (group.userData.phone) disposeMiniPhone(group.userData.phone as THREE.Group)
     scene.remove(group)
   }
   hexMeshes.clear()
@@ -451,7 +472,7 @@ addToLoop(() => {
     const isMoveSource = props.isMovingHex && props.movingHexSource &&
       props.agents.some((a) => a.instance_id === id && a.hex_q === props.movingHexSource!.q && a.hex_r === props.movingHexSource!.r)
 
-    const targetY = isHovered ? 0.4 : (isSelected || isSelectedHex || isMoveSource) ? 0.3 : 0.15
+    const targetY = isHovered ? 0.20 : (isSelected || isSelectedHex || isMoveSource) ? 0.14 : 0.04
     group.position.y += (targetY - group.position.y) * 0.1
 
     const mesh = group.children[0] as THREE.Mesh
@@ -470,6 +491,16 @@ addToLoop(() => {
           mat.opacity = agent.sse_connected ? 0.9 : 0.5
         }
         mat.emissiveIntensity = (isSelected || isSelectedHex) ? 0.5 + Math.sin(t * 3) * 0.15 : isHovered ? 0.4 : pulse
+      }
+    }
+
+    const robot = group.userData.robot as THREE.Group | undefined
+    const phone = group.userData.phone as THREE.Group | undefined
+    if (robot || phone) {
+      const agent = props.agents.find(a => a.instance_id === id)
+      if (agent) {
+        if (robot) animateGrabby(robot, agent.status, agent.sse_connected, t)
+        if (phone) phone.visible = agent.sse_connected
       }
     }
   }
@@ -502,9 +533,12 @@ addToLoop(() => {
 
 onUnmounted(() => {
   HEX_GEO.dispose()
+  AGENT_BASE_GEO.dispose()
+  AGENT_BASE_EDGE_GEO.dispose()
   EMPTY_HEX_GEO.dispose()
   CORRIDOR_HEX_GEO.dispose()
   HUMAN_HEX_GEO.dispose()
+  disposeGrabbyShared()
 })
 
 defineExpose({
