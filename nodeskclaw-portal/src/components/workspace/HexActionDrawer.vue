@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { X, Plus, MessageSquare, ExternalLink, Trash2, Eye, Route, User, Palette, Settings, Move } from 'lucide-vue-next'
+import { X, Plus, MessageSquare, ExternalLink, Trash2, Eye, Route, User, Palette, Move, PenSquare, Crosshair, GitBranch } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   hexType: 'empty' | 'agent' | 'blackboard' | 'corridor' | 'human'
   hexPosition: { q: number, r: number }
   agentInfo?: { id: string, name: string }
   entityInfo?: { id: string, name?: string }
   chatSidebarOpen?: boolean
-}>()
+  chatSidebarWidth?: number
+}>(), { chatSidebarWidth: 400 })
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -21,10 +22,10 @@ const emit = defineEmits<{
 
 const SHORTCUT_MAP: Record<string, Record<string, string>> = {
   empty: { a: 'add-agent', c: 'place-corridor', h: 'place-human' },
-  agent: { c: 'open-chat', d: 'view-detail', p: 'change-agent-color', m: 'move-hex', Delete: 'remove-agent', Backspace: 'remove-agent' },
-  corridor: { r: 'rename-corridor', m: 'move-hex', Delete: 'remove-corridor', Backspace: 'remove-corridor' },
-  human: { s: 'view-channel', p: 'change-color', m: 'move-hex', Delete: 'remove-human', Backspace: 'remove-human' },
-  blackboard: { e: 'view-blackboard' },
+  agent: { f: 'focus-hex', c: 'open-chat', d: 'view-detail', l: 'view-collaboration', r: 'rename-agent', p: 'change-agent-color', m: 'move-hex', Delete: 'remove-agent', Backspace: 'remove-agent' },
+  corridor: { f: 'focus-hex', r: 'rename-corridor', m: 'move-hex', Delete: 'remove-corridor', Backspace: 'remove-corridor' },
+  human: { f: 'focus-hex', r: 'rename-human', p: 'change-color', m: 'move-hex', Delete: 'remove-human', Backspace: 'remove-human' },
+  blackboard: { f: 'focus-hex', e: 'view-blackboard' },
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -60,7 +61,7 @@ onUnmounted(() => {
     <div
       v-if="open"
       class="fixed bottom-0 -translate-x-1/2 z-40 w-60 bg-card border border-border shadow-2xl rounded-t-xl transition-[left] duration-300"
-      :style="{ left: chatSidebarOpen ? 'calc(50% - 200px)' : '50%' }"
+      :style="{ left: chatSidebarOpen ? `calc(50% - ${chatSidebarWidth / 2}px)` : '50%' }"
     >
       <div class="flex items-center justify-between px-4 py-2.5 border-b border-border/50">
         <span class="text-sm font-medium text-foreground">
@@ -121,6 +122,14 @@ onUnmounted(() => {
         <template v-else-if="hexType === 'agent'">
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'focus-hex')"
+          >
+            <Crosshair class="w-4 h-4 text-muted-foreground" />
+            <span>{{ t('hexAction.focusHex') }}</span>
+            <kbd class="kbd-hint">F</kbd>
+          </button>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
             @click="emit('action', 'open-chat')"
           >
             <MessageSquare class="w-4 h-4 text-primary" />
@@ -134,6 +143,22 @@ onUnmounted(() => {
             <ExternalLink class="w-4 h-4 text-muted-foreground" />
             <span>{{ t('hexAction.viewDetail') }}</span>
             <kbd class="kbd-hint">D</kbd>
+          </button>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'view-collaboration')"
+          >
+            <GitBranch class="w-4 h-4 text-violet-400" />
+            <span>{{ t('hexAction.viewCollaboration') }}</span>
+            <kbd class="kbd-hint">L</kbd>
+          </button>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'rename-agent')"
+          >
+            <PenSquare class="w-4 h-4 text-cyan-400" />
+            <span>{{ t('hexAction.renameAgent') }}</span>
+            <kbd class="kbd-hint">R</kbd>
           </button>
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
@@ -165,6 +190,14 @@ onUnmounted(() => {
         <template v-else-if="hexType === 'corridor'">
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'focus-hex')"
+          >
+            <Crosshair class="w-4 h-4 text-muted-foreground" />
+            <span>{{ t('hexAction.focusHex') }}</span>
+            <kbd class="kbd-hint">F</kbd>
+          </button>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
             @click="emit('action', 'rename-corridor')"
           >
             <PenSquare class="w-4 h-4 text-cyan-400" />
@@ -193,11 +226,19 @@ onUnmounted(() => {
         <template v-else-if="hexType === 'human'">
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
-            @click="emit('action', 'view-channel')"
+            @click="emit('action', 'focus-hex')"
           >
-            <Settings class="w-4 h-4 text-amber-400" />
-            <span>{{ t('hexAction.viewChannel') }}</span>
-            <kbd class="kbd-hint">S</kbd>
+            <Crosshair class="w-4 h-4 text-muted-foreground" />
+            <span>{{ t('hexAction.focusHex') }}</span>
+            <kbd class="kbd-hint">F</kbd>
+          </button>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'rename-human')"
+          >
+            <PenSquare class="w-4 h-4 text-amber-400" />
+            <span>{{ t('hexAction.renameHuman') }}</span>
+            <kbd class="kbd-hint">R</kbd>
           </button>
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
@@ -227,6 +268,14 @@ onUnmounted(() => {
 
         <!-- Blackboard actions -->
         <template v-else>
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            @click="emit('action', 'focus-hex')"
+          >
+            <Crosshair class="w-4 h-4 text-muted-foreground" />
+            <span>{{ t('hexAction.focusHex') }}</span>
+            <kbd class="kbd-hint">F</kbd>
+          </button>
           <button
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
             @click="emit('action', 'view-blackboard')"

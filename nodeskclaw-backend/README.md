@@ -24,6 +24,7 @@ nodeskclaw-backend/
 │   │   ├── deploy.py         # 部署操作
 │   │   ├── events.py         # SSE 事件推送
 │   │   ├── instances.py      # 实例管理
+│   │   ├── channel_configs.py # Channel 配置 API
 │   │   ├── registry.py       # 镜像仓库
 │   │   ├── settings.py       # 系统配置
 │   │   ├── workspaces.py     # 工作区 CRUD、群聊、SSE
@@ -60,7 +61,9 @@ nodeskclaw-backend/
 │   │   ├── workspace_message_service.py  # 群聊消息记录 + 上下文构建
 │   │   ├── collaboration_service.py      # 协作消息处理（由 SSE 监听器调用）
 │   │   ├── sse_listener.py               # OpenClaw 实例 SSE 长连接（按 Ingress 域名）
-│   │   ├── llm_config_service.py # OpenClaw 配置 + Channel plugin 分发
+│   │   ├── llm_config_service.py # OpenClaw LLM 配置 + 系统 Channel plugin 分发
+│   │   ├── channel_config_service.py # Channel 发现、配置读写、Schema 注册、自定义部署
+│   │   ├── enterprise_file_service.py # 企业空间文件浏览（PodFS 只读）
 │   │   ├── summary_job.py        # 自动摘要生成
 │   │   └── k8s/                  # K8s 相关
 │   │       ├── client_manager.py # K8s 连接池管理
@@ -103,6 +106,11 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/clusters` | 集群 | 集群 CRUD、KubeConfig 管理 |
 | `/api/v1/deploy` | 部署 | 创建部署、YAML 预览 |
 | `/api/v1/instances` | 实例 | 实例列表、详情、日志、删除 |
+| `/api/v1/instances/{id}/available-channels` | Channel 配置 | 扫描 Pod 返回可用 Channel |
+| `/api/v1/instances/{id}/channel-configs` | Channel 配置 | 读写 Channel 配置 + 重启 |
+| `/api/v1/instances/{id}/channels/install` | Channel 配置 | 安装 npm 第三方 Channel |
+| `/api/v1/instances/{id}/channels/upload` | Channel 配置 | 上传 Channel 插件 |
+| `/api/v1/instances/{id}/channels/deploy-repo` | Channel 配置 | 部署项目仓库 Channel |
 | `/api/v1/events` | 事件 | SSE 实时推送 |
 | `/api/v1/registry` | 镜像仓库 | 仓库配置、Tag 查询 |
 | `/api/v1/settings` | 系统配置 | 配置读写 |
@@ -112,6 +120,13 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/workspaces/{ws}/events?token=` | SSE | 实时事件流（query param JWT 认证） |
 | `/api/v1/workspaces/sse-token` | SSE | 签发 5 分钟短时效 SSE token |
 | `/api/v1/workspaces/templates` | 工作区模板 | 列表、创建、详情、删除、应用到工作区 |
+| `/api/v1/enterprise-files/agents` | 企业空间 | 列出可浏览的 Agent 实例 |
+| `/api/v1/enterprise-files/agents/{id}/files` | 企业空间 | 列出 Agent 目录文件（query: path） |
+| `/api/v1/enterprise-files/agents/{id}/files/content` | 企业空间 | 读取文件内容（仅文本） |
+| `/api/v1/enterprise-files/agents/{id}/files/download` | 企业空间 | 下载文件 |
+| `/api/v1/instances/{id}/files` | 实例文件 | 列出实例目录文件（instance admin） |
+| `/api/v1/instances/{id}/files/content` | 实例文件 | 读取/写入文件内容（GET 读、PUT 写） |
+| `/api/v1/instances/{id}/files/download` | 实例文件 | 下载文件 |
 
 ### RBAC 双表职责分离
 

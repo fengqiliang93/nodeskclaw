@@ -70,7 +70,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'genes', name: 'InstanceGenes', component: () => import('@/views/InstanceGenes.vue') },
       { path: 'evolution', name: 'EvolutionLog', component: () => import('@/views/EvolutionLog.vue') },
       { path: 'mcp', name: 'InstanceMcp', component: () => import('@/views/InstanceMcp.vue') },
+      { path: 'channels', name: 'InstanceChannels', component: () => import('@/views/InstanceChannels.vue') },
       { path: 'settings', name: 'InstanceSettings', component: () => import('@/views/InstanceSettings.vue') },
+      { path: 'files', name: 'InstanceFiles', component: () => import('@/views/InstanceFiles.vue') },
+      { path: 'members', name: 'InstanceMembers', component: () => import('@/views/InstanceMembers.vue') },
     ],
   },
   // Kept pages
@@ -103,6 +106,17 @@ const routes: RouteRecordRaw[] = [
     path: '/gene-market/genome/:id',
     name: 'GenomeDetail',
     component: () => import('@/views/GenomeDetail.vue'),
+  },
+  // Enterprise files
+  {
+    path: '/enterprise-files',
+    name: 'EnterpriseFiles',
+    component: () => import('@/views/EnterpriseFiles.vue'),
+  },
+  {
+    path: '/enterprise-files/:instanceId',
+    name: 'EnterpriseFileBrowser',
+    component: () => import('@/views/EnterpriseFileBrowser.vue'),
   },
   // Legacy redirects
   {

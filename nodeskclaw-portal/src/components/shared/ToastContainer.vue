@@ -1,44 +1,53 @@
 <script setup lang="ts">
 import { useToast } from '@/composables/useToast'
-import { X, CheckCircle2, AlertCircle, Info } from 'lucide-vue-next'
+import { CircleCheck, CircleX, Info, TriangleAlert, X } from 'lucide-vue-next'
 
-const { toasts, remove } = useToast()
+const { toasts, dismiss } = useToast()
 
-const icons = { success: CheckCircle2, error: AlertCircle, info: Info }
-const colors = {
-  success: 'border-green-500/30 bg-green-500/10 text-green-400',
-  error: 'border-red-500/30 bg-red-500/10 text-red-400',
-  info: 'border-blue-500/30 bg-blue-500/10 text-blue-400',
+const iconMap = {
+  success: CircleCheck,
+  error: CircleX,
+  info: Info,
+  warning: TriangleAlert,
+}
+
+const colorMap: Record<string, string> = {
+  success: 'text-green-400 bg-green-400/10 border-green-400/20',
+  error: 'text-red-400 bg-red-400/10 border-red-400/20',
+  info: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  warning: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
 }
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="fixed top-4 right-4 z-9999 flex flex-col gap-2 w-80">
-      <TransitionGroup
-        enter-active-class="transition-all duration-300 ease-out"
-        leave-active-class="transition-all duration-200 ease-in"
-        enter-from-class="opacity-0 translate-x-8"
-        enter-to-class="opacity-100 translate-x-0"
-        leave-from-class="opacity-100 translate-x-0"
-        leave-to-class="opacity-0 translate-x-8"
-      >
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-9999 flex flex-col items-center gap-2 pointer-events-none">
+      <TransitionGroup name="toast">
         <div
           v-for="t in toasts"
           :key="t.id"
-          class="flex items-start gap-2 px-4 py-3 rounded-lg border backdrop-blur-sm text-sm shadow-lg"
-          :class="colors[t.type]"
+          :class="[
+            'pointer-events-auto flex items-start gap-2.5 px-4 py-2.5 rounded-lg border shadow-lg backdrop-blur-sm',
+            'text-sm font-medium min-w-[200px] max-w-[380px]',
+            colorMap[t.type],
+            t.leaving ? 'toast-leave-active' : '',
+          ]"
         >
-          <component :is="icons[t.type]" class="w-4 h-4 mt-0.5 shrink-0" />
-          <div class="flex-1 min-w-0">
-            <span>{{ t.message }}</span>
+          <component :is="iconMap[t.type]" class="w-4 h-4 shrink-0 mt-0.5" />
+          <div class="flex-1 flex flex-col gap-1">
+            <span class="wrap-break-word">{{ t.message }}</span>
             <button
               v-if="t.action"
-              class="ml-2 underline underline-offset-2 font-medium hover:opacity-80 transition-opacity"
-              @click="t.action!.onClick(); remove(t.id)"
-            >{{ t.action!.label }}</button>
+              class="text-xs underline opacity-70 hover:opacity-100 text-left transition-opacity"
+              @click="t.action.onClick(); dismiss(t.id)"
+            >
+              {{ t.action.label }}
+            </button>
           </div>
-          <button class="shrink-0 opacity-60 hover:opacity-100 transition-opacity" @click="remove(t.id)">
+          <button
+            class="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+            @click="dismiss(t.id)"
+          >
             <X class="w-3.5 h-3.5" />
           </button>
         </div>
@@ -46,3 +55,21 @@ const colors = {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+.toast-move {
+  transition: transform 0.3s ease;
+}
+</style>

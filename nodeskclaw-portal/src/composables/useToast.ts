@@ -1,46 +1,52 @@
 import { ref } from 'vue'
 
+export type ToastType = 'success' | 'error' | 'info' | 'warning'
+
 export interface ToastAction {
   label: string
   onClick: () => void
 }
 
+export interface ToastOptions {
+  action?: ToastAction
+  duration?: number
+}
+
 export interface ToastItem {
   id: number
-  type: 'success' | 'error' | 'info'
   message: string
+  type: ToastType
   action?: ToastAction
+  leaving: boolean
 }
 
 const toasts = ref<ToastItem[]>([])
 let nextId = 0
 
-interface ToastOptions {
-  duration?: number
-  action?: ToastAction
-}
-
-function add(type: ToastItem['type'], message: string, opts?: ToastOptions) {
+function addToast(message: string, type: ToastType, options?: ToastOptions) {
   const id = nextId++
-  const duration = opts?.duration ?? (type === 'error' ? 6000 : 4000)
-  toasts.value.push({ id, type, message, action: opts?.action })
-  if (opts?.action) {
-    setTimeout(() => remove(id), 8000)
-  } else {
-    setTimeout(() => remove(id), duration)
-  }
+  toasts.value.push({ id, message, type, action: options?.action, leaving: false })
+  setTimeout(() => {
+    dismiss(id)
+  }, options?.duration ?? 3000)
 }
 
-function remove(id: number) {
-  toasts.value = toasts.value.filter(t => t.id !== id)
+function dismiss(id: number) {
+  const item = toasts.value.find(t => t.id === id)
+  if (!item) return
+  item.leaving = true
+  setTimeout(() => {
+    toasts.value = toasts.value.filter(t => t.id !== id)
+  }, 300)
 }
 
 export function useToast() {
   return {
     toasts,
-    success: (msg: string, opts?: ToastOptions) => add('success', msg, opts),
-    error: (msg: string, opts?: ToastOptions) => add('error', msg, opts),
-    info: (msg: string, opts?: ToastOptions) => add('info', msg, opts),
-    remove,
+    success: (message: string, options?: ToastOptions) => addToast(message, 'success', options),
+    error: (message: string, options?: ToastOptions) => addToast(message, 'error', options),
+    info: (message: string, options?: ToastOptions) => addToast(message, 'info', options),
+    warning: (message: string, options?: ToastOptions) => addToast(message, 'warning', options),
+    dismiss,
   }
 }

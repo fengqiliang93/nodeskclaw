@@ -104,6 +104,7 @@ class Instance(BaseModel):
     hex_position_q: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     hex_position_r: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     agent_display_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    agent_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     agent_theme_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
 
     # relationships
@@ -112,3 +113,4 @@ class Instance(BaseModel):
     organization = relationship("Organization", back_populates="instances")
     deploy_records = relationship("DeployRecord", back_populates="instance", cascade="save-update, merge")
     workspace = relationship("Workspace", foreign_keys=[workspace_id])
+    members = relationship("InstanceMember", back_populates="instance")

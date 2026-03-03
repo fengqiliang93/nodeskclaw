@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     FEISHU_APP_ID_PORTAL: str = ""
     FEISHU_APP_SECRET_PORTAL: str = ""
 
+    # ── Portal ────────────────────────────────────────────
+    PORTAL_BASE_URL: str = ""  # 用户门户基础 URL，如 https://portal.example.com
+
     # ── 云平台 ──────────────────────────────────────────
     VKE_SUBNET_ID: str = ""
 
@@ -41,6 +44,10 @@ class Settings(BaseSettings):
 
     # ── 出站代理（用于访问 OpenAI/Anthropic 等外部 API）────
     HTTPS_PROXY: str = ""
+
+    # ── GeneHub Registry ────────────────────────────────
+    GENEHUB_REGISTRY_URL: str = ""  # e.g. https://genehub.example.com
+    GENEHUB_API_KEY: str = ""       # publisher-level API Key
 
     # ── CORS ─────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]

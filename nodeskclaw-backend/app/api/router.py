@@ -19,6 +19,7 @@ from app.api.registry import router as registry_router
 from app.api.settings import router as settings_router
 from app.api.storage import router as storage_router
 from app.api.corridors import router as corridor_router
+from app.api.channel_configs import router as channel_config_router
 from app.api.mcp import router as mcp_router
 from app.api.trust import router as trust_router
 from app.api.webhooks import router as webhook_router
@@ -26,7 +27,16 @@ from app.api.workspaces import router as workspace_router
 from app.api.templates import router as template_router
 from app.core.deps import require_org_role
 
+from app.api.portal.instances import router as portal_instance_router
+from app.api.portal.instance_members import router as portal_instance_members_router
+from app.api.portal.deploy import router as portal_deploy_router
+from app.api.portal.channel_configs import router as portal_channel_config_router
+from app.api.portal.mcp import router as portal_mcp_router
+from app.api.portal.enterprise_files import router as portal_enterprise_files_router
+from app.api.portal.instance_files import router as portal_instance_files_router
+
 # ── Portal 公共 API（/api/v1）──────────────────────────────
+# Portal 使用 portal/ 下的独立路由，内置实例级权限检查。
 
 api_router = APIRouter()
 
@@ -41,11 +51,14 @@ api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(org_router, prefix="/orgs", tags=["组织"])
 api_router.include_router(billing_router, prefix="/billing", tags=["计费"])
 api_router.include_router(cluster_router, prefix="/clusters", tags=["集群"])
-api_router.include_router(deploy_router, prefix="/deploy", tags=["部署"])
+api_router.include_router(portal_deploy_router, prefix="/deploy", tags=["部署"])
 api_router.include_router(events_router, prefix="/events", tags=["事件"])
-api_router.include_router(instance_read_router, prefix="/instances", tags=["实例"])
-api_router.include_router(instance_write_router, prefix="/instances", tags=["实例"])
-api_router.include_router(mcp_router, prefix="/instances", tags=["MCP"])
+api_router.include_router(portal_instance_router, prefix="/instances", tags=["实例"])
+api_router.include_router(portal_instance_members_router, prefix="/instances", tags=["实例成员"])
+api_router.include_router(portal_channel_config_router, prefix="/instances", tags=["Channel 配置"])
+api_router.include_router(portal_mcp_router, prefix="/instances", tags=["MCP"])
+api_router.include_router(portal_enterprise_files_router, prefix="/enterprise-files", tags=["企业空间"])
+api_router.include_router(portal_instance_files_router, prefix="/instances", tags=["实例文件"])
 api_router.include_router(llm_keys_router, tags=["LLM Key 管理"])
 api_router.include_router(registry_router, prefix="/registry", tags=["镜像仓库"])
 api_router.include_router(settings_router, prefix="/settings", tags=["系统配置"])
@@ -57,8 +70,7 @@ api_router.include_router(template_router, prefix="/workspaces", tags=["工作�
 api_router.include_router(gene_router, tags=["基因进化"])
 
 # ── 管理平台 Admin API（/api/v1/admin）─────────────────────
-# 同一套路由模块挂载到 /admin 前缀，通过 dependencies 注入角色检查。
-# Portal 继续使用 /api/v1（无角色检查），管理前端使用 /api/v1/admin。
+# Admin 使用原有路由模块，通过 dependencies 注入角色检查。
 
 admin_router = APIRouter()
 
@@ -69,6 +81,7 @@ admin_router.include_router(workspace_router, prefix="/workspaces", tags=["Admin
 admin_router.include_router(corridor_router, prefix="/workspaces", tags=["Admin - 过道系统"])
 admin_router.include_router(trust_router, prefix="/workspaces", tags=["Admin - 渐进式信任"])
 admin_router.include_router(template_router, prefix="/workspaces", tags=["Admin - 工作区模板"])
+admin_router.include_router(channel_config_router, prefix="/instances", tags=["Admin - Channel 配置"])
 admin_router.include_router(mcp_router, prefix="/instances", tags=["Admin - MCP"])
 
 # member 级别（只读查看）
