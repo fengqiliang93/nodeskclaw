@@ -97,14 +97,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function emailRegister(email: string, password: string, name: string) {
-    const res = await api.post('/auth/register', { email, password, name })
-    const data = res.data.data
-    setTokens(data.access_token, data.refresh_token)
-    user.value = data.user
-    return data
-  }
-
   async function emailLogin(email: string, password: string) {
     const res = await api.post('/auth/login', { email, password })
     const data = res.data.data
@@ -150,7 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token, refreshToken, user, systemInfo, isLoggedIn, lastOAuthProvider,
     setTokens, clearAuth,
-    oauthLogin, emailRegister, emailLogin, sendSmsCode, smsLogin,
+    oauthLogin, emailLogin, sendSmsCode, smsLogin,
     accountLogin, sendVerificationCode, verificationCodeLogin,
     fetchSystemInfo, fetchUser, logout,
   }

@@ -15,9 +15,8 @@ const { t } = useI18n()
 const loading = ref(false)
 const error = ref('')
 const activeTab = ref<'account' | 'code'>('account')
-const isRegister = ref(false)
 
-const accountForm = ref({ account: '', password: '', name: '' })
+const accountForm = ref({ account: '', password: '' })
 const showPassword = ref(false)
 
 const codeForm = ref({ account: '', code: '' })
@@ -33,12 +32,7 @@ const features = [
   { icon: Sparkles, title: '弹性扩展', desc: '按需选择规格，灵活升降配' },
 ]
 
-const isAccountEmail = computed(() => accountForm.value.account.includes('@'))
-
 const canSubmitAccount = computed(() => {
-  if (isRegister.value) {
-    return isAccountEmail.value && accountForm.value.password.length >= 6
-  }
   return accountForm.value.account && accountForm.value.password
 })
 
@@ -60,22 +54,11 @@ async function handleAccountSubmit() {
   if (!canSubmitAccount.value || loading.value) return
   loading.value = true
   try {
-    if (isRegister.value) {
-      await authStore.emailRegister(
-        accountForm.value.account,
-        accountForm.value.password,
-        accountForm.value.name || accountForm.value.account.split('@')[0],
-      )
-    } else {
-      await authStore.accountLogin(accountForm.value.account, accountForm.value.password)
-    }
+    await authStore.accountLogin(accountForm.value.account, accountForm.value.password)
     error.value = ''
     router.replace('/')
   } catch (e: any) {
-    error.value = resolveApiErrorMessage(
-      e,
-      isRegister.value ? t('auth.registerFailed') : t('auth.loginFailed'),
-    )
+    error.value = resolveApiErrorMessage(e, t('auth.loginFailed'))
   } finally {
     loading.value = false
   }
@@ -120,7 +103,6 @@ function onLocaleChange(value: string) {
 }
 
 watch(activeTab, () => { error.value = '' })
-watch(isRegister, () => { error.value = '' })
 
 </script>
 
@@ -189,9 +171,9 @@ watch(isRegister, () => { error.value = '' })
 
         <!-- 标题 -->
         <div class="space-y-1 text-center lg:text-left">
-          <h2 class="text-2xl font-bold">{{ isRegister ? t('auth.createAccount') : t('auth.welcomeBack') }}</h2>
+          <h2 class="text-2xl font-bold">{{ t('auth.welcomeBack') }}</h2>
           <p class="text-sm text-muted-foreground">
-            {{ isRegister ? t('auth.registerSubtitle') : t('auth.loginSubtitle') }}
+            {{ t('auth.loginSubtitle') }}
           </p>
         </div>
 
@@ -217,22 +199,12 @@ watch(isRegister, () => { error.value = '' })
 
           <!-- 账号密码表单 -->
           <form v-if="activeTab === 'account'" class="space-y-4" @submit.prevent="handleAccountSubmit">
-            <div v-if="isRegister" class="space-y-1.5">
-              <label class="text-sm font-medium text-foreground">{{ t('auth.nameLabel') }}</label>
-              <input
-                v-model="accountForm.name"
-                type="text"
-                :placeholder="t('auth.namePlaceholder')"
-                class="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-shadow"
-              />
-            </div>
-
             <div class="space-y-1.5">
               <label class="text-sm font-medium text-foreground">{{ t('auth.accountLabel') }}</label>
               <input
                 v-model="accountForm.account"
-                :type="isRegister ? 'email' : 'text'"
-                :placeholder="isRegister ? t('auth.emailPlaceholder') : t('auth.accountPlaceholder')"
+                type="text"
+                :placeholder="t('auth.accountPlaceholder')"
                 required
                 class="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-shadow"
               />
@@ -244,7 +216,7 @@ watch(isRegister, () => { error.value = '' })
                 <input
                   v-model="accountForm.password"
                   :type="showPassword ? 'text' : 'password'"
-                  :placeholder="isRegister ? t('auth.passwordMinLength') : t('auth.passwordPlaceholder')"
+                  :placeholder="t('auth.passwordPlaceholder')"
                   required
                   class="w-full h-10 px-3 pr-10 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-shadow"
                 />
@@ -266,7 +238,7 @@ watch(isRegister, () => { error.value = '' })
               class="w-full h-10 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-all hover:shadow-lg hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Loader2 v-if="loading" class="w-4 h-4 animate-spin" />
-              {{ isRegister ? t('auth.register') : t('auth.login') }}
+              {{ t('auth.login') }}
             </button>
 
           </form>

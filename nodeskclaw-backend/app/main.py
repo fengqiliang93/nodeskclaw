@@ -773,17 +773,17 @@ async def lifespan(app: FastAPI):
 
         # 检查是否已有组织（幂等）
         org_result = await db.execute(
-            select(Organization).where(Organization.slug.in_(["default", "my-org"]))
+            select(Organization).where(Organization.deleted_at.is_(None))
         )
-        default_org = org_result.scalar_one_or_none()
+        default_org = org_result.scalars().first()
 
         if default_org is None:
             import uuid
             default_org_id = str(uuid.uuid4())
             default_org = Organization(
                 id=default_org_id,
-                name="NoDesk AI",
-                slug="my-org",
+                name="Default Organization",
+                slug="default",
                 plan="pro",
                 max_instances=50,
                 max_cpu_total="200",

@@ -240,65 +240,7 @@ async def _issue_tokens(user: User, db: AsyncSession) -> LoginResponse:
     )
 
 
-# ── 邮箱密码注册 / 登录 ─────────────────────────────────
-
-async def register_with_email(
-    email: str, password: str, name: str, db: AsyncSession
-) -> LoginResponse:
-    """邮箱密码注册，自动登录。"""
-    if len(password) < 6:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error_code": 40020,
-                "message_key": "errors.auth.password_too_short",
-                "message": "密码至少 6 位",
-            },
-        )
-
-    exists = await db.execute(
-        select(User).where(User.email == email, User.deleted_at.is_(None))
-    )
-    if exists.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error_code": 40920,
-                "message_key": "errors.auth.email_already_registered",
-                "message": "该邮箱已注册",
-            },
-        )
-
-    user = User(
-        name=name or email.split("@")[0],
-        email=email,
-        password_hash=_hash_password(password),
-        role=UserRole.user,
-    )
-    db.add(user)
-
-    from app.models.org_membership import OrgMembership, OrgRole
-    from app.models.organization import Organization
-    org_result = await db.execute(
-        select(Organization).where(Organization.slug.in_(["my-org", "default"]), Organization.deleted_at.is_(None))
-    )
-    default_org = org_result.scalar_one_or_none()
-    if default_org:
-        await db.flush()
-        membership = OrgMembership(user_id=user.id, org_id=default_org.id, role=OrgRole.member)
-        db.add(membership)
-        user.current_org_id = default_org.id
-
-    user.last_login_at = datetime.now(timezone.utc)
-    await db.commit()
-
-    refreshed = await db.execute(
-        select(User).options(selectinload(User.oauth_connections)).where(User.id == user.id)
-    )
-    user = refreshed.scalar_one()
-    logger.info("邮箱注册: %s", email)
-    return await _issue_tokens(user, db)
-
+# ── 邮箱密码登录 ──────────────────────────────────────────
 
 async def login_with_email(email: str, password: str, db: AsyncSession) -> LoginResponse:
     """邮箱密码登录。"""

@@ -18,12 +18,6 @@ class FeishuCallbackRequest(BaseModel):
     client_id: str | None = None
 
 
-class EmailRegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    name: str = ""
-
-
 class EmailLoginRequest(BaseModel):
     email: EmailStr
     password: str

@@ -12,7 +12,6 @@ from app.schemas.auth import (
     AccountLoginRequest,
     ChangePasswordRequest,
     EmailLoginRequest,
-    EmailRegisterRequest,
     FeishuCallbackRequest,
     LoginResponse,
     OAuthCallbackRequest,
@@ -51,13 +50,6 @@ async def feishu_callback(body: FeishuCallbackRequest, db: AsyncSession = Depend
 
 
 # ── 邮箱密码 ─────────────────────────────────────────────
-
-@router.post("/register", response_model=ApiResponse[LoginResponse])
-async def email_register(body: EmailRegisterRequest, db: AsyncSession = Depends(get_db)):
-    """邮箱密码注册。"""
-    result = await auth_service.register_with_email(body.email, body.password, body.name, db)
-    return ApiResponse(data=result)
-
 
 @router.post("/login", response_model=ApiResponse[LoginResponse])
 async def email_login(body: EmailLoginRequest, db: AsyncSession = Depends(get_db)):
