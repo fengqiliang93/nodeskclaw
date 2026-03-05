@@ -264,7 +264,7 @@ onMounted(async () => {
             @update:model-value="onRegistryFieldChange"
           />
           <p class="text-xs text-muted-foreground mt-1">
-            Docker Registry v2 地址，如 <YOUR_REGISTRY>/<YOUR_NAMESPACE>/nodeskclaw-base
+            Docker Registry v2 地址，如 YOUR_REGISTRY/YOUR_NAMESPACE/nodeskclaw-base
           </p>
         </div>
 
