@@ -4,11 +4,11 @@
 
 NoDeskClaw 是 OpenClaw 实例可视化管理系统，通过 Web 界面管理 K8s 集群上的 OpenClaw 实例。
 
-| 组件 | 技术 |
-|------|------|
-| 后端 | Python 3.12 + FastAPI + SQLAlchemy + PostgreSQL |
-| 管理前端 | Vue 3 + Vite + TypeScript + Tailwind CSS + shadcn-vue |
-| 用户门户 | Vue 3 + Vite + TypeScript + Tailwind CSS + Three.js |
+| 组件 | 技术 | 可用版本 |
+|------|------|---------|
+| 后端 | Python 3.12 + FastAPI + SQLAlchemy + PostgreSQL | CE + EE |
+| 管理前端 | Vue 3 + Vite + TypeScript + Tailwind CSS + shadcn-vue | EE-only |
+| 用户门户 | Vue 3 + Vite + TypeScript + Tailwind CSS + Three.js | CE + EE |
 
 ## 构建/测试命令
 

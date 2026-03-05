@@ -291,6 +291,21 @@ def require_org_role(min_role: str):
     return _dependency
 
 
+# ── Edition Dependencies ──────────────────────────────────
+
+def require_ce_edition():
+    """仅 CE 版可用，EE 版返回 403。"""
+    if feature_gate.edition != "ce":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": 40301,
+                "message_key": "errors.settings.ce_only",
+                "message": "此功能仅在社区版可用",
+            },
+        )
+
+
 # ── Feature Gate Dependencies ─────────────────────────────
 
 def require_feature(feature_id: str):

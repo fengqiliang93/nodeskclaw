@@ -25,7 +25,7 @@ from app.api.webhooks import router as webhook_router
 from app.api.workspaces import router as workspace_router
 from app.api.templates import router as template_router
 from app.api.instance_templates import router as instance_template_router
-from app.core.deps import require_org_role
+from app.core.deps import require_ce_edition, require_org_admin, require_org_role
 from app.core.feature_gate import feature_gate
 from app.core.config import settings
 
@@ -71,7 +71,8 @@ api_router.include_router(portal_mcp_router, prefix="/instances", tags=["MCP"])
 api_router.include_router(portal_instance_files_router, prefix="/instances", tags=["实例文件"])
 api_router.include_router(llm_keys_router, tags=["LLM Key 管理"])
 api_router.include_router(registry_router, prefix="/registry", tags=["镜像仓库"])
-api_router.include_router(settings_router, prefix="/settings", tags=["系统配置"])
+api_router.include_router(settings_router, prefix="/settings", tags=["系统配置"],
+    dependencies=[Depends(require_ce_edition), Depends(require_org_admin)])
 api_router.include_router(storage_router, prefix="/storage-classes", tags=["存储"])
 api_router.include_router(workspace_router, prefix="/workspaces", tags=["赛博办公室"])
 api_router.include_router(corridor_router, prefix="/workspaces", tags=["过道系统"])

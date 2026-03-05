@@ -80,6 +80,7 @@ const ceRoutes: RouteRecordRaw[] = [
     redirect: { name: 'OrgSettingsGenes' },
     children: [
       { path: 'genes', name: 'OrgSettingsGenes', component: () => import('@/views/OrgSettingsGenes.vue') },
+      { path: 'smtp', name: 'OrgSettingsSmtp', component: () => import('@/views/OrgSettingsSmtp.vue'), meta: { ceOnly: true } },
       ...eeOrgSettingsChildren,
     ],
   },
@@ -144,6 +145,11 @@ router.beforeEach(async (to, _from, next) => {
     }
     if (authStore.user && !authStore.user.current_org_id) {
       return next('/setup-org')
+    }
+
+    // CE-only routes: redirect to home in EE mode
+    if (to.meta.ceOnly && authStore.systemInfo?.edition === 'ee') {
+      return next('/')
     }
 
     const requiredFeature = to.meta.requireFeature as string | undefined

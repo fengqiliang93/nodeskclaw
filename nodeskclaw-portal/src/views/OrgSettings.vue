@@ -3,28 +3,36 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useOrgStore } from '@/stores/org'
-import { Settings, Users, Dna, FolderOpen } from 'lucide-vue-next'
+import { useEdition } from '@/composables/useFeature'
+import { Settings, Users, Dna, FolderOpen, Mail } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const orgStore = useOrgStore()
+const { isEE } = useEdition()
 
 interface NavItem {
   name: string
   label: () => string
   icon: typeof Settings
   matchPrefix?: string
+  ceOnly?: boolean
 }
 
 const allNavItems: NavItem[] = [
   { name: 'OrgMembers', label: () => t('orgSettings.humanMembers'), icon: Users },
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },
+  { name: 'OrgSettingsSmtp', label: () => t('orgSettings.smtpTitle'), icon: Mail, ceOnly: true },
   { name: 'OrgEnterpriseFiles', label: () => t('enterpriseFiles.title'), icon: FolderOpen, matchPrefix: '/org-settings/files' },
 ]
 
 const navItems = computed(() =>
-  allNavItems.filter(item => router.hasRoute(item.name))
+  allNavItems.filter(item => {
+    if (!router.hasRoute(item.name)) return false
+    if (item.ceOnly && isEE.value) return false
+    return true
+  })
 )
 
 function isActive(item: NavItem): boolean {

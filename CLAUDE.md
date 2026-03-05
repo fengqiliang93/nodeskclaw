@@ -12,8 +12,8 @@ DeskClaw（曾用名 NoDeskClaw）— OpenClaw 实例可视化管理平台，通
 
 ```
 NoDeskClaw/
-├── nodeskclaw-frontend/           # 管理后台前端（Vue 3 + shadcn-vue + Tailwind CSS）
-├── nodeskclaw-portal/              # 用户门户前端（Vue 3 + Tailwind CSS）
+├── nodeskclaw-frontend/           # 管理后台前端（EE-only，Vue 3 + shadcn-vue + Tailwind CSS）
+├── nodeskclaw-portal/              # 用户门户前端（CE + EE，Vue 3 + Tailwind CSS）
 ├── nodeskclaw-backend/             # 后端 API 服务（Python 3.12 + FastAPI）
 ├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Go）
 ├── nodeskclaw-artifacts/          # 镜像构建 & 部署制品
@@ -35,6 +35,7 @@ uv run uvicorn app.main:app --reload --port 8000
 uv run pytest              # 运行所有测试
 uv run pytest app/services/test_xxx.py::test_foo  # 运行单个测试
 uv run ruff check .        # 代码检查
+uv run ruff check --fix . # 自动修复
 ```
 
 ### 前端
@@ -45,6 +46,7 @@ cd nodeskclaw-frontend
 npm install
 npm run dev               # 开发服务器 http://localhost:5173
 npm run build             # 构建生产版本
+npm run lint              # ESLint 检查
 
 # 用户门户
 cd nodeskclaw-portal
@@ -54,6 +56,7 @@ npm run build
 npm run test              # 运行测试（vitest）
 npm run test -- --run src/components/xxx.spec.ts  # 运行单个测试
 npm run test:watch        # 监听模式
+npm run lint              # ESLint 检查
 ```
 
 ## i18n 国际化
@@ -64,9 +67,31 @@ npm run test:watch        # 监听模式
 
 ## 代码架构
 
-- **前端**：双前端架构（管理后台 + 用户门户），共享部分类型定义，采用 `lucide-vue-next` 图标库
+- **前端**：双前端架构。`nodeskclaw-frontend`（Admin 管理后台）仅 EE 版部署，CE 用户只有 `nodeskclaw-portal`（用户门户）。图标统一使用 `lucide-vue-next`
 - **后端**：FastAPI + SQLAlchemy + asyncpg，采用 Service Layer 模式
-- **K8s**：通过 kubectl 与K8s 集群 集群交互，目标节点架构 `linux/amd64`
+- **K8s**：通过 kubectl 与 K8s 集群交互，目标节点架构 `linux/amd64`
+- **OpenClaw 源码**：本地副本位于 `openclaw/src/`，用于调试和问题排查
+
+## K8s 调试常用命令
+
+```bash
+# 查看 Pod 状态
+kubectl get pods -n <namespace> --context <context-name>
+
+# 查看 Pod 详情和 Events
+kubectl describe pod <pod-name> -n <namespace> --context <context-name>
+
+# 查看 Pod 日志
+kubectl logs <pod-name> -n <namespace> --context <context-name> --tail=30
+
+# 查看集群 Events
+kubectl get events -n <namespace> --context <context-name> --sort-by='.lastTimestamp'
+
+# 查看 Deployment 状态
+kubectl get deploy -n <namespace> --context <context-name>
+```
+
+**重要**：所有 kubectl 命令必须显式指定 `--context <name>`，禁止依赖 current-context 默认值。
 
 ## 关键规则
 
