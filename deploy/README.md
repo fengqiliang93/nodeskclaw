@@ -80,6 +80,11 @@ deploy/
 - 已登录容器镜像仓库：`docker login <YOUR_REGISTRY>`
 - `kubectl` 已配置正确的 VKE 集群上下文
 - `nodeskclaw-system` Namespace 和 `cr-pull-secret` 已存在
+- 创建本地部署配置 `deploy/.env.local`（已被 `.gitignore` 忽略），填写真实镜像仓库地址：
+  ```bash
+  # deploy/.env.local
+  REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>"
+  ```
 
 ## Dockerfile 位置
 

@@ -24,6 +24,7 @@ REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>"
 NAMESPACE="nodeskclaw-system"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+[[ -f "$SCRIPT_DIR/.env.local" ]] && source "$SCRIPT_DIR/.env.local"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
