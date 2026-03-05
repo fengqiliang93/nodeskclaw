@@ -1,10 +1,10 @@
 const zhCN = {
   common: {
-    workspace: "赛博办公室",
+    workspace: "办公室",
     instance: "AI 员工",
     members: "成员",
     usage: "用量",
-    geneMarket: "基因市场",
+    geneMarket: "基因",
     overview: "概览",
     genes: "基因",
     evolutionLog: "进化日志",
@@ -637,7 +637,7 @@ const zhCN = {
     privateChatHint: "如果用户已通过飞书登录，私聊通知将自动生效，无需额外配置。群聊模式为可选的高级配置。",
   },
   orgSettings: {
-    navTitle: "组织设置",
+    navTitle: "设置",
     title: "组织设置",
     humanMembers: "人类成员",
     requiredGenesTab: "默认工作基因",

@@ -1,10 +1,10 @@
 const enUS = {
   common: {
-    workspace: "Cyber Office",
-    instance: "AI Employees",
+    workspace: "Office",
+    instance: "AI Staff",
     members: "Members",
     usage: "Usage",
-    geneMarket: "Gene Market",
+    geneMarket: "Genes",
     overview: "Overview",
     genes: "Genes",
     evolutionLog: "Evolution Log",
@@ -637,7 +637,7 @@ const enUS = {
     privateChatHint: "If the user has signed in via Feishu, private chat notifications are enabled automatically. Group chat mode is an optional advanced configuration.",
   },
   orgSettings: {
-    navTitle: "Org Settings",
+    navTitle: "Settings",
     title: "Organization Settings",
     humanMembers: "Human Members",
     requiredGenesTab: "Default Working Genes",
