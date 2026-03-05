@@ -323,6 +323,20 @@ watch(isRegister, () => { error.value = '' })
             </p>
           </form>
 
+          <!-- 错误提示 -->
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 -translate-y-1"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-1"
+          >
+            <p v-if="error" class="text-sm text-destructive text-center bg-destructive/10 rounded-lg py-2.5 px-3 border border-destructive/20">
+              {{ error }}
+            </p>
+          </Transition>
+
           <!-- 第三方登录分割线 -->
           <div class="relative my-2">
             <div class="absolute inset-0 flex items-center">
@@ -341,20 +355,6 @@ watch(isRegister, () => { error.value = '' })
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none"><path d="M3.536 7.382L13.539 4l1.636 5.676-11.64 3.03V7.383z" fill="#00D6B9"/><path d="M20.464 10.03L13.54 4l-3.073 5.676L20.464 17V10.03z" fill="#133C9A"/><path d="M5.172 12.706L10.465 9.676 20.464 17l-8.925 3.03-6.367-7.324z" fill="#3370FF"/><path d="M5.172 12.706L3.536 7.382l6.929 2.294-5.293 3.03z" fill="#00B2A6"/></svg>
             {{ t('auth.feishuLogin') }}
           </button>
-
-          <!-- 错误提示 -->
-          <Transition
-            enter-active-class="transition duration-200 ease-out"
-            enter-from-class="opacity-0 -translate-y-1"
-            enter-to-class="opacity-100 translate-y-0"
-            leave-active-class="transition duration-150 ease-in"
-            leave-from-class="opacity-100 translate-y-0"
-            leave-to-class="opacity-0 -translate-y-1"
-          >
-            <p v-if="error" class="text-sm text-destructive text-center bg-destructive/10 rounded-lg py-2.5 px-3 border border-destructive/20">
-              {{ error }}
-            </p>
-          </Transition>
 
         <!-- 底部 -->
         <div class="pt-4 text-center">
