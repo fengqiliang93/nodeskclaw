@@ -73,16 +73,16 @@ function onLocaleChange(value: string) {
   <template v-else>
     <div class="min-h-screen flex flex-col">
       <header class="h-14 flex items-center justify-between px-6 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div class="flex items-center gap-6">
-          <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
+        <div class="flex items-center gap-6 min-w-0">
+          <div class="flex items-center gap-2 shrink-0 cursor-pointer" @click="router.push('/')">
             <PawPrint class="w-5 h-5 text-primary" />
             <span class="font-bold text-base">DeskClaw</span>
             <span class="px-1.5 py-0.5 text-[10px] font-semibold leading-none rounded bg-primary/15 text-primary">Beta</span>
           </div>
-          <nav v-if="!isSetupPage" class="flex items-center gap-1">
+          <nav v-if="!isSetupPage" class="flex items-center gap-1 overflow-x-auto min-w-0">
             <button
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 (route.path === '/' || route.path.startsWith('/workspace')) && !route.path.startsWith('/instances') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/')"
@@ -92,7 +92,7 @@ function onLocaleChange(value: string) {
             </button>
             <button
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 route.path.startsWith('/instances') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/instances')"
@@ -103,7 +103,7 @@ function onLocaleChange(value: string) {
             <button
               v-if="hasBilling"
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 route.path === '/usage' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/usage')"
@@ -113,7 +113,7 @@ function onLocaleChange(value: string) {
             </button>
             <button
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 route.path.startsWith('/gene-market') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/gene-market')"
@@ -124,7 +124,7 @@ function onLocaleChange(value: string) {
             <button
               v-if="hasEnterpriseFiles && authStore.user?.portal_org_role === 'admin'"
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 route.path.startsWith('/enterprise-files') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/enterprise-files')"
@@ -135,7 +135,7 @@ function onLocaleChange(value: string) {
             <button
               v-if="authStore.user?.portal_org_role === 'admin'"
               :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
                 route.path.startsWith('/org-settings') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               ]"
               @click="router.push('/org-settings')"
