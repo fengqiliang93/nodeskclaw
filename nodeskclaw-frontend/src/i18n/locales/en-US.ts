@@ -15,11 +15,23 @@ const enUS = {
   },
   common: {
     loading: "Loading",
+    loadingEllipsis: "Loading...",
     save: "Save",
+    saving: "Saving...",
     cancel: "Cancel",
     confirm: "Confirm",
     delete: "Delete",
     failed: "Failed",
+    edit: "Edit",
+    create: "Create",
+    creating: "Creating...",
+    add: "Add",
+    enable: "Enable",
+    disable: "Disable",
+    actions: "Actions",
+    status: "Status",
+    name: "Name",
+    operationFailed: "Operation failed",
   },
   dashboard: {
     loading: "Loading...",
@@ -198,6 +210,18 @@ const enUS = {
     logout: "Sign Out",
   },
   settings: {
+    registry: {
+      saved: "Image registry configuration saved",
+      saveFailed: "Failed to save image registry configuration",
+    },
+    network: {
+      saved: "Network routing configuration saved",
+      saveFailed: "Failed to save network routing configuration",
+    },
+    storage: {
+      saved: "Storage configuration saved",
+      saveFailed: "Failed to save storage configuration",
+    },
     smtp: {
       title: "Email Configuration",
       description: "Configure global SMTP server for sending verification code emails and system notifications",

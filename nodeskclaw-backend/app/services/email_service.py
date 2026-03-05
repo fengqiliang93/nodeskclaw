@@ -79,6 +79,7 @@ async def _send_email(
         username=smtp_config.smtp_username,
         password=smtp_config.smtp_password,
         start_tls=smtp_config.use_tls,
+        timeout=15,
     )
     logger.info("Email sent to %s via %s:%s", to_email, smtp_config.smtp_host, smtp_config.smtp_port)
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,8 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { LogOut, User, Package, Save, Plug, Loader2, Lock, Globe, HardDrive, Mail, Send } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { resolveApiErrorMessage } from '@/i18n/error'
 import api from '@/services/api'
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
 
@@ -89,11 +92,11 @@ async function handleSaveRegistry() {
     if (registryUsername.value.trim()) {
       registryHasPassword.value = true
     }
-    toast.success('镜像仓库配置已保存')
+    toast.success(t('settings.registry.saved'))
     // 保存后自动测试连接
     await handleTestRegistry()
-  } catch {
-    toast.error('保存失败')
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.registry.saveFailed')))
   } finally {
     registrySaving.value = false
   }
@@ -150,9 +153,9 @@ async function handleSaveNetwork() {
       api.put('/settings/tls_secret_name', { value: tlsSecretName.value.trim() || null }),
     ])
     networkDirty.value = false
-    toast.success('网络路由配置已保存')
-  } catch {
-    toast.error('保存失败')
+    toast.success(t('settings.network.saved'))
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.network.saveFailed')))
   } finally {
     networkSaving.value = false
   }
@@ -205,9 +208,9 @@ async function handleSaveSmtp() {
     if (smtpUsername.value.trim()) {
       smtpHasPassword.value = true
     }
-    toast.success('SMTP 配置已保存')
-  } catch {
-    toast.error('保存失败')
+    toast.success(t('settings.smtp.saved'))
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.smtp.saveFailed')))
   } finally {
     smtpSaving.value = false
   }
@@ -216,15 +219,15 @@ async function handleSaveSmtp() {
 async function handleTestSmtp() {
   const email = smtpTestEmail.value.trim() || authStore.user?.email
   if (!email) {
-    toast.error('请输入测试收件邮箱')
+    toast.error(t('settings.smtp.testEmailRequired'))
     return
   }
   smtpTesting.value = true
   try {
     await api.post('/settings/smtp/test', { recipient_email: email })
-    toast.success('测试邮件已发送')
-  } catch {
-    toast.error('SMTP 测试失败，请检查配置')
+    toast.success(t('settings.smtp.testSent'))
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.smtp.testFailed')))
   } finally {
     smtpTesting.value = false
   }
@@ -238,9 +241,9 @@ async function handleSaveTemplate() {
       api.put('/settings/verification_email_template', { value: verificationTemplate.value.trim() || null }),
     ])
     templateDirty.value = false
-    toast.success('邮件模板已保存')
-  } catch {
-    toast.error('保存失败')
+    toast.success(t('settings.emailTemplate.saved'))
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.emailTemplate.saveFailed')))
   } finally {
     templateSaving.value = false
   }
@@ -284,9 +287,9 @@ async function saveAllowedStorageClasses() {
   try {
     const enabledNames = storageClasses.value.filter((s) => s.enabled).map((s) => s.name)
     await api.put('/settings/allowed_storage_classes', { value: JSON.stringify(enabledNames) })
-    toast.success('存储配置已保存')
-  } catch {
-    toast.error('保存失败')
+    toast.success(t('settings.storage.saved'))
+  } catch (e: unknown) {
+    toast.error(resolveApiErrorMessage(e, t('settings.storage.saveFailed')))
   } finally {
     storageSaving.value = false
   }

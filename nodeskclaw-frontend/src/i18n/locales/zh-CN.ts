@@ -15,11 +15,23 @@ const zhCN = {
   },
   common: {
     loading: "加载中",
+    loadingEllipsis: "加载中...",
     save: "保存",
+    saving: "保存中...",
     cancel: "取消",
     confirm: "确认",
     delete: "删除",
     failed: "失败",
+    edit: "编辑",
+    create: "创建",
+    creating: "创建中...",
+    add: "添加",
+    enable: "启用",
+    disable: "禁用",
+    actions: "操作",
+    status: "状态",
+    name: "名称",
+    operationFailed: "操作失败",
   },
   dashboard: {
     loading: "加载中...",
@@ -198,6 +210,18 @@ const zhCN = {
     logout: "退出登录",
   },
   settings: {
+    registry: {
+      saved: "镜像仓库配置已保存",
+      saveFailed: "镜像仓库配置保存失败",
+    },
+    network: {
+      saved: "网络路由配置已保存",
+      saveFailed: "网络路由配置保存失败",
+    },
+    storage: {
+      saved: "存储配置已保存",
+      saveFailed: "存储配置保存失败",
+    },
     smtp: {
       title: "邮件配置",
       description: "配置全局 SMTP 服务器，用于发送验证码邮件等系统通知",
