@@ -642,7 +642,7 @@ onMounted(async () => {
           </Button>
           <Input
             v-model="smtpTestEmail"
-            :placeholder="authStore.user?.email || '测试收件邮箱'"
+            :placeholder="authStore.user?.email || t('settings.smtp.testPlaceholder')"
             class="font-mono text-sm w-52"
             :disabled="settingsLoading"
           />
