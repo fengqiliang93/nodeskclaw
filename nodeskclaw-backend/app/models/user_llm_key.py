@@ -23,4 +23,5 @@ class UserLlmKey(BaseModel):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    api_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

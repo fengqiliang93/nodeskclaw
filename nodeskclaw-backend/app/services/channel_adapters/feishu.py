@@ -29,7 +29,7 @@ async def get_feishu_open_id(user_id: str, db: AsyncSession) -> str | None:
             UserOAuthConnection.user_id == user_id,
             UserOAuthConnection.provider == "feishu",
             not_deleted(UserOAuthConnection),
-        )
+        ).order_by(UserOAuthConnection.created_at.desc()).limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -38,23 +38,23 @@ def build_workspace_message_card(
     *,
     workspace_name: str,
     workspace_id: str,
-    agent_name: str,
+    source_name: str,
     content: str,
     human_hex_name: str = "",
     portal_base_url: str = "",
 ) -> dict:
-    """Build an interactive card for delivering an Agent collaboration message."""
+    """Build an interactive card for delivering a workspace message."""
     truncated = content[:500] + ("..." if len(content) > 500 else "")
 
     if human_hex_name:
-        body_md = f"**工位**: {human_hex_name}\n**来源 Agent**: {agent_name}\n\n{truncated}"
+        body_md = f"**工位**: {human_hex_name}\n**来源**: {source_name}\n\n{truncated}"
     else:
-        body_md = f"**来源 Agent**: {agent_name}\n\n{truncated}"
+        body_md = f"**来源**: {source_name}\n\n{truncated}"
 
     if human_hex_name:
-        note_text = f"通过工位「{human_hex_name}」接收 · 直接回复将路由至相邻 Agent"
+        note_text = f"通过工位「{human_hex_name}」接收 · 直接回复将路由至相邻 AI 员工"
     else:
-        note_text = "直接回复将路由至相邻 Agent"
+        note_text = "直接回复将路由至相邻 AI 员工"
 
     elements: list[dict] = [
         {
@@ -74,7 +74,7 @@ def build_workspace_message_card(
             "actions": [
                 {
                     "tag": "button",
-                    "text": {"tag": "plain_text", "content": "打开工作区"},
+                    "text": {"tag": "plain_text", "content": "打开办公室"},
                     "type": "default",
                     "url": f"{portal_base_url}/workspace/{workspace_id}",
                 },
@@ -211,7 +211,7 @@ class FeishuChannelAdapter(ChannelAdapter):
             "config": {"wide_screen_mode": True},
             "header": {"title": {"tag": "plain_text", "content": f"[{workspace_name}] Approval Request"}},
             "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**Agent**: {agent_name}\n**Action**: {action_type}\n**Details**: {json.dumps(proposal, ensure_ascii=False, indent=2)[:500]}"}},
+                {"tag": "div", "text": {"tag": "lark_md", "content": f"**AI Employee**: {agent_name}\n**Action**: {action_type}\n**Details**: {json.dumps(proposal, ensure_ascii=False, indent=2)[:500]}"}},
                 {"tag": "action", "actions": [
                     {"tag": "button", "text": {"tag": "plain_text", "content": "Allow this time"}, "type": "primary", "value": {"action": "allow_once", "callback_url": callback_url}},
                     {"tag": "button", "text": {"tag": "plain_text", "content": "Allow always"}, "type": "default", "value": {"action": "allow_always", "callback_url": callback_url}},

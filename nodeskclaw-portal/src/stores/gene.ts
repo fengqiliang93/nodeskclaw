@@ -58,12 +58,51 @@ export interface InstanceGeneItem {
   gene?: GeneItem
 }
 
+export interface InstanceSkillItem {
+  type: 'hub' | 'emerged'
+  skill_name: string
+  name: string
+  description: string
+  file_count: number
+  content_preview?: string
+  full_content?: string
+  frontmatter?: Record<string, unknown>
+  gene?: GeneItem
+  instance_gene?: InstanceGeneItem
+}
+
 export interface GeneStats {
   total_genes: number
   total_installs: number
   learning_count: number
   failed_count: number
   agent_created_count: number
+}
+
+export interface TemplateItem {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  short_description?: string
+  icon?: string
+  gene_slugs: string[]
+  genes?: GeneRef[]
+  source_instance_id?: string
+  is_published: boolean
+  is_featured: boolean
+  use_count: number
+  created_by?: string
+  org_id?: string
+  created_at?: string
+}
+
+export interface GeneRef {
+  slug: string
+  name: string
+  short_description?: string
+  category?: string
+  icon?: string
 }
 
 export interface EvolutionEventItem {
@@ -86,7 +125,12 @@ export const useGeneStore = defineStore('gene', () => {
   const currentGene = ref<GeneItem | null>(null)
   const currentGenome = ref<GenomeItem | null>(null)
   const instanceGenes = ref<InstanceGeneItem[]>([])
+  const instanceSkills = ref<InstanceSkillItem[]>([])
   const geneStats = ref<GeneStats | null>(null)
+  const templates = ref<TemplateItem[]>([])
+  const featuredTemplates = ref<TemplateItem[]>([])
+  const currentTemplate = ref<TemplateItem | null>(null)
+  const totalTemplates = ref(0)
   const loading = ref(false)
   const totalGenes = ref(0)
   const totalGenomes = ref(0)
@@ -233,6 +277,19 @@ export const useGeneStore = defineStore('gene', () => {
     }
   }
 
+  async function fetchInstanceSkills(instanceId: string) {
+    loading.value = true
+    try {
+      const res = await api.get(`/instances/${instanceId}/skills`)
+      instanceSkills.value = res.data.data || []
+    } catch (e) {
+      console.error('fetchInstanceSkills error:', e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function installGene(instanceId: string, geneSlug: string) {
     const res = await api.post(`/instances/${instanceId}/genes/install`, { gene_slug: geneSlug })
     return res.data.data
@@ -277,6 +334,81 @@ export const useGeneStore = defineStore('gene', () => {
     return res.data.data
   }
 
+  // ── Instance Templates ──────────────────────────
+
+  async function fetchTemplates(params: { keyword?: string; page?: number; page_size?: number } = {}) {
+    loading.value = true
+    try {
+      const res = await api.get('/instance-templates', { params })
+      templates.value = res.data.data || []
+      totalTemplates.value = res.data.pagination?.total || 0
+    } catch (e) {
+      console.error('fetchTemplates error:', e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchFeaturedTemplates() {
+    try {
+      const res = await api.get('/instance-templates/featured')
+      featuredTemplates.value = res.data.data || []
+    } catch (e) {
+      console.error('fetchFeaturedTemplates error:', e)
+    }
+  }
+
+  async function fetchTemplate(id: string) {
+    loading.value = true
+    try {
+      const res = await api.get(`/instance-templates/${id}`)
+      currentTemplate.value = res.data.data
+    } catch (e) {
+      console.error('fetchTemplate error:', e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function createTemplate(data: {
+    name: string
+    slug: string
+    description?: string
+    short_description?: string
+    icon?: string
+    gene_slugs: string[]
+  }) {
+    const res = await api.post('/instance-templates', data)
+    return res.data.data
+  }
+
+  async function createTemplateFromInstance(instanceId: string, data: {
+    name: string
+    slug: string
+    description?: string
+    short_description?: string
+    icon?: string
+  }) {
+    const res = await api.post(`/instance-templates/from-instance/${instanceId}`, data)
+    return res.data.data
+  }
+
+  async function updateTemplate(id: string, data: {
+    name?: string
+    description?: string
+    short_description?: string
+    icon?: string
+    gene_slugs?: string[]
+  }) {
+    const res = await api.put(`/instance-templates/${id}`, data)
+    return res.data.data
+  }
+
+  async function deleteTemplate(id: string) {
+    const res = await api.delete(`/instance-templates/${id}`)
+    return res.data.data
+  }
+
   // ── Admin ─────────────────────────────────────
 
   async function fetchGeneStats() {
@@ -316,15 +448,20 @@ export const useGeneStore = defineStore('gene', () => {
   return {
     genes,
     genomes,
+    templates,
     featuredGenes,
     featuredGenomes,
+    featuredTemplates,
     currentGene,
     currentGenome,
+    currentTemplate,
     instanceGenes,
+    instanceSkills,
     geneStats,
     loading,
     totalGenes,
     totalGenomes,
+    totalTemplates,
     tagStats,
 
     fetchGenes,
@@ -341,7 +478,16 @@ export const useGeneStore = defineStore('gene', () => {
     fetchGenome,
     rateGenome,
 
+    fetchTemplates,
+    fetchFeaturedTemplates,
+    fetchTemplate,
+    createTemplate,
+    createTemplateFromInstance,
+    updateTemplate,
+    deleteTemplate,
+
     fetchInstanceGenes,
+    fetchInstanceSkills,
     installGene,
     uninstallGene,
     applyGenome,

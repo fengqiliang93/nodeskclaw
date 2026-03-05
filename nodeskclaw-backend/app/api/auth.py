@@ -5,10 +5,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import get_db, require_super_admin_dep
+from app.core.deps import get_db, require_feature, require_super_admin_dep
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
+    AccountLoginRequest,
+    ChangePasswordRequest,
     EmailLoginRequest,
     EmailRegisterRequest,
     FeishuCallbackRequest,
@@ -19,6 +21,8 @@ from app.schemas.auth import (
     SmsSendRequest,
     TokenResponse,
     UserInfo,
+    VerificationCodeLoginRequest,
+    VerificationCodeSendRequest,
 )
 from app.schemas.common import ApiResponse
 from app.services import auth_service
@@ -95,6 +99,7 @@ async def me(
     from app.models.org_membership import OrgMembership
 
     info = UserInfo.model_validate(current_user)
+    info.has_password = bool(current_user.password_hash)
     if current_user.current_org_id:
         result = await db.execute(
             select(AdminMembership.role).where(
@@ -116,13 +121,26 @@ async def me(
     return ApiResponse(data=info)
 
 
+@router.put("/me/password", response_model=ApiResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await auth_service.change_password(
+        current_user.id, body.old_password, body.new_password, db,
+    )
+    return ApiResponse(message="密码已更新")
+
+
 @router.post("/logout", response_model=ApiResponse)
 async def logout(current_user: User = Depends(get_current_user)):
     """登出（客户端清除 Token 即可，服务端无需额外操作）。"""
     return ApiResponse(message="已登出")
 
 
-@router.get("/users", response_model=ApiResponse[list[UserInfo]])
+@router.get("/users", response_model=ApiResponse[list[UserInfo]],
+             dependencies=[Depends(require_feature("platform_admin"))])
 async def list_users(
     q: str | None = Query(None, description="按名称/邮箱/手机号模糊搜索"),
     db: AsyncSession = Depends(get_db),
@@ -147,7 +165,8 @@ async def list_users(
 
 # ── 运维人员管理 ─────────────────────────────────────────
 
-@router.get("/staff", response_model=ApiResponse[list[UserInfo]])
+@router.get("/staff", response_model=ApiResponse[list[UserInfo]],
+             dependencies=[Depends(require_feature("platform_admin"))])
 async def list_staff(
     q: str | None = Query(None, description="按名称/邮箱模糊搜索"),
     db: AsyncSession = Depends(get_db),
@@ -169,7 +188,8 @@ async def list_staff(
     return ApiResponse(data=staff)
 
 
-@router.put("/staff/{user_id}", response_model=ApiResponse[UserInfo])
+@router.put("/staff/{user_id}", response_model=ApiResponse[UserInfo],
+             dependencies=[Depends(require_feature("platform_admin"))])
 async def update_staff(
     user_id: str,
     is_super_admin: bool | None = Query(None),
@@ -196,3 +216,33 @@ async def update_staff(
     await db.commit()
     await db.refresh(user)
     return ApiResponse(data=UserInfo.model_validate(user))
+
+
+# ── 统一认证端点 ──────────────────────────────────────────
+
+
+@router.post("/account-login", response_model=ApiResponse[LoginResponse])
+async def account_login(
+    body: AccountLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await auth_service.login_with_account(body.account, body.password, db)
+    return ApiResponse(data=result)
+
+
+@router.post("/verification-code/send", response_model=ApiResponse)
+async def send_verification_code(
+    body: VerificationCodeSendRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await auth_service.send_verification_code(body.account, db)
+    return ApiResponse(data=result)
+
+
+@router.post("/verification-code/login", response_model=ApiResponse[LoginResponse])
+async def verification_code_login(
+    body: VerificationCodeLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await auth_service.login_with_verification_code(body.account, body.code, db)
+    return ApiResponse(data=result)

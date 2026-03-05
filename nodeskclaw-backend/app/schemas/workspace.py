@@ -84,6 +84,7 @@ class AddAgentRequest(BaseModel):
     display_name: str | None = None
     hex_q: int | None = None
     hex_r: int | None = None
+    install_gene_slugs: list[str] = []
 
 
 class UpdateAgentRequest(BaseModel):
@@ -102,16 +103,20 @@ class WorkspaceMemberInfo(BaseModel):
     user_email: str | None = None
     user_avatar_url: str | None = None
     role: str
+    is_admin: bool = False
+    permissions: list[str] = []
     created_at: datetime
 
 
 class WorkspaceMemberAdd(BaseModel):
     user_id: str
-    role: str = "editor"
+    permissions: list[str] = []
+    is_admin: bool = False
 
 
 class WorkspaceMemberUpdate(BaseModel):
-    role: str
+    permissions: list[str] | None = None
+    is_admin: bool | None = None
 
 
 # ── Chat ─────────────────────────────────────────────

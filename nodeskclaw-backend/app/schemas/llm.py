@@ -57,8 +57,9 @@ class OrgLlmKeyInfo(BaseModel):
 
 class UserLlmKeyCreate(BaseModel):
     provider: str = Field(..., max_length=32)
-    api_key: str
+    api_key: str | None = None
     base_url: str | None = None
+    api_type: str | None = None
 
 
 class UserLlmKeyInfo(BaseModel):
@@ -66,6 +67,7 @@ class UserLlmKeyInfo(BaseModel):
     provider: str
     api_key_masked: str
     base_url: str | None
+    api_type: str | None
     is_active: bool
 
     model_config = {"from_attributes": True}

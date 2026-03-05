@@ -14,7 +14,7 @@ function handleOAuthLogin(provider: string) {
     const clientId = import.meta.env.VITE_FEISHU_APP_ID || ''
     const redirectUri = encodeURIComponent(window.location.origin + `/login/callback/${provider}`)
     const state = Math.random().toString(36).substring(2)
-    window.location.href = `https://passport.feishu.cn/suite/passport/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${state}`
+    window.location.href = `https://passport.feishu.cn/suite/passport/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${state}&scope=contact:user.email:readonly`
   }
 }
 </script>
@@ -25,7 +25,8 @@ function handleOAuthLogin(provider: string) {
       <CardHeader class="text-center">
         <div class="flex items-center justify-center gap-2 mb-4">
           <PawPrint class="w-8 h-8 text-primary" />
-          <span class="text-2xl font-bold">NoDeskClaw</span>
+          <span class="text-2xl font-bold">DeskClaw</span>
+          <span class="px-1.5 py-0.5 text-[10px] font-semibold leading-none rounded bg-primary/15 text-primary">Beta</span>
         </div>
         <CardTitle class="text-lg font-normal text-muted-foreground">
           One-click deploy, full control.

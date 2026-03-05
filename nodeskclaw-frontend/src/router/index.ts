@@ -1,15 +1,17 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
+import { eeAdminRoutes } from '@/router/ee-stub'
 
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     minRole?: string
+    requireFeature?: string
   }
 }
 
-const routes: RouteRecordRaw[] = [
+const ceRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
@@ -105,44 +107,9 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/Gene/index.vue'),
     meta: { minRole: 'admin' },
   },
-  {
-    path: '/members',
-    name: 'Members',
-    component: () => import('@/views/Members/index.vue'),
-    meta: { minRole: 'admin' },
-  },
-  // ── 平台管理（超管） ──
-  {
-    path: '/platform/orgs',
-    name: 'PlatformOrgs',
-    component: () => import('@/views/Platform/Organizations.vue'),
-    meta: { minRole: 'super_admin' },
-  },
-  {
-    path: '/platform/orgs/:orgId/members',
-    name: 'PlatformOrgMembers',
-    component: () => import('@/views/Platform/OrgMembers.vue'),
-    meta: { minRole: 'super_admin' },
-  },
-  {
-    path: '/platform/orgs/:orgId/llm-keys',
-    name: 'PlatformOrgLlmKeys',
-    component: () => import('@/views/Platform/OrgLlmKeys.vue'),
-    meta: { minRole: 'super_admin' },
-  },
-  {
-    path: '/platform/users',
-    name: 'PlatformUsers',
-    component: () => import('@/views/Platform/Users.vue'),
-    meta: { minRole: 'super_admin' },
-  },
-  {
-    path: '/platform/plans',
-    name: 'PlatformPlans',
-    component: () => import('@/views/Platform/Plans.vue'),
-    meta: { minRole: 'super_admin' },
-  },
 ]
+
+const routes: RouteRecordRaw[] = [...ceRoutes, ...eeAdminRoutes]
 
 const router = createRouter({
   history: createWebHistory(),
@@ -162,6 +129,9 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   const auth = useAuthStore()
+  if (!auth.systemInfo) {
+    await auth.fetchSystemInfo()
+  }
   if (token && !auth.user) {
     await auth.fetchUser()
   }
@@ -179,6 +149,14 @@ router.beforeEach(async (to, _from, next) => {
   const minRole = to.meta.minRole
   if (minRole && !canAccessRoute(minRole)) {
     return next('/no-access')
+  }
+
+  const requiredFeature = to.meta.requireFeature
+  if (requiredFeature && auth.systemInfo) {
+    const feat = auth.systemInfo.features.find((f: any) => f.id === requiredFeature)
+    if (!feat?.enabled) {
+      return next('/no-access')
+    }
   }
 
   next()

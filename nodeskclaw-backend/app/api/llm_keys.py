@@ -220,7 +220,8 @@ async def list_user_llm_keys(
     return ApiResponse(data=[
         UserLlmKeyInfo(
             id=k.id, provider=k.provider,
-            api_key_masked=_mask_key(k.api_key), base_url=k.base_url, is_active=k.is_active,
+            api_key_masked=_mask_key(k.api_key), base_url=k.base_url,
+            api_type=k.api_type, is_active=k.is_active,
         )
         for k in keys
     ])
@@ -242,21 +243,27 @@ async def upsert_user_llm_key(
     )
     key = result.scalar_one_or_none()
     if key is None:
+        if not body.api_key:
+            return ApiResponse(code=400, message="新建 Key 时 api_key 不能为空")
         key = UserLlmKey(
             user_id=current_user.id,
             provider=body.provider,
             api_key=body.api_key,
             base_url=body.base_url,
+            api_type=body.api_type,
         )
         db.add(key)
     else:
-        key.api_key = body.api_key
+        if body.api_key is not None:
+            key.api_key = body.api_key
         key.base_url = body.base_url
+        key.api_type = body.api_type
     await db.commit()
     await db.refresh(key)
     return ApiResponse(data=UserLlmKeyInfo(
         id=key.id, provider=key.provider,
-        api_key_masked=_mask_key(key.api_key), base_url=key.base_url, is_active=key.is_active,
+        api_key_masked=_mask_key(key.api_key), base_url=key.base_url,
+        api_type=key.api_type, is_active=key.is_active,
     ))
 
 
@@ -291,6 +298,7 @@ async def list_provider_models(
     provider: str,
     api_key: str | None = Query(None),
     org_id: str | None = Query(None),
+    base_url: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -298,8 +306,10 @@ async def list_provider_models(
 
     - If api_key is provided, use it directly (personal key scenario).
     - Otherwise, look up an active org key for the given (org_id, provider).
+    - base_url: optional override for custom providers.
     """
     resolved_key = api_key
+    resolved_base_url = base_url
     if not resolved_key:
         pk_result = await db.execute(
             select(UserLlmKey).where(
@@ -311,6 +321,8 @@ async def list_provider_models(
         personal_key = pk_result.scalar_one_or_none()
         if personal_key:
             resolved_key = personal_key.api_key
+            if not resolved_base_url:
+                resolved_base_url = personal_key.base_url
 
     if not resolved_key and org_id:
         result = await db.execute(
@@ -331,7 +343,7 @@ async def list_provider_models(
 
     from app.services.model_catalog_service import fetch_provider_models
     try:
-        models = await fetch_provider_models(provider, resolved_key)
+        models = await fetch_provider_models(provider, resolved_key, base_url=resolved_base_url)
     except ValueError as e:
         return ApiResponse(data=ProviderModelsResponse(provider=provider, models=[]),
                            message=str(e))

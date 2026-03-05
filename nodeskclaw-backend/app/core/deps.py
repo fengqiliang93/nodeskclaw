@@ -1,4 +1,4 @@
-"""FastAPI dependency injection – DB session + RBAC helpers."""
+"""FastAPI dependency injection – DB session + RBAC helpers + FeatureGate."""
 
 from collections.abc import AsyncGenerator
 
@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.core.feature_gate import feature_gate
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -35,33 +36,23 @@ async def get_current_org(
     db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_dep()),
 ):
-    """获取当前用户所在组织，返回 (user, organization) 元组。"""
-    from app.models.organization import Organization
+    """获取当前用户所在组织，返回 (user, organization) 元组。
 
-    if user.current_org_id is None:
+    CE: 通过 SingleOrgProvider 自动解析默认组织
+    EE: 通过 MultiOrgProvider 使用 user.current_org_id
+    """
+    from app.services.org.factory import get_org_provider
+
+    provider = get_org_provider()
+    org = await provider.resolve_org_for_user(user, db)
+
+    if org is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error_code": 40010,
                 "message_key": "errors.org.user_has_no_org",
                 "message": "用户未加入任何组织",
-            },
-        )
-
-    result = await db.execute(
-        select(Organization).where(
-            Organization.id == user.current_org_id,
-            Organization.deleted_at.is_(None),
-        )
-    )
-    org = result.scalar_one_or_none()
-    if org is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error_code": 40410,
-                "message_key": "errors.org.current_org_not_found",
-                "message": "当前组织不存在或已删除",
             },
         )
     return user, org
@@ -298,3 +289,24 @@ def require_org_role(min_role: str):
         return user, org
 
     return _dependency
+
+
+# ── Feature Gate Dependencies ─────────────────────────────
+
+def require_feature(feature_id: str):
+    """工厂函数：生成要求指定 EE feature 已启用的依赖。
+
+    用法：router = APIRouter(dependencies=[Depends(require_feature("billing"))])
+    或在单个端点上：@router.get("/...", dependencies=[Depends(require_feature("billing"))])
+    """
+    async def _check_feature():
+        if not feature_gate.is_enabled(feature_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error_code": 40320,
+                    "message_key": "errors.feature.ee_required",
+                    "message": f"Feature '{feature_id}' requires Enterprise Edition",
+                },
+            )
+    return _check_feature

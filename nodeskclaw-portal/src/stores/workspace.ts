@@ -54,6 +54,8 @@ export interface WorkspaceMemberInfo {
   user_email: string | null
   user_avatar_url: string | null
   role: string
+  is_admin: boolean
+  permissions: string[]
   created_at: string
 }
 
@@ -133,6 +135,24 @@ export interface GroupChatMessage {
 
 export type ChatSSECallback = (event: string, data: Record<string, unknown>) => void
 
+export const WORKSPACE_PERMISSIONS = [
+  'manage_settings',
+  'manage_agents',
+  'manage_members',
+  'edit_blackboard',
+  'send_chat',
+  'edit_topology',
+  'delete_workspace',
+] as const
+
+export type WorkspacePermission = typeof WORKSPACE_PERMISSIONS[number]
+
+export const PERMISSION_PRESETS: Record<string, { is_admin: boolean; permissions: string[] }> = {
+  administrator: { is_admin: true, permissions: [] },
+  collaborator: { is_admin: false, permissions: ['manage_agents', 'edit_blackboard', 'send_chat', 'edit_topology'] },
+  observer: { is_admin: false, permissions: ['send_chat'] },
+}
+
 export const useWorkspaceStore = defineStore('workspace', () => {
   const workspaces = ref<WorkspaceListItem[]>([])
   const currentWorkspace = ref<WorkspaceInfo | null>(null)
@@ -144,6 +164,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const connections = ref<ConnectionInfo[]>([])
   const topology = ref<TopologyInfo | null>(null)
   const messageFlowStats = ref<MessageFlowPair[]>([])
+
+  const myPermissions = ref<string[]>([])
+  const isWorkspaceAdmin = ref(false)
+  const isOrgAdmin = ref(false)
 
   // ── Workspace CRUD ────────────────────────────────
 
@@ -195,10 +219,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   // ── Agent Management ──────────────────────────────
 
-  async function addAgent(workspaceId: string, instanceId: string, displayName?: string, hexQ?: number, hexR?: number) {
+  async function addAgent(workspaceId: string, instanceId: string, displayName?: string, hexQ?: number, hexR?: number, installGeneSlugs?: string[]) {
     const body: Record<string, unknown> = { instance_id: instanceId }
     if (displayName) body.display_name = displayName
     if (hexQ !== undefined) { body.hex_q = hexQ; body.hex_r = hexR ?? 0 }
+    if (installGeneSlugs?.length) body.install_gene_slugs = installGeneSlugs
     const res = await api.post(`/workspaces/${workspaceId}/agents`, body)
     if (currentWorkspace.value?.id === workspaceId) {
       await fetchWorkspace(workspaceId)
@@ -433,7 +458,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       sender_type: 'system',
       sender_id: 'system',
       sender_name: 'System',
-      content: content || `${agentName} 已加入工作区`,
+      content: content || `${agentName} 已加入办公室`,
       message_type: 'system',
       created_at: new Date().toISOString(),
     })
@@ -519,6 +544,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
             (a) => a.instance_id === data.instance_id,
           )
           if (agent) agent.sse_connected = false
+        }
+      } catch { /* ignore */ }
+    })
+
+    eventSource.addEventListener('agent:status_snapshot', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (currentWorkspace.value && Array.isArray(data.agents)) {
+          for (const item of data.agents) {
+            const agent = currentWorkspace.value.agents.find(
+              (a: { instance_id: string }) => a.instance_id === item.instance_id,
+            )
+            if (agent) agent.sse_connected = item.sse_connected
+          }
         }
       } catch { /* ignore */ }
     })
@@ -797,6 +836,53 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await fetchTopology(workspaceId)
   }
 
+  async function fetchMyPermissions(workspaceId: string) {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/my-permissions`)
+      const data = res.data.data
+      myPermissions.value = data.permissions || []
+      isWorkspaceAdmin.value = data.is_admin || false
+      isOrgAdmin.value = data.is_org_admin || false
+    } catch (e) {
+      console.error('fetchMyPermissions error:', e)
+      myPermissions.value = []
+      isWorkspaceAdmin.value = false
+      isOrgAdmin.value = false
+    }
+  }
+
+  function hasPermission(perm: string): boolean {
+    if (isWorkspaceAdmin.value || isOrgAdmin.value) return true
+    return myPermissions.value.includes(perm)
+  }
+
+  async function addMember(workspaceId: string, userId: string, permissions: string[] = [], isAdmin = false) {
+    await api.post(`/workspaces/${workspaceId}/members`, {
+      user_id: userId,
+      permissions,
+      is_admin: isAdmin,
+    })
+    await fetchMembers(workspaceId)
+  }
+
+  async function updateMember(workspaceId: string, userId: string, permissions?: string[], isAdmin?: boolean) {
+    const body: Record<string, unknown> = {}
+    if (permissions !== undefined) body.permissions = permissions
+    if (isAdmin !== undefined) body.is_admin = isAdmin
+    await api.put(`/workspaces/${workspaceId}/members/${userId}`, body)
+    await fetchMembers(workspaceId)
+  }
+
+  async function removeMember(workspaceId: string, userId: string) {
+    await api.delete(`/workspaces/${workspaceId}/members/${userId}`)
+    await fetchMembers(workspaceId)
+  }
+
+  async function searchOrgUsers(workspaceId: string, query: string) {
+    const res = await api.get(`/workspaces/${workspaceId}/search-users`, { params: { q: query } })
+    return res.data.data || []
+  }
+
   function resetCurrentState() {
     currentWorkspace.value = null
     blackboard.value = null
@@ -807,6 +893,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     connections.value = []
     typingAgents.value.clear()
     unreadCount.value = 0
+    myPermissions.value = []
+    isWorkspaceAdmin.value = false
+    isOrgAdmin.value = false
   }
 
   return {
@@ -825,6 +914,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     topologyNodes: computed(() => topology.value?.nodes || []),
     topologyEdges: computed(() => topology.value?.edges || []),
     messageFlowStats,
+    myPermissions,
+    isWorkspaceAdmin,
+    isOrgAdmin,
     resetCurrentState,
     setChatVisible,
     fetchWorkspaces,
@@ -862,5 +954,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     renameHumanHex,
     deleteHumanHex,
     updateHumanHexChannel,
+    fetchMyPermissions,
+    hasPermission,
+    addMember,
+    updateMember,
+    removeMember,
+    searchOrgUsers,
   }
 })

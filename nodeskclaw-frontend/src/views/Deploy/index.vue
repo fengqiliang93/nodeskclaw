@@ -26,12 +26,18 @@ import { toast } from 'vue-sonner'
 import { pinyin } from 'pinyin-pro'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
 const clusterStore = useClusterStore()
 const instanceStore = useInstanceStore()
 const orgStore = useOrgStore()
+
+const K8S_NAME_MAX = 63
+const NS_PREFIX_BASE = 'nodeskclaw-'.length + 1
+const DEPLOY_NAME_MAX = 35
 
 // ── Stepper ──
 const currentStep = ref(0)
@@ -45,7 +51,7 @@ const steps = [
 // ── Form state ──
 const slugManuallyEdited = ref(false)
 
-function toSlug(input: string): string {
+function toSlug(input: string, maxLen?: number): string {
   const segments = input.match(/[\u4e00-\u9fa5]+|[^\u4e00-\u9fa5]+/g) || []
   const parts: string[] = []
   for (const seg of segments) {
@@ -55,7 +61,7 @@ function toSlug(input: string): string {
       parts.push(seg.trim())
     }
   }
-  return parts
+  let result = parts
     .filter(Boolean)
     .join('-')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
@@ -64,6 +70,13 @@ function toSlug(input: string): string {
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-|-$/g, '')
+  if (maxLen && maxLen > 0 && result.length > maxLen) {
+    result = result.slice(0, maxLen)
+    const lastDash = result.lastIndexOf('-')
+    if (lastDash > maxLen / 2) result = result.slice(0, lastDash)
+    result = result.replace(/-+$/, '')
+  }
+  return result
 }
 
 const form = ref({
@@ -87,6 +100,14 @@ const orgPopoverOpen = ref(false)
 const selectedOrg = computed(() =>
   orgStore.orgs.find(o => o.id === form.value.org_id) ?? null
 )
+const maxSlugLen = computed(() => Math.min(
+  K8S_NAME_MAX - NS_PREFIX_BASE - (selectedOrg.value?.slug?.length ?? 9),
+  DEPLOY_NAME_MAX
+))
+const slugTooLong = computed(() => !!form.value.slug && (
+  form.value.slug.length + NS_PREFIX_BASE + (selectedOrg.value?.slug?.length ?? 9) > K8S_NAME_MAX ||
+  form.value.slug.length > DEPLOY_NAME_MAX
+))
 
 /** 根据用户邮箱前缀 + 已有实例数量生成默认实例名称（RFC 1123 格式） */
 function generateDefaultName() {
@@ -102,7 +123,7 @@ function generateDefaultName() {
   prefix = prefix.replace(/^-+|-+$/g, '').replace(/-{2,}/g, '-') || 'instance'
   const count = instanceStore.instances.length + 1
   form.value.name = `${prefix}-${count}`
-  form.value.slug = toSlug(form.value.name)
+  form.value.slug = toSlug(form.value.name, maxSlugLen.value)
 }
 
 // ── slug 冲突检测（防抖）──
@@ -116,7 +137,7 @@ watch(
   () => form.value.name,
   (val) => {
     if (!slugManuallyEdited.value) {
-      form.value.slug = toSlug(val)
+      form.value.slug = toSlug(val, maxSlugLen.value)
     }
   },
 )
@@ -426,7 +447,7 @@ function prevStep() {
 // ── Step validation ──
 const canProceedStep0 = computed(() =>
   !!form.value.org_id
-  && !!form.value.name && !!form.value.slug && slugValid.value && !slugConflict.value.conflict && !checkingSlug.value
+  && !!form.value.name && !!form.value.slug && slugValid.value && !slugConflict.value.conflict && !checkingSlug.value && !slugTooLong.value
   && !!form.value.image_version && !!selectedCluster.value
 )
 const canProceedStep1 = computed(() =>
@@ -547,7 +568,7 @@ const yamlPreview = computed(() => {
   <div class="p-6 space-y-6 max-w-3xl mx-auto">
     <div class="flex items-center gap-2">
       <Rocket class="w-6 h-6" />
-      <h1 class="text-2xl font-bold">部署 OpenClaw 实例</h1>
+      <h1 class="text-2xl font-bold">部署 DeskClaw 实例</h1>
     </div>
 
     <div v-if="initializing" class="text-muted-foreground text-center py-12">
@@ -671,6 +692,10 @@ const yamlPreview = computed(() => {
             </p>
             <p v-else-if="form.slug && !slugValid" class="text-xs text-red-400 mt-1">
               须以小写字母开头，仅含小写字母、数字和连字符，至少 2 个字符
+            </p>
+            <p v-else-if="slugTooLong" class="flex items-center gap-1 text-xs text-red-400 mt-1">
+              <CircleAlert class="w-3.5 h-3.5 shrink-0" />
+              {{ t('validation.instance.slug_too_long') }}
             </p>
             <p v-else class="text-xs text-muted-foreground mt-1">根据名称自动生成，也可手动修改</p>
           </div>

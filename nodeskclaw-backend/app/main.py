@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
@@ -59,6 +60,18 @@ async def lifespan(app: FastAPI):
     from app.utils.oauth_providers.registry import register_provider
 
     logger = logging.getLogger(__name__)
+
+    # ── EE Model 注册（在 create_all 之前导入，使其加入 Base.metadata）──
+    from app.core.feature_gate import feature_gate as _fg
+    if _fg.is_ee:
+        _proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        if _proj_root not in sys.path:
+            sys.path.insert(0, _proj_root)
+        try:
+            import ee.backend.models  # noqa: F401
+            logger.info("EE Models 已注册")
+        except ImportError:
+            pass
 
     # ── Startup ──────────────────────────────────────
     register_provider(FeishuProvider())
@@ -725,11 +738,37 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE users DROP COLUMN feishu_tenant_key"))
             logger.info("自动迁移：已删除 users.feishu_tenant_key 列")
 
+        # ── 迁移 24: UniqueConstraint → Partial Unique Index（软删除兼容） ──
+        _soft_delete_constraints = [
+            ("uq_corridor_hex_pos", "corridor_hexes", "(workspace_id, hex_q, hex_r)"),
+            ("uq_human_hex_pos", "human_hexes", "(workspace_id, hex_q, hex_r)"),
+            ("uq_hex_connection_pair", "hex_connections",
+             "(workspace_id, hex_a_q, hex_a_r, hex_b_q, hex_b_r)"),
+            ("uq_workspace_member", "workspace_members", "(workspace_id, user_id)"),
+            ("uq_instance_member_active", "instance_members", "(instance_id, user_id)"),
+            ("uq_admin_membership", "admin_memberships", "(user_id, org_id)"),
+            ("uq_org_membership", "org_memberships", "(user_id, org_id)"),
+            ("uq_oauth_provider_user", "user_oauth_connections", "(provider, provider_user_id)"),
+            ("uq_oauth_provider_tenant", "org_oauth_bindings", "(provider, provider_tenant_id)"),
+        ]
+        for _con_name, _tbl, _cols in _soft_delete_constraints:
+            _old = await conn.execute(text(
+                "SELECT 1 FROM pg_constraint WHERE conname = :name"
+            ), {"name": _con_name})
+            if _old.first() is not None:
+                await conn.execute(text(f"ALTER TABLE {_tbl} DROP CONSTRAINT {_con_name}"))
+                await conn.execute(text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_con_name} "
+                    f"ON {_tbl} {_cols} WHERE deleted_at IS NULL"
+                ))
+                logger.info(
+                    "自动迁移：%s.%s 唯一约束已替换为 partial unique index", _tbl, _con_name,
+                )
+
     # ── 迁移 5e: 种子数据（默认组织 + 套餐 + 数据归属） ──
     async with async_session_factory() as db:
         from app.models.org_membership import OrgMembership, OrgRole
         from app.models.organization import Organization
-        from app.models.plan import Plan
         from app.models.user import User
 
         # 检查是否已有组织（幂等）
@@ -781,37 +820,15 @@ async def lifespan(app: FastAPI):
             await db.commit()
             logger.info("自动迁移：已创建默认组织并迁移现有数据")
 
-        # 种子套餐（幂等）
-        plan_result = await db.execute(select(Plan).limit(1))
-        if plan_result.scalar_one_or_none() is None:
-            seed_plans = [
-                Plan(
-                    name="free", display_name="免费版",
-                    max_instances=1,
-                    max_cpu_per_instance="2000m", max_mem_per_instance="4Gi",
-                    allowed_specs='["small"]',
-                    dedicated_cluster=False, price_monthly=0,
-                ),
-                Plan(
-                    name="pro", display_name="专业版",
-                    max_instances=10,
-                    max_cpu_per_instance="4000m", max_mem_per_instance="8Gi",
-                    allowed_specs='["small","medium"]',
-                    dedicated_cluster=False, price_monthly=9900,
-                ),
-                Plan(
-                    name="enterprise", display_name="企业版",
-                    max_instances=50,
-                    max_cpu_per_instance="8000m", max_mem_per_instance="16Gi",
-                    allowed_specs='["small","medium","large"]',
-                    dedicated_cluster=True, price_monthly=49900,
-                ),
-            ]
-            db.add_all(seed_plans)
-            await db.commit()
-            logger.info("自动迁移：已种子化 3 个套餐")
+        # EE 种子套餐
+        if _fg.is_ee:
+            try:
+                from ee.backend.seed import seed_plans
+                await seed_plans(db)
+            except ImportError:
+                pass
 
-        # 种子预设工作区模板（幂等）
+        # 种子预设办公室模板（幂等）
         from app.models.workspace_template import WorkspaceTemplate
         import json as _json
         preset_names = ["软件研发团队", "内容工作室", "研究实验室"]
@@ -842,7 +859,7 @@ async def lifespan(app: FastAPI):
                 )
                 db.add(t)
         await db.commit()
-        logger.info("自动迁移：已种子化预设工作区模板")
+        logger.info("自动迁移：已种子化预设办公室模板")
 
         # 默认基因/基因组改为一次性 SQL 回填；启动流程不再自动写入
 
@@ -930,8 +947,8 @@ async def lifespan(app: FastAPI):
             ws = Workspace(
                 id=str(uuid.uuid4()),
                 org_id=org.id,
-                name="默认工作区",
-                description="自动创建的默认工作区",
+                name="默认办公室",
+                description="自动创建的默认办公室",
                 created_by=first_member.user_id if first_member else "system",
             )
             db.add(ws)
@@ -1033,6 +1050,32 @@ async def lifespan(app: FastAPI):
             ))
             logger.info("自动迁移：已为 human_hexes 表添加 display_name 列")
 
+    # ── 迁移 26: workspace_members 新增 is_admin / permissions 列 + 数据迁移 ──
+    async with engine.begin() as conn:
+        wm_admin_col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'workspace_members' AND column_name = 'is_admin'"
+        ))
+        if wm_admin_col.first() is None:
+            await conn.execute(text(
+                "ALTER TABLE workspace_members "
+                "ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT false, "
+                "ADD COLUMN permissions JSON NOT NULL DEFAULT '[]'"
+            ))
+            await conn.execute(text(
+                "UPDATE workspace_members SET is_admin = true WHERE role = 'owner' AND deleted_at IS NULL"
+            ))
+            await conn.execute(text(
+                "UPDATE workspace_members SET permissions = "
+                "'[\"manage_settings\",\"manage_agents\",\"edit_blackboard\",\"send_chat\",\"edit_topology\"]' "
+                "WHERE role = 'editor' AND deleted_at IS NULL"
+            ))
+            await conn.execute(text(
+                "UPDATE workspace_members SET permissions = '[\"send_chat\"]' "
+                "WHERE role = 'viewer' AND deleted_at IS NULL"
+            ))
+            logger.info("自动迁移：已为 workspace_members 表添加 is_admin/permissions 列并迁移数据")
+
     # ── 迁移 26: genes 表新增 synced_at 列（GeneHub 缓存降级） ──
     async with engine.begin() as conn:
         col = await conn.execute(text(
@@ -1044,6 +1087,90 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE genes ADD COLUMN synced_at TIMESTAMPTZ"
             ))
             logger.info("自动迁移 26：已为 genes 表添加 synced_at 列")
+
+    # ── 迁移 27: 种子 nodeskclaw-topology-awareness 基因 ──
+    async with async_session_factory() as db:
+        from app.models.gene import Gene
+        from app.models.base import not_deleted
+
+        existing_gene = (await db.execute(
+            select(Gene).where(Gene.slug == "nodeskclaw-topology-awareness", not_deleted(Gene))
+        )).scalar_one_or_none()
+
+        if existing_gene is None:
+            import pathlib, json as _json
+            tpl_path = pathlib.Path(__file__).parent / "data" / "gene_templates" / "mcp_topology_awareness.json"
+            if tpl_path.exists():
+                tpl = _json.loads(tpl_path.read_text())
+                gene = Gene(
+                    name=tpl["name"],
+                    slug=tpl["slug"],
+                    description=tpl.get("description"),
+                    category=tpl.get("category"),
+                    tags=_json.dumps(tpl.get("tags", []), ensure_ascii=False),
+                    source="official",
+                    version="1.0.0",
+                    manifest=_json.dumps(tpl.get("manifest", {}), ensure_ascii=False),
+                    is_published=True,
+                    review_status="approved",
+                )
+                db.add(gene)
+                await db.commit()
+                logger.info("自动迁移 27：已种子 nodeskclaw-topology-awareness 基因")
+            else:
+                logger.warning("迁移 27：模板文件 %s 不存在，跳过种子", tpl_path)
+
+    # ── 迁移 28: 创建 org_required_genes 表 ──
+    async with engine.begin() as conn:
+        tbl = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'org_required_genes'"
+        ))
+        if not tbl.scalar():
+            await conn.execute(text("""
+                CREATE TABLE org_required_genes (
+                    id VARCHAR(36) PRIMARY KEY,
+                    org_id VARCHAR(36) NOT NULL REFERENCES organizations(id),
+                    gene_id VARCHAR(36) NOT NULL REFERENCES genes(id),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    deleted_at TIMESTAMPTZ
+                )
+            """))
+            await conn.execute(text(
+                "CREATE INDEX ix_org_required_genes_org_id ON org_required_genes (org_id)"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX ix_org_required_genes_deleted_at ON org_required_genes (deleted_at)"
+            ))
+            await conn.execute(text("""
+                CREATE UNIQUE INDEX uq_org_required_gene_active
+                ON org_required_genes (org_id, gene_id)
+                WHERE deleted_at IS NULL
+            """))
+            logger.info("自动迁移 28：已创建 org_required_genes 表")
+        else:
+            idx = await conn.execute(text(
+                "SELECT 1 FROM pg_indexes WHERE indexname = 'uq_org_required_gene_active'"
+            ))
+            if not idx.scalar():
+                await conn.execute(text("""
+                    CREATE UNIQUE INDEX uq_org_required_gene_active
+                    ON org_required_genes (org_id, gene_id)
+                    WHERE deleted_at IS NULL
+                """))
+                logger.info("自动迁移 28：已补建 uq_org_required_gene_active 索引")
+
+    # ── 迁移 29: user_llm_keys 新增 api_type 列（自定义 Provider API 类型） ──
+    async with engine.begin() as conn:
+        col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'user_llm_keys' AND column_name = 'api_type'"
+        ))
+        if col.first() is None:
+            await conn.execute(text(
+                "ALTER TABLE user_llm_keys ADD COLUMN api_type VARCHAR(32)"
+            ))
+            logger.info("自动迁移 29：已为 user_llm_keys 表添加 api_type 列")
 
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
@@ -1213,6 +1340,25 @@ register_exception_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1/admin")
 app.include_router(webhook_router)
+
+# ── EE 模块自动加载 ─────────────────────────────────
+from app.core.feature_gate import feature_gate  # noqa: E402
+
+if feature_gate.is_ee:
+    _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
+    try:
+        from ee.backend.router import ee_api_router, ee_admin_router
+        app.include_router(ee_api_router, prefix="/api/v1")
+        app.include_router(ee_admin_router, prefix="/api/v1/admin")
+
+        from ee.backend.hooks.topology_audit import register_hooks as _register_audit_hooks
+        _register_audit_hooks()
+
+        logging.getLogger(__name__).info("EE 模块已加载")
+    except ImportError:
+        logging.getLogger(__name__).warning("检测到 ee/ 目录但 EE 模块加载失败，以 CE 模式运行")
 
 if settings.DEBUG:
     from app.api.llm_proxy import router as llm_proxy_router

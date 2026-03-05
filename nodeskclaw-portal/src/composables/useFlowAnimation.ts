@@ -18,7 +18,7 @@ export interface HexPulse {
   startTime: number
 }
 
-export function useFlowAnimation2D(scale: number) {
+export function useFlowAnimation2D(scale: number, yScale: number = 1) {
   const particles = ref<FlowParticle[]>([])
   const pulses = ref<HexPulse[]>([])
   const activeKeys = new Set<string>()
@@ -33,7 +33,7 @@ export function useFlowAnimation2D(scale: number) {
     activeKeys.add(flowKey)
     const points = path.map(p => {
       const w = axialToWorld(p.q, p.r)
-      return { x: w.x * scale, y: w.y * scale }
+      return { x: w.x * scale, y: w.y * scale * yScale }
     })
 
     const particle: FlowParticle = {

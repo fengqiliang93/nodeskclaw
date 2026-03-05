@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2 } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2, Plus, Link, Star } from 'lucide-vue-next'
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import { pinyin } from 'pinyin-pro'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useAuthStore } from '@/stores/auth'
+import { useOrgStore } from '@/stores/org'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const orgStore = useOrgStore()
+
+const K8S_NAME_MAX = 63
+const NS_PREFIX_BASE = 'nodeskclaw-'.length + 1
+const DEPLOY_NAME_MAX = 35
 
 const name = ref('')
 const slug = ref('')
@@ -28,11 +37,28 @@ const deploying = ref(false)
 const error = ref('')
 const currentStep = ref(1)
 
+// ── Template ──
+import { useGeneStore } from '@/stores/gene'
+import type { TemplateItem } from '@/stores/gene'
+
+const geneStore = useGeneStore()
+const selectedTemplate = ref<TemplateItem | null>(null)
+
 const nameHasEdgeSpaces = computed(() => name.value.length > 0 && name.value !== name.value.trim())
+
+const orgSlugLen = computed(() => orgStore.currentOrg?.slug?.length ?? 9)
+const maxSlugInput = computed(() => {
+  const nsMax = K8S_NAME_MAX - NS_PREFIX_BASE - orgSlugLen.value
+  return Math.min(nsMax, DEPLOY_NAME_MAX) - 1 - randomSuffix.length
+})
+const slugTooLong = computed(() => fullSlug.value.length > 0 && (
+  fullSlug.value.length + NS_PREFIX_BASE + orgSlugLen.value > K8S_NAME_MAX ||
+  fullSlug.value.length > DEPLOY_NAME_MAX
+))
 
 const canGoNext = computed(() =>
   !!name.value.trim() && !nameHasEdgeSpaces.value
-  && !!slug.value && slugValid.value && !slugConflict.value && !slugChecking.value
+  && !!slug.value && slugValid.value && !slugConflict.value && !slugChecking.value && !slugTooLong.value
   && !!selectedImage.value && clusters.value.length > 0
 )
 
@@ -41,10 +67,14 @@ interface LlmConfigEntry {
   provider: string
   keySource: 'org' | 'personal'
   personalKey: string
+  baseUrl: string
+  apiType: string
+  isCustom: boolean
+  showBaseUrl: boolean
   selectedModel: ModelItem | null
 }
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini', 'openrouter', 'minimax-openai', 'minimax-anthropic'] as const
+const PROVIDERS = ['minimax-openai', 'minimax-anthropic', 'openai', 'anthropic', 'gemini', 'openrouter'] as const
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -54,13 +84,27 @@ const PROVIDER_LABELS: Record<string, string> = {
   'minimax-anthropic': 'MiniMax-Anthropic (CN)',
 }
 
+const PROVIDER_DEFAULT_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  'minimax-openai': 'https://api.minimaxi.com/v1',
+  'minimax-anthropic': 'https://api.minimaxi.com/anthropic',
+}
+
 const llmConfigs = ref<LlmConfigEntry[]>([])
 const llmSkipped = ref(false)
 const newProvider = ref('')
+const customSlug = ref('')
+const customSlugError = ref('')
+const showCustomForm = ref(false)
 
 const unusedProviders = computed(() =>
   PROVIDERS.filter(p => !llmConfigs.value.some(c => c.provider === p))
 )
+
+const ALL_KNOWN_PROVIDERS = new Set([...PROVIDERS])
 
 function addProvider() {
   if (!newProvider.value) return
@@ -68,9 +112,39 @@ function addProvider() {
     provider: newProvider.value,
     keySource: WORKING_PLAN_PROVIDERS.has(newProvider.value) ? 'org' : 'personal',
     personalKey: '',
+    baseUrl: '',
+    apiType: '',
+    isCustom: false,
+    showBaseUrl: false,
     selectedModel: null,
   })
   newProvider.value = ''
+}
+
+function addCustomProvider() {
+  const slug = customSlug.value.trim()
+  if (!slug) return
+  if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(slug) || slug.length < 2 || slug.length > 32) {
+    customSlugError.value = t('llm.providerSlugInvalid')
+    return
+  }
+  if (ALL_KNOWN_PROVIDERS.has(slug) || llmConfigs.value.some(c => c.provider === slug)) {
+    customSlugError.value = t('llm.providerSlugConflict')
+    return
+  }
+  llmConfigs.value.push({
+    provider: slug,
+    keySource: 'personal',
+    personalKey: '',
+    baseUrl: '',
+    apiType: 'openai-completions',
+    isCustom: true,
+    showBaseUrl: true,
+    selectedModel: null,
+  })
+  customSlug.value = ''
+  customSlugError.value = ''
+  showCustomForm.value = false
 }
 
 const BUILTIN_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'openrouter'])
@@ -82,6 +156,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   if (cfg?.keySource === 'personal' && cfg.personalKey) {
     params.api_key = cfg.personalKey
   }
+  if (cfg?.baseUrl) {
+    params.base_url = cfg.baseUrl
+  }
   if (authStore.user?.current_org_id) {
     params.org_id = authStore.user.current_org_id
   }
@@ -90,7 +167,7 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
     const msg = res.data?.message ?? ''
     callback(res.data.data?.models ?? [], msg || undefined)
   } catch (e: any) {
-    callback([], e?.response?.data?.message ?? '拉取模型列表失败')
+    callback([], e?.response?.data?.message ?? t('llm.fetchModelsFailed'))
   }
 }
 
@@ -155,7 +232,7 @@ function selectImage(tag: string) {
   imageDropdownOpen.value = false
 }
 
-function toSlug(input: string): string {
+function toSlug(input: string, maxLen?: number): string {
   const segments = input.match(/[\u4e00-\u9fa5]+|[^\u4e00-\u9fa5]+/g) || []
   const parts: string[] = []
   for (const seg of segments) {
@@ -165,7 +242,7 @@ function toSlug(input: string): string {
       parts.push(seg.trim())
     }
   }
-  return parts
+  let result = parts
     .filter(Boolean)
     .join('-')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
@@ -174,6 +251,13 @@ function toSlug(input: string): string {
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-|-$/g, '')
+  if (maxLen && maxLen > 0 && result.length > maxLen) {
+    result = result.slice(0, maxLen)
+    const lastDash = result.lastIndexOf('-')
+    if (lastDash > maxLen / 2) result = result.slice(0, lastDash)
+    result = result.replace(/-+$/, '')
+  }
+  return result
 }
 
 const slugValid = computed(() => /^[a-z][a-z0-9-]*[a-z0-9]$/.test(slug.value) && slug.value.length >= 2)
@@ -204,7 +288,7 @@ function debouncedSlugCheck() {
 
 watch(name, (val) => {
   if (!slugManuallyEdited.value) {
-    slug.value = toSlug(val)
+    slug.value = toSlug(val, maxSlugInput.value)
     debouncedSlugCheck()
   }
 })
@@ -225,25 +309,39 @@ onMounted(async () => {
   } finally {
     loadingInit.value = false
   }
+
+  const qTemplateId = route.query.template_id as string | undefined
+  if (qTemplateId) {
+    try {
+      await geneStore.fetchTemplate(qTemplateId)
+      if (geneStore.currentTemplate) {
+        selectedTemplate.value = geneStore.currentTemplate
+      }
+    } catch {
+      // ignore
+    }
+  }
 })
 
 const llmReady = computed(() => {
   if (llmSkipped.value) return true
   if (llmConfigs.value.length === 0) return false
-  return llmConfigs.value.every(c =>
-    BUILTIN_PROVIDERS.has(c.provider) || !!c.selectedModel
-  )
+  return llmConfigs.value.every(c => {
+    if (c.isCustom) return !!c.baseUrl && !!c.personalKey && !!c.selectedModel
+    if (BUILTIN_PROVIDERS.has(c.provider)) return true
+    return !!c.selectedModel
+  })
 })
 
 const canDeploy = computed(() =>
-  !!name.value.trim() && !!slug.value && slugValid.value && !slugConflict.value && !slugChecking.value
+  !!name.value.trim() && !!slug.value && slugValid.value && !slugConflict.value && !slugChecking.value && !slugTooLong.value
   && !!selectedImage.value && clusters.value.length > 0 && !deploying.value
   && llmReady.value
 )
 
 async function handleDeploy() {
   if (!name.value.trim()) {
-    error.value = '请输入实例名称'
+    error.value = '请输入AI 员工名称'
     return
   }
   if (!selectedImage.value) {
@@ -261,6 +359,17 @@ async function handleDeploy() {
   const res_spec = specResources[selectedSpec.value]
 
   try {
+    for (const cfg of llmConfigs.value) {
+      if (cfg.keySource === 'personal' && cfg.personalKey) {
+        await api.post('/users/me/llm-keys', {
+          provider: cfg.provider,
+          api_key: cfg.personalKey,
+          base_url: cfg.baseUrl || null,
+          api_type: cfg.isCustom ? cfg.apiType : null,
+        })
+      }
+    }
+
     const activeLlm = llmConfigs.value.map(c => ({
       provider: c.provider,
       key_source: c.keySource,
@@ -282,6 +391,7 @@ async function handleDeploy() {
       storage_size: `${storageGi.value}Gi`,
       description: description.value || undefined,
       llm_configs: activeLlm.length > 0 ? activeLlm : undefined,
+      template_id: selectedTemplate.value?.id || undefined,
     })
 
     const deployId = res.data.data?.deploy_id
@@ -310,8 +420,8 @@ async function handleDeploy() {
         <ArrowLeft class="w-5 h-5" />
       </button>
       <div>
-        <h1 class="text-xl font-bold">创建实例</h1>
-        <p class="text-sm text-muted-foreground mt-0.5">只需几步即可部署你的 AI 助手</p>
+        <h1 class="text-xl font-bold">创建AI 员工</h1>
+        <p class="text-sm text-muted-foreground mt-0.5">只需几步即可部署你的 AI 员工</p>
       </div>
     </div>
 
@@ -350,9 +460,14 @@ async function handleDeploy() {
     <template v-else>
       <!-- ══ Step 1: 基本信息 ══ -->
       <div v-if="currentStep === 1" class="space-y-8">
+        <!-- 模板提示条 -->
+        <div v-if="selectedTemplate" class="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-primary/30 bg-primary/5 text-sm">
+          <span class="text-primary font-medium">{{ t('template.creatingFrom', { name: selectedTemplate.name }) }}</span>
+        </div>
+
         <!-- 名称 -->
         <div class="space-y-2">
-          <label class="text-sm font-medium">给你的 AI 助手取个名字</label>
+          <label class="text-sm font-medium">给你的 AI 员工取个名字</label>
           <input
             v-model="name"
             type="text"
@@ -366,12 +481,12 @@ async function handleDeploy() {
           </p>
         </div>
 
-        <!-- 实例标识 + 镜像版本 -->
+        <!-- AI 员工标识 + 镜像版本 -->
         <div class="grid grid-cols-2 gap-4">
-          <!-- 实例标识 (slug) -->
+          <!-- AI 员工标识 (slug) -->
           <div class="space-y-2">
             <div class="flex items-center gap-2">
-              <label class="text-sm font-medium">实例标识</label>
+              <label class="text-sm font-medium">AI 员工标识</label>
               <span v-if="slug && !slugManuallyEdited" class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">自动生成</span>
             </div>
             <div class="flex items-center gap-0">
@@ -398,6 +513,10 @@ async function handleDeploy() {
             <p v-else-if="slug && !slugValid" class="text-xs text-destructive flex items-center gap-1">
               <AlertCircle class="w-3 h-3" />
               须以小写字母开头，仅含小写字母、数字和连字符，至少 2 个字符
+            </p>
+            <p v-else-if="slugTooLong" class="text-xs text-destructive flex items-center gap-1">
+              <AlertCircle class="w-3 h-3" />
+              {{ t('validation.instance.slug_too_long') }}
             </p>
             <p v-else class="text-xs text-muted-foreground">
               根据名称自动生成，也可手动修改
@@ -536,25 +655,41 @@ async function handleDeploy() {
             <label class="text-sm font-medium">配置大模型</label>
           </div>
           <p class="text-xs text-muted-foreground">
-            OpenClaw 需要至少一个大模型 API Key 才能正常使用
+            DeskClaw 需要至少一个大模型 API Key 才能正常使用
           </p>
 
           <template v-if="!llmSkipped">
             <!-- 已添加的 Provider -->
             <div v-for="(cfg, idx) in llmConfigs" :key="cfg.provider" class="rounded-lg border border-border bg-card p-4 space-y-3">
               <div class="flex items-center justify-between">
-                <span class="font-medium text-sm">{{ PROVIDER_LABELS[cfg.provider] || cfg.provider }}</span>
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">{{ PROVIDER_LABELS[cfg.provider] || cfg.provider }}</span>
+                  <span v-if="cfg.isCustom" class="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400">{{ t('llm.customProvider') }}</span>
+                </div>
                 <button class="text-muted-foreground hover:text-destructive transition-colors" @click="removeProvider(idx)">
                   <Trash2 class="w-4 h-4" />
                 </button>
               </div>
 
+              <!-- API type selector (custom only) -->
+              <div v-if="cfg.isCustom" class="flex gap-4 text-sm">
+                <label class="text-xs text-muted-foreground">{{ t('llm.apiType') }}:</label>
+                <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+                  <input type="radio" :name="`apitype-${cfg.provider}`" value="openai-completions" v-model="cfg.apiType" class="accent-primary" />
+                  {{ t('llm.apiTypeOpenai') }}
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+                  <input type="radio" :name="`apitype-${cfg.provider}`" value="anthropic-messages" v-model="cfg.apiType" class="accent-primary" />
+                  {{ t('llm.apiTypeAnthropic') }}
+                </label>
+              </div>
+
               <div class="space-y-2">
-                <div class="flex gap-4 text-sm">
+                <div v-if="!cfg.isCustom" class="flex gap-4 text-sm">
                   <label
                     class="flex items-center gap-1.5"
                     :class="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
-                    :title="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? '' : '暂未开放'"
+                    :title="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? '' : t('llm.workingPlanUnavailable')"
                   >
                     <input type="radio" :name="`llm-${cfg.provider}`" value="org" v-model="cfg.keySource" class="accent-primary" :disabled="!WORKING_PLAN_PROVIDERS.has(cfg.provider)" />
                     Working Plan
@@ -565,18 +700,40 @@ async function handleDeploy() {
                   </label>
                 </div>
 
-                <p v-if="cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
+                <p v-if="!cfg.isCustom && cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
                   使用组织统一配置的 Key，无需自行输入
                 </p>
 
-                <div v-if="cfg.keySource === 'personal'" class="relative">
-                  <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <input
-                    v-model="cfg.personalKey"
-                    type="password"
-                    placeholder="输入 API Key"
-                    class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                  />
+                <div v-if="cfg.keySource === 'personal'" class="space-y-2">
+                  <div class="relative">
+                    <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      v-model="cfg.personalKey"
+                      type="password"
+                      placeholder="输入 API Key"
+                      class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    />
+                  </div>
+
+                  <!-- Base URL (collapsible for built-in, always visible for custom) -->
+                  <div v-if="cfg.isCustom || cfg.showBaseUrl">
+                    <div class="relative">
+                      <Link class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        v-model="cfg.baseUrl"
+                        type="text"
+                        :placeholder="cfg.isCustom ? t('llm.baseUrlPlaceholder') : t('llm.defaultBaseUrl', { url: PROVIDER_DEFAULT_URLS[cfg.provider] || '' })"
+                        class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    v-if="!cfg.isCustom && !cfg.showBaseUrl"
+                    class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    @click="cfg.showBaseUrl = true"
+                  >
+                    {{ t('llm.customBaseUrl') }}
+                  </button>
                 </div>
               </div>
 
@@ -584,10 +741,11 @@ async function handleDeploy() {
               <ModelSelect
                 :provider="cfg.provider"
                 v-model="cfg.selectedModel"
+                :allow-manual-input="!!cfg.isCustom"
                 @fetch-models="handleFetchModels"
               />
-              <p v-if="!BUILTIN_PROVIDERS.has(cfg.provider) && !cfg.selectedModel" class="text-[10px] text-amber-500">
-                自定义 Provider 需要选择一个模型
+              <p v-if="(cfg.isCustom || !BUILTIN_PROVIDERS.has(cfg.provider)) && !cfg.selectedModel" class="text-[10px] text-amber-500">
+                {{ t('llm.modelRequired') }}
               </p>
             </div>
 
@@ -601,14 +759,81 @@ async function handleDeploy() {
                   class="px-4 py-3 rounded-lg border border-border bg-card text-sm text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
                   @click="newProvider = p; addProvider()"
                 >
-                  {{ PROVIDER_LABELS[p] || p }}
+                  <div class="flex items-center gap-1.5">
+                    {{ PROVIDER_LABELS[p] || p }}
+                    <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                      <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
+                      Working Plan
+                    </span>
+                  </div>
+                </button>
+                <button
+                  class="px-4 py-3 rounded-lg border border-dashed border-violet-400/50 bg-card text-sm text-left hover:border-violet-400 hover:bg-violet-500/5 transition-colors text-violet-400"
+                  @click="showCustomForm = true"
+                >
+                  <div class="flex items-center gap-1.5">
+                    <Plus class="w-3.5 h-3.5" />
+                    {{ t('llm.addCustomProvider') }}
+                  </div>
                 </button>
               </div>
+            </div>
+
+            <!-- 已有 Provider 时的添加按钮 -->
+            <div v-if="llmConfigs.length > 0" class="flex gap-2">
+              <div v-if="unusedProviders.length > 0" class="relative">
+                <select
+                  v-model="newProvider"
+                  class="px-3 py-1.5 pr-8 rounded-md bg-card border border-border text-sm appearance-none"
+                  @change="addProvider"
+                >
+                  <option value="">+ {{ t('common.add') }} Provider</option>
+                  <option v-for="p in unusedProviders" :key="p" :value="p">{{ PROVIDER_LABELS[p] || p }}{{ WORKING_PLAN_PROVIDERS.has(p) ? ' (Working Plan)' : '' }}</option>
+                </select>
+                <ChevronDown class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+              <button
+                class="px-3 py-1.5 rounded-md border border-dashed border-violet-400/50 text-sm text-violet-400 hover:border-violet-400 hover:bg-violet-500/5 transition-colors flex items-center gap-1"
+                @click="showCustomForm = true"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                {{ t('llm.addCustomProvider') }}
+              </button>
+            </div>
+
+            <!-- 自定义 Provider 表单 -->
+            <div v-if="showCustomForm" class="rounded-lg border border-violet-400/30 bg-violet-500/5 p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="font-medium text-sm text-violet-400">{{ t('llm.customProvider') }}</span>
+                <button class="text-muted-foreground hover:text-foreground text-xs" @click="showCustomForm = false; customSlug = ''; customSlugError = ''">
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs text-muted-foreground">{{ t('llm.providerSlug') }}</label>
+                <input
+                  v-model="customSlug"
+                  type="text"
+                  maxlength="32"
+                  :placeholder="t('llm.providerSlugPlaceholder')"
+                  class="w-full px-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  @keydown.enter="addCustomProvider"
+                />
+                <p v-if="customSlugError" class="text-[10px] text-destructive">{{ customSlugError }}</p>
+                <p v-else class="text-[10px] text-muted-foreground">{{ t('llm.providerSlugHint') }}</p>
+              </div>
+              <button
+                class="px-4 py-1.5 rounded-md bg-violet-500/10 text-violet-400 text-sm hover:bg-violet-500/20 transition-colors"
+                :disabled="!customSlug.trim()"
+                @click="addCustomProvider"
+              >
+                {{ t('common.add') }}
+              </button>
             </div>
           </template>
 
           <p v-else class="text-xs text-muted-foreground italic">
-            已跳过大模型配置，创建后可在实例设置中配置
+            已跳过大模型配置，创建后可在AI 员工设置中配置
             <button class="text-primary ml-1 not-italic" @click="llmSkipped = false">撤销</button>
           </p>
         </div>

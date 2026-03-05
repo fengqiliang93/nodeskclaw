@@ -38,9 +38,15 @@ export const useClusterStore = defineStore('cluster', () => {
     try {
       const res = await api.get('/clusters')
       clusters.value = res.data.data
-      // Auto-select first if none selected
-      if (!currentClusterId.value && clusters.value.length > 0) {
+
+      const cachedValid = currentClusterId.value
+        && clusters.value.some((c) => c.id === currentClusterId.value)
+
+      if (!cachedValid && clusters.value.length > 0) {
         selectCluster(clusters.value[0].id)
+      } else if (!cachedValid) {
+        currentClusterId.value = null
+        localStorage.removeItem('current_cluster_id')
       }
     } finally {
       loading.value = false

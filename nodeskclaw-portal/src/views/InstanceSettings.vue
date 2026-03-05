@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, inject, type ComputedRef, type Ref } from 'vue'
-import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check } from 'lucide-vue-next'
+import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check, Link, Star } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import api from '@/services/api'
@@ -22,7 +25,7 @@ const dirty = ref(false)
 
 // ── Constants ──
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini', 'openrouter', 'minimax-openai', 'minimax-anthropic'] as const
+const PROVIDERS = ['minimax-openai', 'minimax-anthropic', 'openai', 'anthropic', 'gemini', 'openrouter'] as const
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -32,6 +35,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   'minimax-anthropic': 'MiniMax-Anthropic (CN)',
 }
 
+const PROVIDER_DEFAULT_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  'minimax-openai': 'https://api.minimaxi.com/v1',
+  'minimax-anthropic': 'https://api.minimaxi.com/anthropic',
+}
+
 // ── Types ──
 
 interface PersonalKey {
@@ -39,6 +51,7 @@ interface PersonalKey {
   provider: string
   api_key_masked: string
   base_url: string | null
+  api_type: string | null
   is_active: boolean
 }
 
@@ -48,17 +61,25 @@ interface ProviderConfig {
   personalKeyNew: string
   personalKeyMasked: string
   hasExistingPersonalKey: boolean
+  baseUrl: string
+  apiType: string
+  isCustom: boolean
+  showBaseUrl: boolean
   selectedModel: ModelItem | null
 }
 
 const BUILTIN_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'openrouter'])
 const WORKING_PLAN_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
+const ALL_KNOWN_PROVIDERS = new Set([...PROVIDERS])
 
 // ── State ──
 
 const providerConfigs = ref<ProviderConfig[]>([])
 const personalKeys = ref<PersonalKey[]>([])
 const newProviderOpen = ref(false)
+const showCustomForm = ref(false)
+const customSlug = ref('')
+const customSlugError = ref('')
 
 const unusedProviders = computed(() =>
   PROVIDERS.filter(p => !providerConfigs.value.some(c => c.provider === p))
@@ -103,12 +124,17 @@ async function loadAll() {
     const configs: ProviderConfig[] = []
     for (const c of podConfigs) {
       const pk = personalKeyForProvider(c.provider)
+      const isCustom = !ALL_KNOWN_PROVIDERS.has(c.provider)
       configs.push({
         provider: c.provider,
         keySource: (c.key_source === 'org' || c.key_source === 'personal') ? c.key_source : 'org',
         personalKeyNew: '',
         personalKeyMasked: pk?.api_key_masked ?? c.personal_key_masked ?? '',
         hasExistingPersonalKey: !!pk,
+        baseUrl: pk?.base_url ?? '',
+        apiType: pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
+        isCustom,
+        showBaseUrl: !!pk?.base_url,
         selectedModel: (c.selected_models ?? [])[0] ?? null,
       })
     }
@@ -127,15 +153,49 @@ async function loadAll() {
 function addProvider(provider: string) {
   if (providerConfigs.value.some(c => c.provider === provider)) return
   const pk = personalKeyForProvider(provider)
+  const isCustom = !ALL_KNOWN_PROVIDERS.has(provider)
   providerConfigs.value.push({
     provider,
-    keySource: WORKING_PLAN_PROVIDERS.has(provider) ? 'org' : 'personal',
+    keySource: isCustom ? 'personal' : (WORKING_PLAN_PROVIDERS.has(provider) ? 'org' : 'personal'),
     personalKeyNew: '',
     personalKeyMasked: pk?.api_key_masked ?? '',
     hasExistingPersonalKey: !!pk,
+    baseUrl: pk?.base_url ?? '',
+    apiType: pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
+    isCustom,
+    showBaseUrl: isCustom || !!pk?.base_url,
     selectedModel: null,
   })
   newProviderOpen.value = false
+  dirty.value = true
+}
+
+function addCustomProvider() {
+  const slug = customSlug.value.trim()
+  if (!slug) return
+  if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(slug) || slug.length < 2 || slug.length > 32) {
+    customSlugError.value = t('llm.providerSlugInvalid')
+    return
+  }
+  if (ALL_KNOWN_PROVIDERS.has(slug) || providerConfigs.value.some(c => c.provider === slug)) {
+    customSlugError.value = t('llm.providerSlugConflict')
+    return
+  }
+  providerConfigs.value.push({
+    provider: slug,
+    keySource: 'personal',
+    personalKeyNew: '',
+    personalKeyMasked: '',
+    hasExistingPersonalKey: false,
+    baseUrl: '',
+    apiType: 'openai-completions',
+    isCustom: true,
+    showBaseUrl: true,
+    selectedModel: null,
+  })
+  customSlug.value = ''
+  customSlugError.value = ''
+  showCustomForm.value = false
   dirty.value = true
 }
 
@@ -145,6 +205,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   if (cfg?.keySource === 'personal' && cfg.personalKeyNew) {
     params.api_key = cfg.personalKeyNew
   }
+  if (cfg?.baseUrl) {
+    params.base_url = cfg.baseUrl
+  }
   if (instanceOrgId.value) {
     params.org_id = instanceOrgId.value
   }
@@ -153,7 +216,7 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
     const msg = res.data?.message ?? ''
     callback(res.data.data?.models ?? [], msg || undefined)
   } catch (e: any) {
-    callback([], e?.response?.data?.message ?? '拉取模型列表失败')
+    callback([], e?.response?.data?.message ?? t('llm.fetchModelsFailed'))
   }
 }
 
@@ -171,6 +234,9 @@ function markDirty() {
 function validateConfigs(): string | null {
   for (const cfg of providerConfigs.value) {
     const label = PROVIDER_LABELS[cfg.provider] || cfg.provider
+    if (cfg.isCustom && !cfg.baseUrl) {
+      return `${label}: Base URL ${t('common.noData')}`
+    }
     if (cfg.keySource === 'personal') {
       if (!cfg.personalKeyNew && !cfg.hasExistingPersonalKey) {
         return `${label}: 请输入个人 API Key`
@@ -202,19 +268,24 @@ async function handleSave() {
   successMsg.value = ''
 
   try {
-    // 1. Upsert personal keys
+    // 1. Upsert personal keys (new key, or base_url/api_type update for existing key)
     for (const cfg of providerConfigs.value) {
-      if (cfg.keySource === 'personal' && cfg.personalKeyNew) {
-        await api.post('/users/me/llm-keys', {
-          provider: cfg.provider,
-          api_key: cfg.personalKeyNew,
-        })
+      if (cfg.keySource !== 'personal') continue
+      const needsUpsert = cfg.personalKeyNew || cfg.baseUrl || cfg.isCustom
+      if (!needsUpsert) continue
+      await api.post('/users/me/llm-keys', {
+        provider: cfg.provider,
+        api_key: cfg.personalKeyNew || undefined,
+        base_url: cfg.baseUrl || null,
+        api_type: cfg.isCustom ? cfg.apiType : null,
+      })
+      if (cfg.personalKeyNew) {
         cfg.personalKeyMasked = cfg.personalKeyNew.length > 8
           ? cfg.personalKeyNew.slice(0, 6) + '***' + cfg.personalKeyNew.slice(-3)
           : cfg.personalKeyNew.slice(0, 2) + '***'
         cfg.personalKeyNew = ''
-        cfg.hasExistingPersonalKey = true
       }
+      cfg.hasExistingPersonalKey = true
     }
 
     // 2. Write configs directly to Pod file
@@ -231,9 +302,9 @@ async function handleSave() {
     const res = await api.post(`/instances/${instanceId.value}/restart-openclaw`, null, { timeout: 120000 })
     const result = res.data.data
     if (result?.status === 'ok') {
-      successMsg.value = '配置已保存，OpenClaw 已重启'
+      successMsg.value = '配置已保存，DeskClaw 已重启'
     } else if (result?.status === 'timeout') {
-      successMsg.value = '配置已保存，但 OpenClaw 重启超时，请检查实例状态'
+      successMsg.value = '配置已保存，但 DeskClaw 重启超时，请检查AI 员工状态'
     } else {
       successMsg.value = '配置已保存'
       if (result?.message) {
@@ -301,7 +372,7 @@ watch(() => instanceId.value, (val) => {
       <!-- Status messages -->
       <div v-if="restarting" class="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
         <RefreshCw class="w-4 h-4 text-amber-500 animate-spin" />
-        <span class="text-xs">OpenClaw 正在完成当前任务并重启...</span>
+        <span class="text-xs">DeskClaw 正在完成当前任务并重启...</span>
       </div>
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
       <p v-if="successMsg" class="text-sm text-green-500">{{ successMsg }}</p>
@@ -318,7 +389,7 @@ watch(() => instanceId.value, (val) => {
         <!-- Empty state: provider grid -->
         <div v-if="providerConfigs.length === 0 && !saving" class="space-y-3">
           <p class="text-xs text-muted-foreground">
-            当前实例未配置大模型 Provider，选择一个开始配置
+            当前AI 员工未配置大模型 Provider，选择一个开始配置
           </p>
           <div class="grid grid-cols-2 gap-2">
             <button
@@ -327,7 +398,22 @@ watch(() => instanceId.value, (val) => {
               class="px-4 py-3 rounded-lg border border-border bg-card text-sm text-left hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
               @click="addProvider(p)"
             >
-              {{ PROVIDER_LABELS[p] || p }}
+              <div class="flex items-center gap-1.5">
+                {{ PROVIDER_LABELS[p] || p }}
+                <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                  <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
+                  Working Plan
+                </span>
+              </div>
+            </button>
+            <button
+              class="px-4 py-3 rounded-lg border border-dashed border-violet-400/50 bg-card text-sm text-left hover:border-violet-400 hover:bg-violet-500/5 transition-colors text-violet-400 cursor-pointer"
+              @click="showCustomForm = true"
+            >
+              <div class="flex items-center gap-1.5">
+                <Plus class="w-3.5 h-3.5" />
+                {{ t('llm.addCustomProvider') }}
+              </div>
             </button>
           </div>
         </div>
@@ -341,7 +427,10 @@ watch(() => instanceId.value, (val) => {
           >
             <!-- Provider header -->
             <div class="flex items-center justify-between">
-              <span class="font-medium text-sm">{{ PROVIDER_LABELS[cfg.provider] || cfg.provider }}</span>
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-sm">{{ PROVIDER_LABELS[cfg.provider] || cfg.provider }}</span>
+                <span v-if="cfg.isCustom" class="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400">{{ t('llm.customProvider') }}</span>
+              </div>
               <button
                 class="text-muted-foreground hover:text-destructive transition-colors"
                 @click="removeProvider(idx)"
@@ -350,9 +439,22 @@ watch(() => instanceId.value, (val) => {
               </button>
             </div>
 
+            <!-- API type selector (custom only) -->
+            <div v-if="cfg.isCustom" class="flex gap-4 text-sm">
+              <label class="text-xs text-muted-foreground">{{ t('llm.apiType') }}:</label>
+              <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+                <input type="radio" :name="`apitype-${cfg.provider}`" value="openai-completions" v-model="cfg.apiType" class="accent-primary" @change="markDirty" />
+                {{ t('llm.apiTypeOpenai') }}
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer text-xs">
+                <input type="radio" :name="`apitype-${cfg.provider}`" value="anthropic-messages" v-model="cfg.apiType" class="accent-primary" @change="markDirty" />
+                {{ t('llm.apiTypeAnthropic') }}
+              </label>
+            </div>
+
             <!-- Key source selection -->
             <div class="space-y-2">
-              <div class="flex gap-4 text-sm">
+              <div v-if="!cfg.isCustom" class="flex gap-4 text-sm">
                 <span class="relative group">
                   <label
                     class="flex items-center gap-1.5"
@@ -373,7 +475,7 @@ watch(() => instanceId.value, (val) => {
                     v-if="!WORKING_PLAN_PROVIDERS.has(cfg.provider)"
                     class="pointer-events-none absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md border border-border invisible group-hover:visible"
                   >
-                    该 Provider 暂未开放 Working Plan
+                    {{ t('llm.workingPlanUnavailable') }}
                   </span>
                 </span>
                 <label class="flex items-center gap-1.5 cursor-pointer">
@@ -390,7 +492,7 @@ watch(() => instanceId.value, (val) => {
               </div>
 
               <!-- Working Plan hint -->
-              <p v-if="cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
+              <p v-if="!cfg.isCustom && cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
                 使用组织统一配置的 Key，无需自行输入
               </p>
 
@@ -411,6 +513,27 @@ watch(() => instanceId.value, (val) => {
                     @input="markDirty"
                   />
                 </div>
+
+                <!-- Base URL (collapsible for built-in, always visible for custom) -->
+                <div v-if="cfg.isCustom || cfg.showBaseUrl">
+                  <div class="relative">
+                    <Link class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      v-model="cfg.baseUrl"
+                      type="text"
+                      :placeholder="cfg.isCustom ? t('llm.baseUrlPlaceholder') : t('llm.defaultBaseUrl', { url: PROVIDER_DEFAULT_URLS[cfg.provider] || '' })"
+                      class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      @input="markDirty"
+                    />
+                  </div>
+                </div>
+                <button
+                  v-if="!cfg.isCustom && !cfg.showBaseUrl"
+                  class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  @click="cfg.showBaseUrl = true"
+                >
+                  {{ t('llm.customBaseUrl') }}
+                </button>
               </div>
             </div>
 
@@ -418,37 +541,83 @@ watch(() => instanceId.value, (val) => {
             <ModelSelect
               :provider="cfg.provider"
               v-model="cfg.selectedModel"
+              :allow-manual-input="!!cfg.isCustom"
               @fetch-models="handleFetchModels"
               @update:model-value="markDirty"
             />
-            <p v-if="!BUILTIN_PROVIDERS.has(cfg.provider) && !cfg.selectedModel" class="text-[10px] text-amber-500">
-              自定义 Provider 需要选择一个模型
+            <p v-if="(cfg.isCustom || !BUILTIN_PROVIDERS.has(cfg.provider)) && !cfg.selectedModel" class="text-[10px] text-amber-500">
+              {{ t('llm.modelRequired') }}
             </p>
           </div>
 
           <!-- Add provider -->
-          <div v-if="unusedProviders.length > 0" class="relative">
+          <div class="flex gap-2 items-start">
+            <div v-if="unusedProviders.length > 0" class="relative">
+              <button
+                class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                @click="newProviderOpen = !newProviderOpen"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                添加 Provider
+                <ChevronDown class="w-3 h-3 transition-transform" :class="newProviderOpen ? 'rotate-180' : ''" />
+              </button>
+              <div
+                v-if="newProviderOpen"
+                class="absolute z-10 mt-1 w-56 rounded-lg border border-border bg-card shadow-lg overflow-hidden"
+              >
+                <button
+                  v-for="p in unusedProviders"
+                  :key="p"
+                  class="w-full px-4 py-2 text-left text-sm hover:bg-accent transition-colors"
+                  @click="addProvider(p)"
+                >
+                  <div class="flex items-center gap-1.5">
+                    {{ PROVIDER_LABELS[p] || p }}
+                    <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                      <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
+                      Working Plan
+                    </span>
+                  </div>
+                </button>
+              </div>
+            </div>
             <button
-              class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              @click="newProviderOpen = !newProviderOpen"
+              class="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors cursor-pointer"
+              @click="showCustomForm = true"
             >
               <Plus class="w-3.5 h-3.5" />
-              添加 Provider
-              <ChevronDown class="w-3 h-3 transition-transform" :class="newProviderOpen ? 'rotate-180' : ''" />
+              {{ t('llm.addCustomProvider') }}
             </button>
-            <div
-              v-if="newProviderOpen"
-              class="absolute z-10 mt-1 w-56 rounded-lg border border-border bg-card shadow-lg overflow-hidden"
-            >
-              <button
-                v-for="p in unusedProviders"
-                :key="p"
-                class="w-full px-4 py-2 text-left text-sm hover:bg-accent transition-colors"
-                @click="addProvider(p)"
-              >
-                {{ PROVIDER_LABELS[p] || p }}
+          </div>
+
+          <!-- Custom Provider form -->
+          <div v-if="showCustomForm" class="rounded-lg border border-violet-400/30 bg-violet-500/5 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-sm text-violet-400">{{ t('llm.customProvider') }}</span>
+              <button class="text-muted-foreground hover:text-foreground text-xs" @click="showCustomForm = false; customSlug = ''; customSlugError = ''">
+                {{ t('common.cancel') }}
               </button>
             </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-muted-foreground">{{ t('llm.providerSlug') }}</label>
+              <input
+                v-model="customSlug"
+                type="text"
+                maxlength="32"
+                :placeholder="t('llm.providerSlugPlaceholder')"
+                class="w-full px-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                @keydown.enter="addCustomProvider"
+              />
+              <p v-if="customSlugError" class="text-[10px] text-destructive">{{ customSlugError }}</p>
+              <p v-else class="text-[10px] text-muted-foreground">{{ t('llm.providerSlugHint') }}</p>
+            </div>
+            <button
+              class="px-4 py-1.5 rounded-md bg-violet-500/10 text-violet-400 text-sm hover:bg-violet-500/20 transition-colors"
+              :disabled="!customSlug.trim()"
+              @click="addCustomProvider"
+            >
+              {{ t('common.add') }}
+            </button>
           </div>
         </div>
 

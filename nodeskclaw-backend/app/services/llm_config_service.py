@@ -101,7 +101,8 @@ def _build_providers_config(
                 "apiKey": wp_api_key,
             }
 
-        api_type = PROVIDER_API_TYPE.get(provider)
+        uk = user_keys.get(provider)
+        api_type = PROVIDER_API_TYPE.get(provider) or (uk.api_type if uk else None)
         if api_type:
             entry["api"] = api_type
 

@@ -53,12 +53,21 @@ def _set_cache(provider: str, api_key: str, models: list[ModelInfo]) -> None:
     _cache[ck] = (time.time(), models)
 
 
-async def fetch_provider_models(provider: str, api_key: str) -> list[ModelInfo]:
+async def fetch_provider_models(
+    provider: str, api_key: str, *, base_url: str | None = None,
+) -> list[ModelInfo]:
     cached = _get_cached(provider, api_key)
     if cached is not None:
         return cached
 
     fetcher = _FETCHERS.get(provider)
+    if not fetcher and base_url:
+        _url = base_url
+
+        async def _custom_fetcher(key: str) -> list[ModelInfo]:
+            return await _fetch_openai_compatible(key, _url)
+
+        fetcher = _custom_fetcher
     if not fetcher:
         logger.warning("不支持的 provider: %s", provider)
         return []
@@ -173,6 +182,28 @@ _MINIMAX_TEXT_MODELS: list[ModelInfo] = [
 async def _fetch_minimax(_api_key: str) -> list[ModelInfo]:
     """Minimax 没有模型列表 API，返回官方已知的文本模型。"""
     return list(_MINIMAX_TEXT_MODELS)
+
+
+async def _fetch_openai_compatible(api_key: str, base_url: str) -> list[ModelInfo]:
+    url = f"{base_url.rstrip('/')}/models"
+    async with _make_client(timeout=15) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    models = []
+    for m in data:
+        mid: str = m.get("id", "")
+        if not mid:
+            continue
+        name = m.get("name") or mid
+        ctx = m.get("context_length") or m.get("context_window")
+        max_tok = m.get("max_tokens") or m.get("max_output_tokens")
+        models.append(ModelInfo(id=mid, name=name, context_window=ctx, max_tokens=max_tok))
+    models.sort(key=lambda x: x.id)
+    return models
 
 
 _FETCHERS: dict[str, object] = {

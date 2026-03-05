@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # ── GeneHub Registry ────────────────────────────────
     GENEHUB_REGISTRY_URL: str = ""  # e.g. https://genehub.example.com
     GENEHUB_API_KEY: str = ""       # publisher-level API Key
+    GENEHUB_WEB_URL: str = ""       # GeneHub Web UI, e.g. https://genehub.example.com
 
     # ── CORS ─────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]

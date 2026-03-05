@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { eePortalRoutes, eeOrgSettingsChildren } from '@/router/ee-stub'
 
-const routes: RouteRecordRaw[] = [
+const ceRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
@@ -13,13 +14,6 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/OAuthCallback.vue'),
     meta: { requiresAuth: false },
   },
-  {
-    path: '/setup-org',
-    name: 'OrgSetup',
-    component: () => import('@/views/OrgSetupView.vue'),
-    meta: { requiresAuth: true, allowNoOrg: true },
-  },
-  // Workspace routes (new primary pages)
   {
     path: '/',
     name: 'WorkspaceList',
@@ -46,7 +40,6 @@ const routes: RouteRecordRaw[] = [
     name: 'AddAgent',
     component: () => import('@/views/AddAgent.vue'),
   },
-  // Instance routes
   {
     path: '/instances',
     name: 'InstanceList',
@@ -76,21 +69,22 @@ const routes: RouteRecordRaw[] = [
       { path: 'members', name: 'InstanceMembers', component: () => import('@/views/InstanceMembers.vue') },
     ],
   },
-  // Kept pages
   {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),
   },
   {
-    path: '/members',
-    name: 'OrgMembers',
-    component: () => import('@/views/OrgMembers.vue'),
+    path: '/org-settings',
+    component: () => import('@/views/OrgSettings.vue'),
+    children: [
+      { path: 'genes', name: 'OrgSettingsGenes', component: () => import('@/views/OrgSettingsGenes.vue') },
+      ...eeOrgSettingsChildren,
+    ],
   },
   {
-    path: '/usage',
-    name: 'OrgUsage',
-    component: () => import('@/views/OrgUsage.vue'),
+    path: '/members',
+    redirect: '/org-settings',
   },
   {
     path: '/gene-market',
@@ -107,23 +101,18 @@ const routes: RouteRecordRaw[] = [
     name: 'GenomeDetail',
     component: () => import('@/views/GenomeDetail.vue'),
   },
-  // Enterprise files
   {
-    path: '/enterprise-files',
-    name: 'EnterpriseFiles',
-    component: () => import('@/views/EnterpriseFiles.vue'),
+    path: '/gene-market/template/:id',
+    name: 'TemplateDetail',
+    component: () => import('@/views/TemplateDetail.vue'),
   },
-  {
-    path: '/enterprise-files/:instanceId',
-    name: 'EnterpriseFileBrowser',
-    component: () => import('@/views/EnterpriseFileBrowser.vue'),
-  },
-  // Legacy redirects
   {
     path: '/create',
     redirect: '/workspace/create',
   },
 ]
+
+const routes: RouteRecordRaw[] = [...ceRoutes, ...eePortalRoutes]
 
 const router = createRouter({
   history: createWebHistory(),
@@ -146,11 +135,22 @@ router.beforeEach(async (to, _from, next) => {
   if (token && !isSetupPage && !to.meta.allowNoOrg) {
     const { useAuthStore } = await import('@/stores/auth')
     const authStore = useAuthStore()
+    if (!authStore.systemInfo) {
+      await authStore.fetchSystemInfo()
+    }
     if (!authStore.user) {
       await authStore.fetchUser()
     }
     if (authStore.user && !authStore.user.current_org_id) {
       return next('/setup-org')
+    }
+
+    const requiredFeature = to.meta.requireFeature as string | undefined
+    if (requiredFeature && authStore.systemInfo) {
+      const feat = authStore.systemInfo.features.find((f: any) => f.id === requiredFeature)
+      if (!feat?.enabled) {
+        return next('/')
+      }
     }
   }
 

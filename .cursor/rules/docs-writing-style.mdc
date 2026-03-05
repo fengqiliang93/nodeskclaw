@@ -1,6 +1,6 @@
 ---
 description: 设计文档写作规范 — 重架构轻代码
-globs: docs/**/*.md
+globs: ee/docs/**/*.md
 alwaysApply: false
 ---
 

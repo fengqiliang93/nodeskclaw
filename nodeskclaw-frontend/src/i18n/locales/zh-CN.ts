@@ -82,6 +82,7 @@ const zhCN = {
     deleteConfirm: "确定删除实例 \"{name}\"？K8s 资源将同步删除。",
     deleteSuccess: "实例已删除",
     deleteFailed: "删除失败",
+    cannotDeleteInWorkspace: "该实例已加入办公室「{workspace}」，请先将其从办公室移除后再删除",
     status_running: "运行中",
     status_learning: "学习中",
     status_deploying: "部署中",
@@ -143,9 +144,9 @@ const zhCN = {
       slug_already_taken: "该企业标识符已被使用，请更换一个",
     },
     workspace: {
-      not_found: "工作区不存在",
-      agent_not_found: "Agent 不存在",
-      agent_not_in_workspace: "Agent 不在该工作区中",
+      not_found: "办公室不存在",
+      agent_not_found: "AI 员工不存在",
+      agent_not_in_workspace: "AI 员工不在该办公室中",
       blackboard_not_found: "黑板不存在",
       member_not_found: "成员不存在",
     },
@@ -195,6 +196,11 @@ const zhCN = {
     title: "暂无访问权限",
     description: "您的账号尚未被分配管理权限。请联系组织管理员为您分配角色后，刷新页面重试。",
     logout: "退出登录",
+  },
+  validation: {
+    instance: {
+      slug_too_long: "标识过长，生成的命名空间将超过 63 字符限制",
+    },
   },
 } as const
 

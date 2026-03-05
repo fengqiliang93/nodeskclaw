@@ -13,6 +13,7 @@ import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 import BlackboardOverlay from '@/components/blackboard/BlackboardOverlay.vue'
 import HexActionDrawer from '@/components/workspace/HexActionDrawer.vue'
 import AgentCollaborationPanel from '@/components/workspace/AgentCollaborationPanel.vue'
+import AgentDetailDialog from '@/components/workspace/AgentDetailDialog.vue'
 import CollaborationTimeline from '@/components/workspace/CollaborationTimeline.vue'
 import { useToast } from '@/composables/useToast'
 import { axialToWorld } from '@/composables/useHexLayout'
@@ -32,12 +33,25 @@ const workspaceId = computed(() => route.params.id as string)
 const ws = computed(() => store.currentWorkspace)
 const agents = computed(() => ws.value?.agents || [])
 
+const floorTextureUrl = ref<string | undefined>(undefined)
+const furnitureItems = ref<{ id: string; hex_q: number; hex_r: number; asset_key: string; asset_url: string }[]>([])
+
 const bbTaskCount = computed(() => 0)
 const bbBlockedCount = computed(() => 0)
 const bbOnlineCount = computed(() => agents.value.filter(a => a.sse_connected).length)
 const humanCount = computed(() => store.members.length)
 const humanSeatCount = computed(() =>
   store.topologyNodes.filter((n: any) => n.node_type === 'human').length,
+)
+
+const enrichedTopologyNodes = computed(() =>
+  store.topologyNodes.map((n: any) => {
+    if (n.node_type !== 'human' || n.display_name) return n
+    const userId = n.extra?.user_id as string | undefined
+    if (!userId) return n
+    const member = store.members.find((m: any) => m.user_id === userId)
+    return member ? { ...n, display_name: member.user_name } : n
+  }),
 )
 
 const { activeMode, isTransitioning, transitionTo2D, transitionTo3D } = useViewTransition()
@@ -53,6 +67,14 @@ const isFullscreen = ref(false)
 const focusMode = ref(false)
 const selectedAgentId = ref<string | null>(null)
 const showShortcutHints = ref(localStorage.getItem('workspace-shortcut-hints') !== 'hidden')
+const agentDetailVisible = ref(false)
+const agentDetailId = ref<string | null>(null)
+
+function openAgentDetailPage() {
+  if (!agentDetailId.value) return
+  const r = router.resolve(`/instances/${agentDetailId.value}`)
+  window.open(r.href, '_blank')
+}
 
 const CHAT_MIN_RATIO = 0.191
 const CHAT_MAX_RATIO = 0.618
@@ -166,6 +188,7 @@ onMounted(async () => {
   store.resetCurrentState()
 
   await store.fetchWorkspace(workspaceId.value)
+  await store.fetchMyPermissions(workspaceId.value)
   await store.fetchBlackboard(workspaceId.value)
   await store.fetchTopology(workspaceId.value)
   await store.fetchMembers(workspaceId.value)
@@ -196,6 +219,7 @@ watch(workspaceId, async (newId, oldId) => {
   if (newId && newId !== oldId) {
     store.resetCurrentState()
     await store.fetchWorkspace(newId)
+    await store.fetchMyPermissions(newId)
     await store.fetchBlackboard(newId)
     await store.fetchTopology(newId)
     store.connectSSE(newId, onSSEEvent)
@@ -243,6 +267,14 @@ let clickHandled = false
 
 function onHexClick(payload: { q: number, r: number, type: 'empty' | 'agent' | 'blackboard' | 'corridor' | 'human', agentId?: string, entityId?: string }) {
   clickHandled = true
+
+  if (isPickingHexForAgent.value) {
+    if (payload.type === 'empty') {
+      cancelPickHexMode()
+      router.push({ path: `/workspace/${workspaceId.value}/add-agent`, query: { hex_q: String(payload.q), hex_r: String(payload.r) } })
+    }
+    return
+  }
 
   if (isMovingHex.value) {
     if (payload.type === 'empty') {
@@ -304,7 +336,8 @@ function onHexAction(action: string) {
       break
     case 'view-detail':
       if (selectedHex.value?.agentId) {
-        router.push(`/instances/${selectedHex.value.agentId}`)
+        agentDetailId.value = selectedHex.value.agentId
+        agentDetailVisible.value = true
       }
       hexDrawerOpen.value = false
       break
@@ -438,7 +471,7 @@ const renameHumanHexId = ref('')
 
 function openRenameHumanDialog() {
   renameHumanHexId.value = selectedHex.value?.entityId || ''
-  const node = store.topologyNodes.find((n: any) => n.entity_id === renameHumanHexId.value && n.node_type === 'human')
+  const node = enrichedTopologyNodes.value.find((n: any) => n.entity_id === renameHumanHexId.value && n.node_type === 'human')
   renameHumanValue.value = node?.display_name || ''
   showRenameHumanDialog.value = true
   hexDrawerOpen.value = false
@@ -581,6 +614,7 @@ const isMovingHex = ref(false)
 const movingHexSource = ref<MovingHexSource | null>(null)
 
 function enterMoveMode() {
+  cancelPickHexMode()
   if (!selectedHex.value) return
   const hex = selectedHex.value
   let source: MovingHexSource | null = null
@@ -621,6 +655,21 @@ async function moveHexTo(targetQ: number, targetR: number) {
   }
 }
 
+const isPickingHexForAgent = ref(false)
+
+function enterPickHexMode() {
+  cancelMoveMode()
+  isPickingHexForAgent.value = true
+  selectedHex.value = null
+  hexDrawerOpen.value = false
+}
+
+function cancelPickHexMode() {
+  isPickingHexForAgent.value = false
+}
+
+const highlightEmptyHexes = computed(() => isMovingHex.value || isPickingHexForAgent.value)
+
 function handleKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
   if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) return
@@ -628,6 +677,11 @@ function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (focusMode.value) {
       focusMode.value = false
+      e.preventDefault()
+      return
+    }
+    if (isPickingHexForAgent.value) {
+      cancelPickHexMode()
       e.preventDefault()
       return
     }
@@ -689,11 +743,16 @@ function handleKeydown(e: KeyboardEvent) {
           <span class="font-semibold text-sm">{{ ws.name }}</span>
         </div>
         <button
-          class="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-          @click="router.push(`/workspace/${workspaceId}/add-agent`)"
+          v-if="store.hasPermission('manage_agents')"
+          class="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed text-xs transition-colors"
+          :class="isPickingHexForAgent
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'"
+          :title="t('workspaceView.addAgent')"
+          @click="isPickingHexForAgent ? cancelPickHexMode() : enterPickHexMode()"
         >
           <Plus class="w-3.5 h-3.5" />
-          {{ t('workspaceView.addAgent') }}
+          <span class="hidden xl:inline">{{ t('workspaceView.addAgent') }}</span>
         </button>
 
         <div class="w-px h-5 bg-border" />
@@ -701,23 +760,23 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="flex items-center gap-3 text-xs text-muted-foreground">
           <span class="flex items-center gap-1">
             <ListChecks class="w-3.5 h-3.5" />
-            {{ t('workspaceView.bbTasks') }} {{ bbTaskCount }}
+            <span class="hidden xl:inline">{{ t('workspaceView.bbTasks') }}</span> {{ bbTaskCount }}
           </span>
           <span class="flex items-center gap-1" :class="bbBlockedCount > 0 ? 'text-amber-500' : ''">
             <AlertTriangle class="w-3.5 h-3.5" />
-            {{ t('workspaceView.bbBlocked') }} {{ bbBlockedCount }}
+            <span class="hidden xl:inline">{{ t('workspaceView.bbBlocked') }}</span> {{ bbBlockedCount }}
           </span>
           <span class="flex items-center gap-1" :class="bbOnlineCount > 0 ? 'text-green-500' : ''">
             <Wifi class="w-3.5 h-3.5" />
-            {{ t('workspaceView.bbOnline') }} {{ bbOnlineCount }}
+            <span class="hidden xl:inline">{{ t('workspaceView.bbOnline') }}</span> {{ bbOnlineCount }}
           </span>
           <span class="flex items-center gap-1">
             <Users class="w-3.5 h-3.5" />
-            {{ t('workspaceView.bbHumans') }} {{ humanCount }}
+            <span class="hidden xl:inline">{{ t('workspaceView.bbHumans') }}</span> {{ humanCount }}
           </span>
           <span class="flex items-center gap-1">
             <MapPin class="w-3.5 h-3.5" />
-            {{ t('workspaceView.bbHumanSeats') }} {{ humanSeatCount }}
+            <span class="hidden xl:inline">{{ t('workspaceView.bbHumanSeats') }}</span> {{ humanSeatCount }}
           </span>
         </div>
       </div>
@@ -758,6 +817,7 @@ function handleKeydown(e: KeyboardEvent) {
           </span>
         </button>
         <button
+          v-if="store.hasPermission('manage_settings')"
           class="p-1.5 rounded-lg hover:bg-muted transition-colors"
           @click="router.push(`/workspace/${workspaceId}/settings`)"
         >
@@ -765,6 +825,23 @@ function handleKeydown(e: KeyboardEvent) {
         </button>
       </div>
     </div>
+
+    <!-- Pick hex for agent hint bar -->
+    <Transition name="slide-down">
+      <div
+        v-if="isPickingHexForAgent"
+        class="flex items-center justify-center gap-3 px-4 py-1.5 bg-primary/10 border-b border-primary/30 shrink-0 z-10"
+      >
+        <span class="text-sm text-primary">{{ t('workspaceView.pickHexHint') }}</span>
+        <button
+          class="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
+          @click="cancelPickHexMode"
+        >
+          <X class="w-3 h-3" />
+          {{ t('hexAction.cancel') }}
+        </button>
+      </div>
+    </Transition>
 
     <!-- Move mode hint bar -->
     <Transition name="slide-down">
@@ -804,7 +881,7 @@ function handleKeydown(e: KeyboardEvent) {
             :topology-nodes="store.topology?.nodes"
             :topology-edges="store.topologyEdges"
             :message-flow-stats="store.messageFlowStats"
-            :is-moving-hex="isMovingHex"
+            :is-moving-hex="highlightEmptyHexes"
             :moving-hex-source="movingHexSource"
             @hex-click="onHexClick"
             @agent-dblclick="onAgentDblClick"
@@ -825,11 +902,13 @@ function handleKeydown(e: KeyboardEvent) {
             :blackboard-content="store.blackboard?.content || ''"
             :selected-agent-id="selectedAgentId"
             :selected-hex="selectedHexPos"
-            :topology-nodes="store.topologyNodes"
+            :topology-nodes="enrichedTopologyNodes"
             :topology-edges="store.topologyEdges"
             :message-flow-stats="store.messageFlowStats"
-            :is-moving-hex="isMovingHex"
+            :is-moving-hex="highlightEmptyHexes"
             :moving-hex-source="movingHexSource"
+            :floor-texture-url="floorTextureUrl"
+            :furniture="furnitureItems"
             @hex-click="onHexClick"
             @agent-dblclick="onAgentDblClick"
           />
@@ -949,6 +1028,7 @@ function handleKeydown(e: KeyboardEvent) {
             <ChatPanel
               v-if="chatSidebarTab === 'blackboard'"
               :workspace-id="workspaceId"
+              :can-send="store.hasPermission('send_chat')"
               class="flex-1 min-h-0"
             />
             <CollaborationTimeline
@@ -986,6 +1066,7 @@ function handleKeydown(e: KeyboardEvent) {
     <BlackboardOverlay
       :open="bbOpen"
       :workspace-id="workspaceId"
+      :can-edit="store.hasPermission('edit_blackboard')"
       @close="bbOpen = false"
     />
 
@@ -1227,6 +1308,14 @@ function handleKeydown(e: KeyboardEvent) {
       </Transition>
     </Teleport>
 
+    <!-- Agent Detail Dialog -->
+    <AgentDetailDialog
+      v-model:visible="agentDetailVisible"
+      :instance-id="agentDetailId"
+      @navigate="openAgentDetailPage"
+      @deleted="store.fetchWorkspace(workspaceId)"
+    />
+
     <!-- Focus Mode Dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1243,10 +1332,10 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
           <div class="flex-1 flex min-h-0">
             <div class="flex-1 flex flex-col min-h-0 min-w-0 border-r border-border">
-              <BlackboardOverlay :open="true" :workspace-id="workspaceId" embedded @close="focusMode = false" />
+              <BlackboardOverlay :open="true" :workspace-id="workspaceId" :can-edit="store.hasPermission('edit_blackboard')" embedded @close="focusMode = false" />
             </div>
             <div class="flex-1 flex flex-col min-h-0 min-w-0">
-              <ChatPanel :workspace-id="workspaceId" class="flex-1 min-h-0" />
+              <ChatPanel :workspace-id="workspaceId" :can-send="store.hasPermission('send_chat')" class="flex-1 min-h-0" />
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ is a single exec call to the target Pod — no temp dirs, no tar, no bulk sync.
 """
 
 import base64
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -24,8 +25,15 @@ CHUNK_SIZE = 98_000
 
 
 class NFSMountError(AppException):
-    def __init__(self, message: str = "远程文件操作失败"):
-        super().__init__(code=50300, message=message, status_code=503)
+    def __init__(self, message: str = "远程文件操作失败", message_key: str | None = None):
+        super().__init__(code=50300, message=message, status_code=503, message_key=message_key)
+
+
+class SkillScanError(Exception):
+    """scan_skills 执行失败（区别于"Pod 内没有 skill"的正常空结果）。
+
+    不继承 AppException，由调用方捕获后走降级路径，不应被 API 全局异常处理器拦截。
+    """
 
 
 class PodFS:
@@ -135,15 +143,19 @@ class PodFS:
     async def list_dir(self, path: str) -> list[dict] | None:
         """List directory contents with metadata via a single exec call.
 
-        Returns a list of dicts ``{name, is_dir, size, modified_at}`` or
-        *None* when the path does not exist.
+        Returns a list of dicts ``{name, is_dir, size, modified_at}`` (may be
+        empty for an existing but empty directory) or *None* when the path
+        does not exist.
         """
         try:
             result = await self._k8s.exec_in_pod(
                 self._ns, self._pod,
                 ["bash", "-c",
+                 f"if [ -d '/root/{path}' ]; then "
                  f"find '/root/{path}' -maxdepth 1 -mindepth 1 "
-                 f"-printf '%y\\t%s\\t%T@\\t%f\\n' 2>/dev/null || echo '__NOT_FOUND__'"],
+                 f"-printf '%y\\t%s\\t%T@\\t%f\\n' 2>/dev/null; "
+                 f"echo '__DIR_OK__'; "
+                 f"else echo '__NOT_FOUND__'; fi"],
                 container=self._container,
             )
         except Exception:
@@ -154,6 +166,8 @@ class PodFS:
 
         items: list[dict] = []
         for line in result.strip().splitlines():
+            if line == "__DIR_OK__":
+                continue
             parts = line.split("\t", 3)
             if len(parts) < 4:
                 continue
@@ -198,6 +212,51 @@ class PodFS:
         }
 
 
+    async def scan_skills(self, skills_dir_rel: str) -> list[dict]:
+        """Batch-scan all skill directories under *skills_dir_rel*.
+
+        Uses a single ``bash -c`` exec with a base64-encoded Node.js script
+        to list every sub-directory, read its ``SKILL.md`` content, and count
+        the files it contains.  The script outputs base64-encoded JSON to
+        avoid UTF-8 multi-byte splitting in the WebSocket transport layer.
+
+        Returns ``[{name, content, file_count}]``.
+        Raises ``SkillScanError`` on failure (never returns ``[]`` as a
+        silent fallback — the caller must distinguish "empty" from "failed").
+        """
+        abs_dir = f"/root/{skills_dir_rel}"
+        js = (
+            'const fs=require("fs"),path=require("path");'
+            f'const dir="{abs_dir}";'
+            'const r=[];'
+            'if(fs.existsSync(dir)){'
+            'for(const n of fs.readdirSync(dir).sort()){'
+            'const d=path.join(dir,n);'
+            'if(!fs.statSync(d).isDirectory())continue;'
+            'const md=path.join(d,"SKILL.md");'
+            'let c="";'
+            'if(fs.existsSync(md))c=fs.readFileSync(md,"utf8");'
+            'const fc=fs.readdirSync(d).filter(f=>fs.statSync(path.join(d,f)).isFile()).length;'
+            'r.push({name:n,content:c,file_count:fc});'
+            '}}'
+            'process.stdout.write(Buffer.from(JSON.stringify(r)).toString("base64"));'
+        )
+        encoded = base64.b64encode(js.encode()).decode("ascii")
+        try:
+            raw = await self._k8s.exec_in_pod(
+                self._ns, self._pod,
+                ["bash", "-c", f"printf '%s' '{encoded}' | base64 -d | node"],
+                container=self._container,
+            )
+            if not raw:
+                return []
+            decoded = base64.b64decode(raw).decode("utf-8")
+            return json.loads(decoded)
+        except Exception as exc:
+            logger.warning("scan_skills failed for %s/%s", self._ns, self._pod, exc_info=True)
+            raise SkillScanError(f"scan_skills failed: {exc}") from exc
+
+
 async def _get_k8s_client(instance: Instance, db: AsyncSession) -> K8sClient:
     cluster_result = await db.execute(
         select(Cluster).where(Cluster.id == instance.cluster_id)
@@ -216,14 +275,28 @@ def _k8s_name(instance: Instance) -> str:
 async def _find_running_pod(
     k8s: K8sClient, instance: Instance,
 ) -> tuple[str, str]:
-    """Return (pod_name, container_name) for the first Running pod."""
+    """Return (pod_name, container_name) for the first pod with a running container.
+
+    For kubectl exec file operations we only need the container process to be
+    alive (state == "running").  The readiness probe is irrelevant here — it
+    controls Service routing, not exec availability.
+    """
     container = _k8s_name(instance)
     label_selector = f"app.kubernetes.io/name={container}"
     pods = await k8s.list_pods(instance.namespace, label_selector)
     running = [p for p in pods if p["phase"] == "Running"]
     if not running:
         raise NFSMountError("实例无运行中的 Pod，无法同步文件")
-    return running[0]["name"], container
+    usable = [
+        p for p in running
+        if any(c.get("state") == "running" for c in p.get("containers", []))
+    ]
+    if not usable:
+        raise NFSMountError(
+            "实例正在启动中，请稍后重试",
+            message_key="errors.instance.pod_not_ready",
+        )
+    return usable[0]["name"], container
 
 
 @asynccontextmanager

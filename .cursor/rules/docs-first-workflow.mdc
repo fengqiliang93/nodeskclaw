@@ -32,17 +32,19 @@ alwaysApply: true
 
 文档分两类，**都要检查**：
 
-### 1. docs/ 设计文档（按对照表更新）
+### 1. ee/docs/ 设计文档（按对照表更新）
+
+设计文档位于 EE 私有仓库的 `ee/docs/` 目录中（包含敏感内容，不纳入 CE 公开仓库）。
 
 | 变更内容 | 必须更新 |
 |----------|----------|
-| 新增/修改 API、路由、中间件 | `docs/后端架构设计.md` |
-| 新增/修改页面、交互流程 | `docs/页面线框图.md`、`docs/PRD-NoDeskClaw产品需求文档.md` |
-| K8s 资源定义变更（Deployment/Service/Ingress 等） | `docs/K8s交互层实现设计.md`、`docs/VKE部署方案.md` |
-| 部署流程、镜像构建变更 | `docs/VKE部署方案.md`、`docs/OpenClaw镜像构建规范.md` |
-| 技术栈、整体架构变更 | `docs/PRD-NoDeskClaw产品需求文档.md`、`docs/后端架构设计.md` |
-| 数据库模型、表结构变更 | `docs/后端架构设计.md` |
-| 新增基础设施组件（如日志、Ingress Controller） | `docs/后端架构设计.md`、`docs/VKE部署方案.md` |
+| 新增/修改 API、路由、中间件 | `ee/docs/后端架构设计.md` |
+| 新增/修改页面、交互流程 | `ee/docs/页面线框图.md`、`ee/docs/PRD-NoDeskClaw产品需求文档.md` |
+| K8s 资源定义变更（Deployment/Service/Ingress 等） | `ee/docs/K8s交互层实现设计.md`、`ee/docs/VKE部署方案.md` |
+| 部署流程、镜像构建变更 | `ee/docs/VKE部署方案.md`、`ee/docs/OpenClaw镜像构建规范.md` |
+| 技术栈、整体架构变更 | `ee/docs/PRD-NoDeskClaw产品需求文档.md`、`ee/docs/后端架构设计.md` |
+| 数据库模型、表结构变更 | `ee/docs/后端架构设计.md` |
+| 新增基础设施组件（如日志、Ingress Controller） | `ee/docs/后端架构设计.md`、`ee/docs/VKE部署方案.md` |
 
 ### 2. README 文档（按影响范围更新）
 
@@ -66,4 +68,4 @@ alwaysApply: true
 - 不准新建目录后不写 README
 - **不准改了代码不更新文档** — 代码和文档必须在同一次操作中同步完成
 - **不准说"后续再更新文档"** — 没有后续，当下就更新
-- **不准只写脚本不写说明** — 新建 Shell 脚本、CI/CD 配置、Dockerfile、K8s 清单等基础设施文件时，必须同时写 README 和更新对应的 docs/ 设计文档
+- **不准只写脚本不写说明** — 新建 Shell 脚本、CI/CD 配置、Dockerfile、K8s 清单等基础设施文件时，必须同时写 README 和更新对应的 ee/docs/ 设计文档

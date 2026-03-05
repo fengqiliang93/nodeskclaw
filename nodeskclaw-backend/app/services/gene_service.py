@@ -45,7 +45,7 @@ from app.services.genehub_converter import (
     genehub_genome_to_local,
     genehub_tags_to_local,
 )
-from app.services.nfs_mount import PodFS, remote_fs
+from app.services.nfs_mount import PodFS, SkillScanError, remote_fs
 from app.services.openclaw_session import (
     ensure_skills_discovery,
     inject_evolution_notification,
@@ -185,6 +185,33 @@ async def _record_evolution(
 def _has_frontmatter(content: str) -> bool:
     """Check whether SKILL.md content begins with YAML front matter (``---``)."""
     return content.lstrip().startswith("---")
+
+
+def _parse_skill_frontmatter(content: str) -> dict:
+    """Extract YAML front matter from SKILL.md content as a dict."""
+    import yaml
+
+    stripped = content.lstrip()
+    if not stripped.startswith("---"):
+        return {}
+    end = stripped.find("\n---", 3)
+    if end == -1:
+        return {}
+    try:
+        return yaml.safe_load(stripped[3:end]) or {}
+    except Exception:
+        return {}
+
+
+def _skill_body(content: str) -> str:
+    """Return the body of SKILL.md (everything after front matter)."""
+    stripped = content.lstrip()
+    if not stripped.startswith("---"):
+        return content
+    end = stripped.find("\n---", 3)
+    if end == -1:
+        return content
+    return stripped[end + 4:].lstrip()
 
 
 def _validate_skill_metadata(
@@ -649,6 +676,185 @@ async def get_instance_genes(db: AsyncSession, instance_id: str) -> list[dict]:
     return items
 
 
+TRANSITIONAL_STATUSES = {
+    InstanceGeneStatus.installing,
+    InstanceGeneStatus.learning,
+    InstanceGeneStatus.uninstalling,
+    InstanceGeneStatus.forgetting,
+}
+
+STALE_TERMINAL_STATUSES = {
+    InstanceGeneStatus.installed,
+    InstanceGeneStatus.learn_failed,
+    InstanceGeneStatus.failed,
+    InstanceGeneStatus.simplified,
+    InstanceGeneStatus.forget_failed,
+}
+
+CONTENT_PREVIEW_LEN = 200
+
+
+def _ig_to_dict(ig: InstanceGene) -> dict:
+    return {
+        "id": ig.id,
+        "instance_id": ig.instance_id,
+        "gene_id": ig.gene_id,
+        "genome_id": ig.genome_id,
+        "status": ig.status,
+        "installed_version": ig.installed_version,
+        "learning_output": ig.learning_output,
+        "config_snapshot": _json_loads(ig.config_snapshot),
+        "agent_self_eval": ig.agent_self_eval,
+        "usage_count": ig.usage_count,
+        "variant_published": ig.variant_published,
+        "installed_at": ig.installed_at,
+        "created_at": ig.created_at,
+    }
+
+
+def _build_db_only_items(ig_rows: list) -> list[dict]:
+    """DB-only 降级：scan_skills 失败时直接返回所有活跃 InstanceGene。"""
+    items: list[dict] = []
+    for ig, gene in ig_rows:
+        manifest = _json_loads(gene.manifest) or {}
+        skill_name = manifest.get("skill", {}).get("name", gene.slug)
+        items.append({
+            "type": "hub",
+            "skill_name": skill_name,
+            "name": gene.name,
+            "description": gene.short_description or gene.description or "",
+            "file_count": 0,
+            "gene": _gene_to_dict(gene),
+            "instance_gene": _ig_to_dict(ig),
+        })
+    return items
+
+
+async def get_instance_skills(db: AsyncSession, instance_id: str) -> list[dict]:
+    """Return the merged skill list driven by Pod filesystem + DB enrichment.
+
+    Each item is typed ``hub`` (matched Gene Hub entry) or ``emerged``
+    (only exists inside the Pod, not in the Hub).
+
+    When ``scan_skills`` fails (SkillScanError), falls back to DB-only data
+    without any stale-cleanup side effects.
+    """
+    from app.services.instance_service import get_instance
+
+    instance = await get_instance(instance_id, db)
+
+    ig_result = await db.execute(
+        select(InstanceGene, Gene)
+        .join(Gene, InstanceGene.gene_id == Gene.id)
+        .where(InstanceGene.instance_id == instance_id, not_deleted(InstanceGene))
+    )
+    ig_rows = ig_result.all()
+
+    try:
+        async with remote_fs(instance, db) as fs:
+            pod_skills = await fs.scan_skills(SKILLS_DIR_REL)
+    except SkillScanError:
+        logger.warning("scan_skills failed, returning DB-only data for %s", instance_id)
+        return _build_db_only_items(ig_rows)
+
+    pod_skill_names: set[str] = {s["name"] for s in pod_skills}
+
+    skill_to_ig: dict[str, tuple[InstanceGene, Gene]] = {}
+    for ig, gene in ig_rows:
+        manifest = _json_loads(gene.manifest) or {}
+        skill_name = manifest.get("skill", {}).get("name", gene.slug)
+        skill_to_ig[skill_name] = (ig, gene)
+
+    all_skill_names = list(pod_skill_names)
+    gene_result = await db.execute(
+        select(Gene).where(Gene.slug.in_(all_skill_names), not_deleted(Gene))
+    )
+    hub_genes: dict[str, Gene] = {g.slug: g for g in gene_result.scalars().all()}
+
+    # Preload soft-deleted InstanceGenes for recovery (Fix C)
+    deleted_result = await db.execute(
+        select(InstanceGene)
+        .where(InstanceGene.instance_id == instance_id, InstanceGene.deleted_at.is_not(None))
+        .order_by(InstanceGene.deleted_at.desc())
+    )
+    deleted_ig_by_gene_id: dict[str, InstanceGene] = {}
+    for dig in deleted_result.scalars().all():
+        deleted_ig_by_gene_id.setdefault(dig.gene_id, dig)
+
+    items: list[dict] = []
+    seen_skill_names: set[str] = set()
+
+    for skill_data in pod_skills:
+        sname = skill_data["name"]
+        content: str = skill_data.get("content", "")
+        file_count: int = skill_data.get("file_count", 0)
+        fm = _parse_skill_frontmatter(content)
+        body = _skill_body(content)
+        seen_skill_names.add(sname)
+
+        ig_pair = skill_to_ig.get(sname)
+        hub_gene = hub_genes.get(sname)
+        if hub_gene is None and ig_pair is not None:
+            hub_gene = ig_pair[1]
+
+        if hub_gene is not None:
+            ig_data = None
+            if ig_pair:
+                ig_data = _ig_to_dict(ig_pair[0])
+            elif hub_gene.id in deleted_ig_by_gene_id:
+                recovered = deleted_ig_by_gene_id[hub_gene.id]
+                recovered.deleted_at = None
+                logger.info(
+                    "Recovered soft-deleted InstanceGene %s (gene=%s) — skill found in Pod",
+                    recovered.id, hub_gene.slug,
+                )
+                ig_data = _ig_to_dict(recovered)
+            items.append({
+                "type": "hub",
+                "skill_name": sname,
+                "name": hub_gene.name,
+                "description": hub_gene.short_description or hub_gene.description or "",
+                "file_count": file_count,
+                "gene": _gene_to_dict(hub_gene),
+                "instance_gene": ig_data,
+            })
+        else:
+            preview = body[:CONTENT_PREVIEW_LEN] + ("..." if len(body) > CONTENT_PREVIEW_LEN else "")
+            items.append({
+                "type": "emerged",
+                "skill_name": sname,
+                "name": fm.get("name", sname),
+                "description": fm.get("description", ""),
+                "file_count": file_count,
+                "content_preview": preview,
+                "full_content": content,
+                "frontmatter": fm,
+            })
+
+    for sname, (ig, gene) in skill_to_ig.items():
+        if sname in seen_skill_names:
+            continue
+        if ig.status in TRANSITIONAL_STATUSES:
+            items.append({
+                "type": "hub",
+                "skill_name": sname,
+                "name": gene.name,
+                "description": gene.short_description or gene.description or "",
+                "file_count": 0,
+                "gene": _gene_to_dict(gene),
+                "instance_gene": _ig_to_dict(ig),
+            })
+        elif ig.status in STALE_TERMINAL_STATUSES:
+            logger.info(
+                "Soft-deleting stale InstanceGene %s (gene=%s, status=%s) — skill not found in Pod",
+                ig.id, gene.slug, ig.status,
+            )
+            ig.soft_delete()
+
+    await db.commit()
+    return items
+
+
 async def get_gene_installed_instance_ids(db: AsyncSession, gene_id: str) -> list[str]:
     """Return instance IDs where this gene is currently installed."""
     result = await db.execute(
@@ -672,6 +878,22 @@ async def _has_meta_learning(db: AsyncSession, instance_id: str) -> bool:
             InstanceGene.status == InstanceGeneStatus.installed,
             not_deleted(InstanceGene),
         )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def has_gene_installed(db: AsyncSession, instance_id: str, gene_slug: str) -> bool:
+    """Check if instance has a specific gene installed (status=installed)."""
+    result = await db.execute(
+        select(InstanceGene.id)
+        .join(Gene, InstanceGene.gene_id == Gene.id)
+        .where(
+            InstanceGene.instance_id == instance_id,
+            Gene.slug == gene_slug,
+            InstanceGene.status == InstanceGeneStatus.installed,
+            not_deleted(InstanceGene),
+        )
+        .limit(1)
     )
     return result.scalar_one_or_none() is not None
 
@@ -792,6 +1014,116 @@ async def install_gene(
         "status": ig.status,
         "method": "learning" if has_learning else "direct",
     }
+
+
+async def install_gene_prerestart(instance_id: str, gene_slug: str) -> None:
+    """Synchronously install a gene without triggering a restart.
+
+    Uses its own DB session and advisory lock for isolation.
+    Designed to be called from add_agent before _deploy_channel_plugin,
+    so the subsequent restart picks up both the gene and channel plugin.
+    """
+    from app.core.deps import async_session_factory
+
+    async with _instance_pg_advisory_lock(instance_id):
+        async with async_session_factory() as db:
+            hub_gene = await genehub_client.get_gene(gene_slug)
+            if hub_gene:
+                gene = await _upsert_gene_cache(db, hub_gene)
+                await db.commit()
+            else:
+                gene = await get_gene_by_slug(db, gene_slug)
+
+            if not gene:
+                raise NotFoundError(f"基因 '{gene_slug}' 不存在")
+
+            instance = await db.get(Instance, instance_id)
+            if not instance:
+                raise NotFoundError(f"实例 '{instance_id}' 不存在")
+
+            existing = await db.execute(
+                select(InstanceGene).where(
+                    InstanceGene.instance_id == instance_id,
+                    InstanceGene.gene_id == gene.id,
+                    not_deleted(InstanceGene),
+                )
+            )
+            existing_ig = existing.scalar_one_or_none()
+            if existing_ig:
+                if existing_ig.status == InstanceGeneStatus.installed:
+                    return
+                if existing_ig.status in (
+                    InstanceGeneStatus.installing,
+                    InstanceGeneStatus.failed,
+                    InstanceGeneStatus.learn_failed,
+                ):
+                    existing_ig.soft_delete()
+                    await db.commit()
+
+            ig = InstanceGene(
+                instance_id=instance_id,
+                gene_id=gene.id,
+                status=InstanceGeneStatus.installing,
+                installed_version=gene.version,
+            )
+            db.add(ig)
+            gene.install_count += 1
+            await db.commit()
+            await db.refresh(ig)
+
+            try:
+                hub_manifest = await genehub_client.get_manifest(gene.slug)
+                manifest = hub_manifest or _json_loads(gene.manifest) or {}
+                skill = manifest.get("skill", {})
+
+                async with remote_fs(instance, db) as fs:
+                    skill_name = skill.get("name", gene.slug)
+                    skill_content = skill.get("content", "")
+                    await _write_skill_file(
+                        fs, skill_name, skill_content,
+                        gene.short_description or gene.description or "",
+                    )
+                    await ensure_skills_discovery(fs)
+                    await _apply_engineering_actions(fs, manifest)
+                    await invalidate_skill_snapshots(fs)
+                    await inject_evolution_notification(fs, skill_name, "installed")
+
+                ig.status = InstanceGeneStatus.installed
+                ig.installed_at = datetime.now(timezone.utc)
+                ig.config_snapshot = _json_dumps(manifest.get("openclaw_config"))
+                await _record_evolution(
+                    db, instance_id, EvolutionEventType.learned, gene.name,
+                    gene_slug=gene.slug, gene_id=gene.id,
+                    details={"version": gene.version, "learning_type": "direct"},
+                )
+                await db.commit()
+
+                await genehub_client.report_install(gene.slug)
+
+                workspace_id = instance.workspace_id
+                if workspace_id:
+                    from app.api.workspaces import broadcast_event
+                    broadcast_event(workspace_id, "gene:installed", {
+                        "instance_id": instance.id,
+                        "gene_slug": gene.slug,
+                        "method": "direct",
+                    })
+
+                logger.info(
+                    "install_gene_prerestart: 基因 %s 已安装到实例 %s（不重启）",
+                    gene_slug, instance.name,
+                )
+            except Exception as e:
+                logger.error(
+                    "install_gene_prerestart failed for gene %s on %s: %s",
+                    gene_slug, instance.name, e,
+                )
+                try:
+                    ig.status = InstanceGeneStatus.failed
+                    await db.commit()
+                except Exception:
+                    logger.error("Failed to mark gene %s as failed", gene_slug)
+                raise
 
 
 async def _inject_mcp_servers(
@@ -1428,7 +1760,7 @@ async def publish_variant(
     manifest = _json_loads(parent.manifest) or {}
     manifest["skill"] = {"name": slug, "content": ig.learning_output}
 
-    variant_desc = f"Agent {agent_display} 基于 {parent.name} 的进化版本"
+    variant_desc = f"AI 员工 {agent_display} 基于 {parent.name} 的进化版本"
     _validate_skill_metadata(manifest, parent.short_description, variant_desc)
 
     variant = Gene(

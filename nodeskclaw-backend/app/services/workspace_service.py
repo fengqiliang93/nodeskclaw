@@ -70,7 +70,7 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
     bb = Blackboard(workspace_id=ws.id)
     db.add(bb)
 
-    member = WorkspaceMember(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.owner)
+    member = WorkspaceMember(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.owner, is_admin=True)
     db.add(member)
 
     await db.commit()
@@ -82,13 +82,33 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
     )
 
 
-async def list_workspaces(db: AsyncSession, org_id: str) -> list[WorkspaceListItem]:
-    result = await db.execute(
-        select(Workspace).where(
-            Workspace.org_id == org_id,
-            Workspace.deleted_at.is_(None),
-        ).order_by(Workspace.created_at.desc())
+async def list_workspaces(
+    db: AsyncSession, org_id: str, user_id: str | None = None,
+) -> list[WorkspaceListItem]:
+    from app.models.org_membership import OrgMembership, OrgRole
+
+    stmt = select(Workspace).where(
+        Workspace.org_id == org_id,
+        Workspace.deleted_at.is_(None),
     )
+
+    if user_id:
+        is_org_admin = (await db.execute(
+            select(OrgMembership.role).where(
+                OrgMembership.user_id == user_id,
+                OrgMembership.org_id == org_id,
+                OrgMembership.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+
+        if is_org_admin != OrgRole.admin:
+            member_ws_ids = select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.user_id == user_id,
+                WorkspaceMember.deleted_at.is_(None),
+            )
+            stmt = stmt.where(Workspace.id.in_(member_ws_ids))
+
+    result = await db.execute(stmt.order_by(Workspace.created_at.desc()))
     workspaces = result.scalars().all()
 
     items = []
@@ -164,7 +184,7 @@ async def delete_workspace(db: AsyncSession, workspace_id: str) -> bool:
         )
     )
     if agents_count.scalar() > 0:
-        raise ValueError("请先移除工作区内的所有 Agent")
+        raise ValueError("请先移除办公室内的所有 AI 员工")
 
     ws.soft_delete()
     await db.commit()
@@ -206,6 +226,19 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
 
     await db.commit()
     await db.refresh(inst)
+
+    if data.install_gene_slugs:
+        from app.services.gene_service import install_gene_prerestart
+        for slug in data.install_gene_slugs:
+            try:
+                await install_gene_prerestart(inst.id, slug)
+            except Exception as e:
+                logger.error("基因安装失败，回滚工作区加入: instance=%s gene=%s error=%s", inst.name, slug, e)
+                inst.workspace_id = None
+                inst.hex_position_q = 0
+                inst.hex_position_r = 0
+                await db.commit()
+                raise ValueError(f"基因 {slug} 安装失败: {e}") from e
 
     await _deploy_channel_plugin(inst, db, workspace_id)
 
@@ -361,7 +394,7 @@ async def _remove_channel_plugin(inst: Instance, db: AsyncSession) -> None:
 _NODE_TYPE_LABELS = {
     "blackboard": "黑板",
     "corridor": "走廊",
-    "agent": "Agent",
+    "agent": "AI 员工",
     "human": "成员",
 }
 
@@ -388,7 +421,7 @@ async def _notify_topology_status(
         content = (
             f"{agent_name} 当前位置没有相邻节点连接，"
             "除加入消息外不会参与工作区交互。"
-            "请在拓扑编辑器中手动连接，或将 Agent 拖到已有节点旁边。"
+            "请在拓扑编辑器中手动连接，或将 AI 员工拖到已有节点旁边。"
         )
 
     broadcast_event(workspace_id, "system:info", {
@@ -402,7 +435,7 @@ async def _notify_topology_status(
     })
 
 
-WELCOME_MESSAGE = "你好！你刚刚加入了工作区，请向大家介绍一下你自己：你叫什么名字、你的能力和专长是什么。"
+WELCOME_MESSAGE = "你好！你刚刚加入了赛博办公室，请向大家介绍一下你自己：你叫什么名字、你的能力和专长是什么。"
 WELCOME_READY_TIMEOUT = 120
 WELCOME_POLL_INTERVAL = 3
 WELCOME_FALLBACK_DELAY = 10
@@ -424,14 +457,14 @@ async def _broadcast_join_message(workspace_id: str, inst: Instance) -> None:
                 sender_type="system",
                 sender_id="system",
                 sender_name="System",
-                content=f"{agent_name} 已加入工作区",
+                content=f"{agent_name} 已加入办公室",
                 message_type="system",
             )
 
         broadcast_event(workspace_id, "system:welcome", {
             "agent_name": agent_name,
             "instance_id": inst.id,
-            "content": f"{agent_name} 已加入工作区",
+            "content": f"{agent_name} 已加入办公室",
         })
     except Exception as e:
         logger.warning("广播加入消息失败（非致命）: instance=%s error=%s", inst.name, e)
@@ -446,7 +479,7 @@ async def _broadcast_leave_message(workspace_id: str, inst: Instance) -> None:
 
     agent_name = inst.agent_display_name or inst.name
     msg_id = f"sys-leave-{inst.id[:8]}-{int(datetime.now(timezone.utc).timestamp())}"
-    content = f"{agent_name} 已退出工作区"
+    content = f"{agent_name} 已退出办公室"
 
     try:
         async with async_session_factory() as db:
@@ -502,6 +535,7 @@ async def _send_welcome_message(workspace_id: str, inst: Instance) -> None:
             workspace_id=workspace_id,
             target_instance=inst,
             source_name="System",
+            source_instance_id="system",
             message=WELCOME_MESSAGE,
             depth=0,
         )
@@ -591,15 +625,23 @@ async def list_workspace_members(db: AsyncSession, workspace_id: str) -> list[Wo
         members.append(WorkspaceMemberInfo(
             user_id=user.id, user_name=user.name,
             user_email=user.email, user_avatar_url=user.avatar_url,
-            role=wm.role, created_at=wm.created_at,
+            role=wm.role, is_admin=wm.is_admin,
+            permissions=wm.permissions or [],
+            created_at=wm.created_at,
         ))
     return members
 
 
 async def add_workspace_member(
-    db: AsyncSession, workspace_id: str, user_id: str, role: str = "editor",
+    db: AsyncSession,
+    workspace_id: str,
+    user_id: str,
+    permissions: list[str] | None = None,
+    is_admin: bool = False,
 ) -> WorkspaceMemberInfo:
     from app.models.user import User
+    from app.models.workspace_member import WORKSPACE_PERMISSIONS
+
     existing = await db.execute(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id,
@@ -608,9 +650,16 @@ async def add_workspace_member(
         )
     )
     if existing.scalar_one_or_none():
-        raise ValueError("用户已是工作区成员")
+        raise ValueError("用户已是办公室成员")
 
-    wm = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+    perms = [p for p in (permissions or []) if p in WORKSPACE_PERMISSIONS]
+    wm = WorkspaceMember(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        role="editor",
+        is_admin=is_admin,
+        permissions=perms,
+    )
     db.add(wm)
     await db.commit()
 
@@ -619,12 +668,41 @@ async def add_workspace_member(
     return WorkspaceMemberInfo(
         user_id=user.id, user_name=user.name,
         user_email=user.email, user_avatar_url=user.avatar_url,
-        role=wm.role, created_at=wm.created_at,
+        role=wm.role, is_admin=wm.is_admin,
+        permissions=wm.permissions or [],
+        created_at=wm.created_at,
     )
 
 
-async def update_workspace_member_role(
-    db: AsyncSession, workspace_id: str, user_id: str, role: str,
+async def update_workspace_member_permissions(
+    db: AsyncSession,
+    workspace_id: str,
+    user_id: str,
+    permissions: list[str] | None = None,
+    is_admin: bool | None = None,
+) -> bool:
+    from app.models.workspace_member import WORKSPACE_PERMISSIONS
+
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+            WorkspaceMember.deleted_at.is_(None),
+        )
+    )
+    wm = result.scalar_one_or_none()
+    if wm is None:
+        return False
+    if permissions is not None:
+        wm.permissions = [p for p in permissions if p in WORKSPACE_PERMISSIONS]
+    if is_admin is not None:
+        wm.is_admin = is_admin
+    await db.commit()
+    return True
+
+
+async def remove_workspace_member(
+    db: AsyncSession, workspace_id: str, user_id: str, operator_name: str = "",
 ) -> bool:
     result = await db.execute(
         select(WorkspaceMember).where(
@@ -636,22 +714,35 @@ async def update_workspace_member_role(
     wm = result.scalar_one_or_none()
     if wm is None:
         return False
-    wm.role = role
-    await db.commit()
-    return True
 
-
-async def remove_workspace_member(db: AsyncSession, workspace_id: str, user_id: str) -> bool:
-    result = await db.execute(
-        select(WorkspaceMember).where(
-            WorkspaceMember.workspace_id == workspace_id,
-            WorkspaceMember.user_id == user_id,
-            WorkspaceMember.deleted_at.is_(None),
+    from app.models.corridor import HumanHex
+    from app.models.base import not_deleted
+    hh_result = await db.execute(
+        select(HumanHex).where(
+            HumanHex.workspace_id == workspace_id,
+            HumanHex.user_id == user_id,
+            not_deleted(HumanHex),
         )
     )
-    wm = result.scalar_one_or_none()
-    if wm is None:
-        return False
+    human_hexes = list(hh_result.scalars().all())
+
+    if human_hexes and operator_name:
+        try:
+            from app.services.collaboration_service import deliver_to_human
+            await deliver_to_human(
+                workspace_id=workspace_id,
+                human_hex_id=human_hexes[0].id,
+                source_name="System",
+                message=f"你已被 {operator_name} 移出办公室",
+            )
+        except Exception as e:
+            logger.warning("发送移除通知失败（非致命）: %s", e)
+
+    from app.api.workspaces import broadcast_event
+    for hh in human_hexes:
+        hh.soft_delete()
+        broadcast_event(workspace_id, "human:hex_removed", {"hex_id": hh.id})
+
     wm.soft_delete()
     await db.commit()
     return True

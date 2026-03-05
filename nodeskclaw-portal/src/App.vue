@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
-import { PawPrint, Settings, LogOut, Users, BarChart3, Boxes, Server, FlaskConical, FolderOpen, User } from 'lucide-vue-next'
+import { PawPrint, Settings, LogOut, BarChart3, Boxes, Server, FlaskConical, FolderOpen, User } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 import ToastContainer from '@/components/shared/ToastContainer.vue'
+import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,6 +56,7 @@ function onLocaleChange(value: string) {
 
 <template>
   <ToastContainer />
+  <ConfirmDialog />
 
   <template v-if="isLoginPage">
     <router-view />
@@ -70,7 +72,8 @@ function onLocaleChange(value: string) {
         <div class="flex items-center gap-6">
           <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
             <PawPrint class="w-5 h-5 text-primary" />
-            <span class="font-bold text-base">NoDeskClaw</span>
+            <span class="font-bold text-base">DeskClaw</span>
+            <span class="px-1.5 py-0.5 text-[10px] font-semibold leading-none rounded bg-primary/15 text-primary">Beta</span>
           </div>
           <nav v-if="!isSetupPage" class="flex items-center gap-1">
             <button
@@ -92,16 +95,6 @@ function onLocaleChange(value: string) {
             >
               <Server class="w-4 h-4 inline mr-1.5" />
               {{ t('common.instance') }}
-            </button>
-            <button
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
-                route.path === '/members' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
-              ]"
-              @click="router.push('/members')"
-            >
-              <Users class="w-4 h-4 inline mr-1.5" />
-              {{ t('common.members') }}
             </button>
             <button
               :class="[
@@ -133,6 +126,17 @@ function onLocaleChange(value: string) {
             >
               <FolderOpen class="w-4 h-4 inline mr-1.5" />
               {{ t('enterpriseFiles.title') }}
+            </button>
+            <button
+              v-if="authStore.user?.portal_org_role === 'admin'"
+              :class="[
+                'px-3 py-1.5 rounded-md text-sm transition-colors',
+                route.path.startsWith('/org-settings') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
+              ]"
+              @click="router.push('/org-settings')"
+            >
+              <Settings class="w-4 h-4 inline mr-1.5" />
+              {{ t('orgSettings.navTitle') }}
             </button>
           </nav>
         </div>

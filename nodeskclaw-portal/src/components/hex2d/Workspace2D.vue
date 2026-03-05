@@ -2,7 +2,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSvgZoom } from '@/composables/useSvgZoom'
-import { axialToWorld, hexPolygonPoints, HEX_SIZE } from '@/composables/useHexLayout'
+import { axialToWorld, hexVertices, HEX_SIZE } from '@/composables/useHexLayout'
 import { useTopologyBFS } from '@/composables/useTopologyBFS'
 import { useFlowAnimation2D } from '@/composables/useFlowAnimation'
 import type { AgentBrief, MessageFlowPair, TopologyNode as StoreTopologyNode, TopologyEdge } from '@/stores/workspace'
@@ -19,6 +19,14 @@ interface TopologyNode {
   color?: string
 }
 
+export interface FurnitureItem {
+  id: string
+  hex_q: number
+  hex_r: number
+  asset_key: string
+  asset_url: string
+}
+
 const props = defineProps<{
   agents: AgentBrief[]
   blackboardContent: string
@@ -29,6 +37,8 @@ const props = defineProps<{
   messageFlowStats?: MessageFlowPair[]
   isMovingHex?: boolean
   movingHexSource?: { q: number, r: number } | null
+  floorTextureUrl?: string
+  furniture?: FurnitureItem[]
 }>()
 
 const emit = defineEmits<{
@@ -41,16 +51,28 @@ const svgRef = ref<SVGSVGElement | null>(null)
 const { transformStr, zoomIn, zoomOut, resetView, panBy, focusOnPosition } = useSvgZoom(svgRef, { minZoom: 0.3, maxZoom: 3 })
 
 function focusOnHex(q: number, r: number) {
-  const { x, y } = axialToWorld(q, r)
-  focusOnPosition(x * SCALE, y * SCALE)
+  const pos = worldPos(q, r)
+  focusOnPosition(pos.px, pos.py)
 }
 
 const SCALE = 60
+const Y_SCALE = 1
+
+function worldPos(q: number, r: number): { px: number; py: number } {
+  const { x, y } = axialToWorld(q, r)
+  return { px: x * SCALE, py: y * SCALE * Y_SCALE }
+}
+
+function scaledHexPoints(cx: number, cy: number, size: number): string {
+  return hexVertices(cx, cy, size)
+    .map(([vx, vy]) => `${vx},${vy * Y_SCALE}`)
+    .join(' ')
+}
 
 const storeNodes = computed(() => (props.topologyNodes || []) as StoreTopologyNode[])
 const storeEdges = computed(() => props.topologyEdges || [] as TopologyEdge[])
 const { findPath, findReachableEndpoints } = useTopologyBFS(storeNodes, storeEdges)
-const { particles, pulses, triggerFlow, getParticlePosition, dispose: disposeAnim } = useFlowAnimation2D(SCALE)
+const { particles, pulses, triggerFlow, getParticlePosition, dispose: disposeAnim } = useFlowAnimation2D(SCALE, Y_SCALE)
 
 function triggerMessageFlow(sourceInstanceId: string, target: string) {
   const nodes = props.topologyNodes || []
@@ -90,17 +112,39 @@ const HEX_RADIUS = HEX_SIZE * SCALE * 0.85
 const BB_RADIUS = HEX_RADIUS * 1.15
 const GRID_RANGE = 8
 
+const HEX_CELL_W = Math.sqrt(3) * HEX_RADIUS
+const HEX_CELL_H = 2 * HEX_RADIUS * Y_SCALE
+
+const allHexCells = computed(() => {
+  const cells: { q: number; r: number; px: number; py: number }[] = []
+  for (let q = -GRID_RANGE; q <= GRID_RANGE; q++) {
+    for (let r = -GRID_RANGE; r <= GRID_RANGE; r++) {
+      if (Math.abs(q) + Math.abs(r) + Math.abs(-q - r) > GRID_RANGE * 2) continue
+      const pos = worldPos(q, r)
+      cells.push({ q, r, px: pos.px, py: pos.py })
+    }
+  }
+  return cells
+})
+
+const furniturePositions = computed(() =>
+  (props.furniture || []).map(f => {
+    const pos = worldPos(f.hex_q, f.hex_r)
+    return { ...f, px: pos.px, py: pos.py }
+  })
+)
+
 const EDGE_X1 = -0.866 * HEX_RADIUS
-const EDGE_Y1 = -0.5 * HEX_RADIUS
+const EDGE_Y1 = -0.5 * HEX_RADIUS * Y_SCALE
 const EDGE_X2 = 0
-const EDGE_Y2 = -HEX_RADIUS
+const EDGE_Y2 = -HEX_RADIUS * Y_SCALE
 const EDGE_MX = (EDGE_X1 + EDGE_X2) / 2
 const EDGE_MY = (EDGE_Y1 + EDGE_Y2) / 2
 
 const agentPositions = computed(() =>
   props.agents.map((a) => {
-    const { x, y } = axialToWorld(a.hex_q, a.hex_r)
-    return { ...a, px: x * SCALE, py: y * SCALE }
+    const pos = worldPos(a.hex_q, a.hex_r)
+    return { ...a, px: pos.px, py: pos.py }
   }),
 )
 
@@ -125,13 +169,11 @@ const honeycombGrid = computed(() => {
   for (let q = -GRID_RANGE; q <= GRID_RANGE; q++) {
     for (let row = -GRID_RANGE; row <= GRID_RANGE; row++) {
       if (Math.abs(q) + Math.abs(row) + Math.abs(-q - row) > GRID_RANGE * 2) continue
-      const { x, y } = axialToWorld(q, row)
-      const cx = x * SCALE
-      const cy = y * SCALE
+      const pos = worldPos(q, row)
       for (let i = 0; i < 6; i++) {
         const a1 = (Math.PI / 3) * i - Math.PI / 6
         const a2 = (Math.PI / 3) * ((i + 1) % 6) - Math.PI / 6
-        lines.push(`M${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)}L${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)}`)
+        lines.push(`M${pos.px + r * Math.cos(a1)},${pos.py + r * Math.sin(a1) * Y_SCALE}L${pos.px + r * Math.cos(a2)},${pos.py + r * Math.sin(a2) * Y_SCALE}`)
       }
     }
   }
@@ -139,19 +181,19 @@ const honeycombGrid = computed(() => {
 })
 
 function hexPoints(cx: number, cy: number): string {
-  return hexPolygonPoints(cx, cy, HEX_RADIUS)
+  return scaledHexPoints(cx, cy, HEX_RADIUS)
 }
 
 function bbHexPoints(): string {
-  return hexPolygonPoints(0, 0, BB_RADIUS)
+  return scaledHexPoints(0, 0, BB_RADIUS)
 }
 
 const corridorNodes = computed(() =>
   (props.topologyNodes || [])
     .filter(n => n.node_type === 'corridor')
     .map(n => {
-      const { x, y } = axialToWorld(n.hex_q, n.hex_r)
-      return { ...n, px: x * SCALE, py: y * SCALE }
+      const pos = worldPos(n.hex_q, n.hex_r)
+      return { ...n, px: pos.px, py: pos.py }
     })
 )
 
@@ -159,8 +201,8 @@ const humanNodes = computed(() =>
   (props.topologyNodes || [])
     .filter(n => n.node_type === 'human')
     .map(n => {
-      const { x, y } = axialToWorld(n.hex_q, n.hex_r)
-      return { ...n, px: x * SCALE, py: y * SCALE, color: (n.extra?.display_color as string) || '#f59e0b' }
+      const pos = worldPos(n.hex_q, n.hex_r)
+      return { ...n, px: pos.px, py: pos.py, color: (n.extra?.display_color as string) || '#f59e0b' }
     })
 )
 
@@ -175,8 +217,9 @@ const JUNCTION_R_2D = 4
 
 const DIR_UNITS_2D: [number, number][] = AXIAL_DIRS.map(([dq, dr]) => {
   const { x, y } = axialToWorld(dq, dr)
-  const len = Math.sqrt(x * x + y * y)
-  return [x / len, y / len] as [number, number]
+  const sy = y * Y_SCALE
+  const len = Math.sqrt(x * x + sy * sy)
+  return [x / len, sy / len] as [number, number]
 })
 
 const HALF_GAP_2D = (RAIL_GAP_2D + RAIL_WIDTH_2D) / 2
@@ -220,11 +263,11 @@ const corridorPaths = computed(() => {
 })
 
 function corridorHexPoints(cx: number, cy: number): string {
-  return hexPolygonPoints(cx, cy, CORRIDOR_RADIUS)
+  return scaledHexPoints(cx, cy, CORRIDOR_RADIUS)
 }
 
 function humanHexPoints(cx: number, cy: number): string {
-  return hexPolygonPoints(cx, cy, HUMAN_RADIUS)
+  return scaledHexPoints(cx, cy, HUMAN_RADIUS)
 }
 
 const heatLines = computed(() => {
@@ -235,15 +278,15 @@ const heatLines = computed(() => {
   return stats.map(s => {
     const [sq, sr] = s.sender_hex_key.split(',').map(Number)
     const [rq, rr] = s.receiver_hex_key.split(',').map(Number)
-    const from = axialToWorld(sq, sr)
-    const to = axialToWorld(rq, rr)
+    const from = worldPos(sq, sr)
+    const to = worldPos(rq, rr)
     const ratio = s.count / maxCount
     return {
       key: s.sender_hex_key + '-' + s.receiver_hex_key,
-      x1: from.x * SCALE,
-      y1: from.y * SCALE,
-      x2: to.x * SCALE,
-      y2: to.y * SCALE,
+      x1: from.px,
+      y1: from.py,
+      x2: to.px,
+      y2: to.py,
       width: 1 + 4 * ratio,
       opacity: 0.15 + 0.45 * ratio,
     }
@@ -261,8 +304,8 @@ const emptyHexes = computed(() => {
     for (let r = -GRID_RANGE; r <= GRID_RANGE; r++) {
       if (Math.abs(q) + Math.abs(r) + Math.abs(-q - r) > GRID_RANGE * 2) continue
       if (occupied.has(`${q}:${r}`)) continue
-      const { x, y } = axialToWorld(q, r)
-      hexes.push({ q, r, px: x * SCALE, py: y * SCALE })
+      const pos = worldPos(q, r)
+      hexes.push({ q, r, px: pos.px, py: pos.py })
     }
   }
   return hexes
@@ -293,9 +336,31 @@ const emptyHexes = computed(() => {
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
+      <clipPath id="hex-clip">
+        <polygon :points="scaledHexPoints(0, 0, HEX_RADIUS)" />
+      </clipPath>
     </defs>
 
     <g :transform="transformStr">
+      <!-- Floor texture layer -->
+      <g v-if="floorTextureUrl" class="floor-layer">
+        <g
+          v-for="cell in allHexCells"
+          :key="`floor-${cell.q}-${cell.r}`"
+          :transform="`translate(${cell.px}, ${cell.py})`"
+        >
+          <image
+            :href="floorTextureUrl"
+            :x="-HEX_CELL_W / 2"
+            :y="-HEX_CELL_H / 2"
+            :width="HEX_CELL_W"
+            :height="HEX_CELL_H"
+            clip-path="url(#hex-clip)"
+            preserveAspectRatio="xMidYMid slice"
+          />
+        </g>
+      </g>
+
       <!-- Honeycomb grid -->
       <path
         :d="honeycombGrid"
@@ -450,9 +515,11 @@ const emptyHexes = computed(() => {
       <g
         v-for="ch in corridorPaths"
         :key="'corridor-' + ch.entity_id"
-        class="cursor-pointer"
-        :transform="`translate(${ch.px}, ${ch.py})`"
+        class="cursor-pointer transition-transform"
+        :transform="`translate(${ch.px}, ${ch.py}) ${hoveredId === 'corridor-' + ch.entity_id ? 'scale(1.06)' : ''}`"
         @click.stop="emit('hex-click', { q: ch.hex_q, r: ch.hex_r, type: 'corridor', entityId: ch.entity_id })"
+        @pointerenter="hoveredId = 'corridor-' + ch.entity_id"
+        @pointerleave="hoveredId = null"
       >
         <polygon
           :points="corridorHexPoints(0, 0)"
@@ -486,9 +553,11 @@ const emptyHexes = computed(() => {
       <g
         v-for="hh in humanNodes"
         :key="'human-' + hh.entity_id"
-        class="cursor-pointer"
-        :transform="`translate(${hh.px}, ${hh.py})`"
+        class="cursor-pointer transition-transform"
+        :transform="`translate(${hh.px}, ${hh.py}) ${hoveredId === 'human-' + hh.entity_id ? 'scale(1.06)' : ''}`"
         @click.stop="emit('hex-click', { q: hh.hex_q, r: hh.hex_r, type: 'human', entityId: hh.entity_id })"
+        @pointerenter="hoveredId = 'human-' + hh.entity_id"
+        @pointerleave="hoveredId = null"
       >
         <polygon
           :points="humanHexPoints(0, 0)"
@@ -497,11 +566,8 @@ const emptyHexes = computed(() => {
           stroke-width="2"
           opacity="0.9"
         />
-        <text y="-4" text-anchor="middle" :fill="hh.color || '#f59e0b'" font-size="14">
-          &#9775;
-        </text>
-        <text y="12" text-anchor="middle" fill="#d4d4d8" font-size="8" font-weight="500">
-          {{ hh.display_name || 'Human' }}
+        <text y="4" text-anchor="middle" :fill="hh.color || '#f59e0b'" font-size="10" font-weight="500">
+          {{ hh.display_name }}
         </text>
       </g>
 
@@ -522,8 +588,8 @@ const emptyHexes = computed(() => {
       <g class="pulse-layer">
         <template v-for="pulse in pulses" :key="pulse.key">
           <circle
-            :cx="axialToWorld(Number(pulse.key.split(',')[0]), Number(pulse.key.split(',')[1])).x * SCALE"
-            :cy="axialToWorld(Number(pulse.key.split(',')[0]), Number(pulse.key.split(',')[1])).y * SCALE"
+            :cx="worldPos(Number(pulse.key.split(',')[0]), Number(pulse.key.split(',')[1])).px"
+            :cy="worldPos(Number(pulse.key.split(',')[0]), Number(pulse.key.split(',')[1])).py"
             :r="HEX_RADIUS * 0.6"
             fill="none"
             stroke="#a78bfa"
@@ -533,10 +599,28 @@ const emptyHexes = computed(() => {
         </template>
       </g>
 
+      <!-- Furniture sprites (decorative, non-interactive) -->
+      <g v-if="furniturePositions.length" class="furniture-layer" pointer-events="none">
+        <g
+          v-for="f in furniturePositions"
+          :key="`furniture-${f.id}`"
+          :transform="`translate(${f.px}, ${f.py})`"
+        >
+          <image
+            :href="f.asset_url"
+            :x="-HEX_CELL_W / 2"
+            :y="-HEX_CELL_H / 2"
+            :width="HEX_CELL_W"
+            :height="HEX_CELL_H"
+            preserveAspectRatio="xMidYMid meet"
+          />
+        </g>
+      </g>
+
       <!-- Selected hex highlight for agents -->
       <g
         v-if="selectedHex && !isMovingHex && agents.some(a => a.hex_q === selectedHex!.q && a.hex_r === selectedHex!.r)"
-        :transform="`translate(${axialToWorld(selectedHex!.q, selectedHex!.r).x * SCALE}, ${axialToWorld(selectedHex!.q, selectedHex!.r).y * SCALE})`"
+        :transform="`translate(${worldPos(selectedHex!.q, selectedHex!.r).px}, ${worldPos(selectedHex!.q, selectedHex!.r).py})`"
       >
         <polygon
           :points="hexPoints(0, 0)"
@@ -551,7 +635,7 @@ const emptyHexes = computed(() => {
       <!-- Move mode: source hex pulsing highlight -->
       <g
         v-if="isMovingHex && movingHexSource"
-        :transform="`translate(${axialToWorld(movingHexSource.q, movingHexSource.r).x * SCALE}, ${axialToWorld(movingHexSource.q, movingHexSource.r).y * SCALE})`"
+        :transform="`translate(${worldPos(movingHexSource.q, movingHexSource.r).px}, ${worldPos(movingHexSource.q, movingHexSource.r).py})`"
       >
         <polygon
           :points="hexPoints(0, 0)"

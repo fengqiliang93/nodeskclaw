@@ -2,9 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.admin_members import router as admin_members_router
 from app.api.auth import router as auth_router
-from app.api.billing import router as billing_router
 from app.api.genes import router as gene_router
 from app.api.clusters import router as cluster_router
 from app.api.deploy import router as deploy_router
@@ -15,6 +13,7 @@ from app.api.instances import (
 )
 from app.api.llm_keys import router as llm_keys_router
 from app.api.organizations import router as org_router
+from app.api.org_settings import router as org_settings_router
 from app.api.registry import router as registry_router
 from app.api.settings import router as settings_router
 from app.api.storage import router as storage_router
@@ -25,14 +24,16 @@ from app.api.trust import router as trust_router
 from app.api.webhooks import router as webhook_router
 from app.api.workspaces import router as workspace_router
 from app.api.templates import router as template_router
+from app.api.instance_templates import router as instance_template_router
 from app.core.deps import require_org_role
+from app.core.feature_gate import feature_gate
+from app.core.config import settings
 
 from app.api.portal.instances import router as portal_instance_router
 from app.api.portal.instance_members import router as portal_instance_members_router
 from app.api.portal.deploy import router as portal_deploy_router
 from app.api.portal.channel_configs import router as portal_channel_config_router
 from app.api.portal.mcp import router as portal_mcp_router
-from app.api.portal.enterprise_files import router as portal_enterprise_files_router
 from app.api.portal.instance_files import router as portal_instance_files_router
 
 # ── Portal 公共 API（/api/v1）──────────────────────────────
@@ -47,9 +48,19 @@ async def health_check():
     return {"status": "ok"}
 
 
+@api_router.get("/system/info", tags=["系统"])
+async def system_info():
+    """暴露 edition 和启用的 feature 列表，供前端初始化使用。"""
+    return {
+        "edition": feature_gate.edition,
+        "version": settings.APP_VERSION,
+        "features": feature_gate.all_features(),
+    }
+
+
 api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(org_router, prefix="/orgs", tags=["组织"])
-api_router.include_router(billing_router, prefix="/billing", tags=["计费"])
+api_router.include_router(org_settings_router, prefix="/orgs", tags=["组织设置"])
 api_router.include_router(cluster_router, prefix="/clusters", tags=["集群"])
 api_router.include_router(portal_deploy_router, prefix="/deploy", tags=["部署"])
 api_router.include_router(events_router, prefix="/events", tags=["事件"])
@@ -57,16 +68,16 @@ api_router.include_router(portal_instance_router, prefix="/instances", tags=["�
 api_router.include_router(portal_instance_members_router, prefix="/instances", tags=["实例成员"])
 api_router.include_router(portal_channel_config_router, prefix="/instances", tags=["Channel 配置"])
 api_router.include_router(portal_mcp_router, prefix="/instances", tags=["MCP"])
-api_router.include_router(portal_enterprise_files_router, prefix="/enterprise-files", tags=["企业空间"])
 api_router.include_router(portal_instance_files_router, prefix="/instances", tags=["实例文件"])
 api_router.include_router(llm_keys_router, tags=["LLM Key 管理"])
 api_router.include_router(registry_router, prefix="/registry", tags=["镜像仓库"])
 api_router.include_router(settings_router, prefix="/settings", tags=["系统配置"])
 api_router.include_router(storage_router, prefix="/storage-classes", tags=["存储"])
-api_router.include_router(workspace_router, prefix="/workspaces", tags=["工作区"])
+api_router.include_router(workspace_router, prefix="/workspaces", tags=["赛博办公室"])
 api_router.include_router(corridor_router, prefix="/workspaces", tags=["过道系统"])
 api_router.include_router(trust_router, prefix="/workspaces", tags=["渐进式信任"])
-api_router.include_router(template_router, prefix="/workspaces", tags=["工作区模板"])
+api_router.include_router(template_router, prefix="/workspaces", tags=["办公室模板"])
+api_router.include_router(instance_template_router, tags=["AI 员工模板"])
 api_router.include_router(gene_router, tags=["基因进化"])
 
 # ── 管理平台 Admin API（/api/v1/admin）─────────────────────
@@ -77,10 +88,10 @@ admin_router = APIRouter()
 # 基础路由（无额外角色限制）
 admin_router.include_router(auth_router, prefix="/auth", tags=["Admin - 认证"])
 admin_router.include_router(org_router, prefix="/orgs", tags=["Admin - 组织"])
-admin_router.include_router(workspace_router, prefix="/workspaces", tags=["Admin - 工作区"])
+admin_router.include_router(workspace_router, prefix="/workspaces", tags=["Admin - 赛博办公室"])
 admin_router.include_router(corridor_router, prefix="/workspaces", tags=["Admin - 过道系统"])
 admin_router.include_router(trust_router, prefix="/workspaces", tags=["Admin - 渐进式信任"])
-admin_router.include_router(template_router, prefix="/workspaces", tags=["Admin - 工作区模板"])
+admin_router.include_router(template_router, prefix="/workspaces", tags=["Admin - 办公室模板"])
 admin_router.include_router(channel_config_router, prefix="/instances", tags=["Admin - Channel 配置"])
 admin_router.include_router(mcp_router, prefix="/instances", tags=["Admin - MCP"])
 
@@ -119,8 +130,3 @@ admin_router.include_router(llm_keys_router,
 admin_router.include_router(registry_router, prefix="/registry",
     tags=["Admin - 镜像仓库"],
     dependencies=[Depends(require_org_role("admin"))])
-admin_router.include_router(billing_router, prefix="/billing",
-    tags=["Admin - 计费"],
-    dependencies=[Depends(require_org_role("admin"))])
-admin_router.include_router(admin_members_router, prefix="/members",
-    tags=["Admin - 成员管理"])

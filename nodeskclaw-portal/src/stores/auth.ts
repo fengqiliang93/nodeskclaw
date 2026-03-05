@@ -14,9 +14,23 @@ export interface PortalUser {
   phone: string | null
   avatar_url: string | null
   is_super_admin: boolean
+  has_password: boolean
   current_org_id: string | null
   portal_org_role: string | null
   oauth_connections: OAuthConnectionInfo[]
+}
+
+export interface FeatureInfo {
+  id: string
+  name: string
+  description?: string
+  enabled: boolean
+}
+
+export interface SystemInfo {
+  edition: 'ce' | 'ee'
+  version: string
+  features: FeatureInfo[]
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -24,6 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref<string | null>(localStorage.getItem('portal_refresh_token'))
   const user = ref<PortalUser | null>(null)
   const lastOAuthProvider = ref<string | null>(sessionStorage.getItem('oauth_provider'))
+  const systemInfo = ref<SystemInfo | null>(null)
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -54,6 +69,15 @@ export const useAuthStore = defineStore('auth', () => {
     lastOAuthProvider.value = data.provider || provider
     sessionStorage.setItem('oauth_provider', lastOAuthProvider.value!)
     return data
+  }
+
+  async function fetchSystemInfo() {
+    try {
+      const res = await api.get('/system/info')
+      systemInfo.value = res.data
+    } catch {
+      systemInfo.value = { edition: 'ce', version: '0.0.0', features: [] }
+    }
   }
 
   async function fetchUser() {
@@ -102,10 +126,32 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
+  async function accountLogin(account: string, password: string) {
+    const res = await api.post('/auth/account-login', { account, password })
+    const data = res.data.data
+    setTokens(data.access_token, data.refresh_token)
+    user.value = data.user
+    return data
+  }
+
+  async function sendVerificationCode(account: string) {
+    const res = await api.post('/auth/verification-code/send', { account })
+    return res.data
+  }
+
+  async function verificationCodeLogin(account: string, code: string) {
+    const res = await api.post('/auth/verification-code/login', { account, code })
+    const data = res.data.data
+    setTokens(data.access_token, data.refresh_token)
+    user.value = data.user
+    return data
+  }
+
   return {
-    token, refreshToken, user, isLoggedIn, lastOAuthProvider,
+    token, refreshToken, user, systemInfo, isLoggedIn, lastOAuthProvider,
     setTokens, clearAuth,
     oauthLogin, emailRegister, emailLogin, sendSmsCode, smsLogin,
-    fetchUser, logout,
+    accountLogin, sendVerificationCode, verificationCodeLogin,
+    fetchSystemInfo, fetchUser, logout,
   }
 })

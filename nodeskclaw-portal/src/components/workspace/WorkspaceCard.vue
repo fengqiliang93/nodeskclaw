@@ -12,7 +12,7 @@ const { t } = useI18n()
 const statusSummary = computed(() => {
   const agents = props.workspace.agents || []
   const active = agents.filter((a) => a.status === 'running' || a.status === 'active').length
-  if (agents.length === 0) return t('workspaceCard.noAgent')
+  if (agents.length === 0) return ''
   if (active === agents.length) return t('workspaceCard.allActive')
   return t('workspaceCard.activeCount', { active, total: agents.length })
 })

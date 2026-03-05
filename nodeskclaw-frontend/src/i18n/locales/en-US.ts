@@ -82,6 +82,7 @@ const enUS = {
     deleteConfirm: "Delete instance \"{name}\"? K8s resources will be deleted as well.",
     deleteSuccess: "Instance deleted",
     deleteFailed: "Failed to delete instance",
+    cannotDeleteInWorkspace: "This instance is in cyber office \"{workspace}\". Please remove it from the cyber office first.",
     status_running: "Running",
     status_learning: "Learning",
     status_deploying: "Deploying",
@@ -143,9 +144,9 @@ const enUS = {
       slug_already_taken: "This organization slug is already taken, please choose another",
     },
     workspace: {
-      not_found: "Workspace does not exist",
-      agent_not_found: "Agent does not exist",
-      agent_not_in_workspace: "Agent is not in this workspace",
+      not_found: "Cyber office does not exist",
+      agent_not_found: "AI Employee does not exist",
+      agent_not_in_workspace: "AI Employee is not in this cyber office",
       blackboard_not_found: "Blackboard does not exist",
       member_not_found: "Member does not exist",
     },
@@ -195,6 +196,11 @@ const enUS = {
     title: "No Access",
     description: "Your account has not been granted management permissions. Please contact your organization admin to assign a role, then refresh the page.",
     logout: "Sign Out",
+  },
+  validation: {
+    instance: {
+      slug_too_long: "Slug too long, generated namespace would exceed 63-character limit",
+    },
   },
 } as const
 

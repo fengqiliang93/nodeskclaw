@@ -21,7 +21,6 @@ import {
   Layers,
   Download,
   ArrowLeft,
-  ChevronDown,
   Check,
   FileText,
   AlertTriangle,
@@ -31,10 +30,12 @@ import { useGeneStore } from '@/stores/gene'
 import type { GeneItem, GenomeItem } from '@/stores/gene'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
+import CustomSelect from '@/components/shared/CustomSelect.vue'
 
 const props = defineProps<{
   modelValue: boolean
   instanceId: string
+  installedSkillNames?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -73,22 +74,17 @@ const sortOptions = ['popularity', 'rating', 'effectiveness', 'newest']
 
 // ── Installed gene tracking ─────────────────────
 
-const installedGeneSlugs = ref<Set<string>>(new Set())
+const localInstalledSlugs = ref<Set<string>>(new Set())
 
-async function loadInstalledGenes() {
-  try {
-    const res = await api.get(`/instances/${props.instanceId}/genes`)
-    const items = res.data.data || []
-    installedGeneSlugs.value = new Set(
-      items.map((g: { gene?: { slug?: string } }) => g.gene?.slug).filter(Boolean),
-    )
-  } catch {
-    installedGeneSlugs.value = new Set()
-  }
-}
+const installedSlugs = computed(() => {
+  const base = props.installedSkillNames ?? new Set<string>()
+  const merged = new Set(base)
+  for (const slug of localInstalledSlugs.value) merged.add(slug)
+  return merged
+})
 
 function isInstalled(slug: string): boolean {
-  return installedGeneSlugs.value.has(slug)
+  return installedSlugs.value.has(slug)
 }
 
 // ── Data loading ────────────────────────────────
@@ -227,7 +223,7 @@ async function handleInstallGene(slug: string) {
   installing.value = true
   try {
     await store.installGene(props.instanceId, slug)
-    installedGeneSlugs.value.add(slug)
+    localInstalledSlugs.value.add(slug)
     toast.success(t('geneMarketDialog.learnSuccess'))
     emit('installed')
   } catch {
@@ -241,7 +237,6 @@ async function handleApplyGenome(genomeId: string) {
   installing.value = true
   try {
     await store.applyGenome(props.instanceId, genomeId)
-    await loadInstalledGenes()
     toast.success(t('geneMarketDialog.genomeApplySuccess'))
     emit('installed')
   } catch {
@@ -287,6 +282,15 @@ function getSortLabel(value: string) {
   const translated = t(key)
   return translated === key ? value : translated
 }
+
+const categorySelectOptions = computed(() => [
+  { value: null, label: t('geneMarket.allCategories') },
+  ...categories.map(c => ({ value: c, label: localizeGeneMeta(c) })),
+])
+
+const sortSelectOptions = computed(() =>
+  sortOptions.map(s => ({ value: s, label: getSortLabel(s) }))
+)
 
 const iconMap: Record<string, typeof Package> = {
   code: Code, database: Database, cpu: Cpu, server: Server,
@@ -392,7 +396,8 @@ watch(() => props.modelValue, async (open) => {
     selectedCategory.value = null
     sortBy.value = 'popularity'
     page.value = 1
-    await Promise.all([loadInstalledGenes(), loadTags()])
+    localInstalledSlugs.value = new Set()
+    await loadTags()
     await loadData()
   }
 })
@@ -486,25 +491,12 @@ onUnmounted(() => {
                   class="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
                 />
               </div>
-              <div v-if="viewMode === 'genes'" class="relative">
-                <select
-                  v-model="selectedCategory"
-                  class="appearance-none pl-3 pr-8 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer text-sm"
-                >
-                  <option :value="null">{{ t('geneMarket.allCategories') }}</option>
-                  <option v-for="c in categories" :key="c" :value="c">{{ localizeGeneMeta(c) }}</option>
-                </select>
-                <ChevronDown class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </div>
-              <div class="relative">
-                <select
-                  v-model="sortBy"
-                  class="appearance-none pl-3 pr-8 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer text-sm"
-                >
-                  <option v-for="s in sortOptions" :key="s" :value="s">{{ getSortLabel(s) }}</option>
-                </select>
-                <ChevronDown class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </div>
+              <CustomSelect
+                v-if="viewMode === 'genes'"
+                v-model="selectedCategory"
+                :options="categorySelectOptions"
+              />
+              <CustomSelect v-model="sortBy" :options="sortSelectOptions" />
             </div>
 
             <!-- Tags -->
