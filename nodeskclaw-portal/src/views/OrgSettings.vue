@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useOrgStore } from '@/stores/org'
-import { Settings, Users, Dna, Mail, FolderOpen } from 'lucide-vue-next'
+import { Settings, Users, Dna, FolderOpen } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -20,7 +20,6 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   { name: 'OrgMembers', label: () => t('orgSettings.humanMembers'), icon: Users },
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },
-  { name: 'OrgSettingsSmtp', label: () => t('orgSettings.smtpConfigTab'), icon: Mail },
   { name: 'OrgEnterpriseFiles', label: () => t('enterpriseFiles.title'), icon: FolderOpen, matchPrefix: '/org-settings/files' },
 ]
 

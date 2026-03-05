@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { LogOut, User, Package, Save, Plug, Loader2, Lock, Globe, HardDrive } from 'lucide-vue-next'
+import { LogOut, User, Package, Save, Plug, Loader2, Lock, Globe, HardDrive, Mail, Send } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
 
@@ -49,6 +49,20 @@ async function loadSettings() {
     ingressSubdomainSuffix.value = data.ingress_subdomain_suffix || ''
     tlsSecretName.value = data.tls_secret_name || ''
     networkDirty.value = false
+    // SMTP 配置
+    smtpHost.value = data.smtp_host || ''
+    smtpPort.value = data.smtp_port || '587'
+    smtpUsername.value = data.smtp_username || ''
+    smtpHasPassword.value = data.smtp_password === '******'
+    smtpPassword.value = ''
+    smtpFromEmail.value = data.smtp_from_email || ''
+    smtpFromName.value = data.smtp_from_name || ''
+    smtpUseTls.value = data.smtp_use_tls !== 'false'
+    smtpDirty.value = false
+    // 邮件模板
+    verificationSubject.value = data.verification_email_subject || ''
+    verificationTemplate.value = data.verification_email_template || ''
+    templateDirty.value = false
   } catch {
     // 首次可能没有配置，不报错
   } finally {
@@ -141,6 +155,94 @@ async function handleSaveNetwork() {
     toast.error('保存失败')
   } finally {
     networkSaving.value = false
+  }
+}
+
+// ── 邮件配置（SMTP + 模板）──
+const smtpHost = ref('')
+const smtpPort = ref('587')
+const smtpUsername = ref('')
+const smtpPassword = ref('')
+const smtpHasPassword = ref(false)
+const smtpFromEmail = ref('')
+const smtpFromName = ref('')
+const smtpUseTls = ref(true)
+const smtpDirty = ref(false)
+const smtpSaving = ref(false)
+const smtpTesting = ref(false)
+const smtpTestEmail = ref('')
+
+const verificationSubject = ref('')
+const verificationTemplate = ref('')
+const templateDirty = ref(false)
+const templateSaving = ref(false)
+
+function onSmtpFieldChange() {
+  smtpDirty.value = true
+}
+
+function onTemplateFieldChange() {
+  templateDirty.value = true
+}
+
+async function handleSaveSmtp() {
+  smtpSaving.value = true
+  try {
+    const promises = [
+      api.put('/settings/smtp_host', { value: smtpHost.value.trim() || null }),
+      api.put('/settings/smtp_port', { value: smtpPort.value.trim() || '587' }),
+      api.put('/settings/smtp_username', { value: smtpUsername.value.trim() || null }),
+      api.put('/settings/smtp_from_email', { value: smtpFromEmail.value.trim() || null }),
+      api.put('/settings/smtp_from_name', { value: smtpFromName.value.trim() || null }),
+      api.put('/settings/smtp_use_tls', { value: smtpUseTls.value ? 'true' : 'false' }),
+    ]
+    if (smtpPassword.value) {
+      promises.push(api.put('/settings/smtp_password', { value: smtpPassword.value }))
+    }
+    await Promise.all(promises)
+    smtpDirty.value = false
+    smtpPassword.value = ''
+    if (smtpUsername.value.trim()) {
+      smtpHasPassword.value = true
+    }
+    toast.success('SMTP 配置已保存')
+  } catch {
+    toast.error('保存失败')
+  } finally {
+    smtpSaving.value = false
+  }
+}
+
+async function handleTestSmtp() {
+  const email = smtpTestEmail.value.trim() || authStore.user?.email
+  if (!email) {
+    toast.error('请输入测试收件邮箱')
+    return
+  }
+  smtpTesting.value = true
+  try {
+    await api.post('/settings/smtp/test', { recipient_email: email })
+    toast.success('测试邮件已发送')
+  } catch {
+    toast.error('SMTP 测试失败，请检查配置')
+  } finally {
+    smtpTesting.value = false
+  }
+}
+
+async function handleSaveTemplate() {
+  templateSaving.value = true
+  try {
+    await Promise.all([
+      api.put('/settings/verification_email_subject', { value: verificationSubject.value.trim() || null }),
+      api.put('/settings/verification_email_template', { value: verificationTemplate.value.trim() || null }),
+    ])
+    templateDirty.value = false
+    toast.success('邮件模板已保存')
+  } catch {
+    toast.error('保存失败')
+  } finally {
+    templateSaving.value = false
   }
 }
 
@@ -422,6 +524,172 @@ onMounted(async () => {
         </div>
         <div v-if="ingressBaseDomain" class="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
           实例部署后访问地址示例：<span class="font-mono text-foreground">https://&lt;instance-name&gt;{{ ingressSubdomainSuffix ? `-${ingressSubdomainSuffix}` : '' }}.{{ ingressBaseDomain }}</span>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- 邮件配置 -->
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2">
+          <Mail class="w-5 h-5" />
+          邮件配置
+        </CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <p class="text-xs text-muted-foreground">
+          配置全局 SMTP 服务器，用于发送验证码邮件等系统通知
+        </p>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">SMTP 服务器</label>
+            <Input
+              v-model="smtpHost"
+              placeholder="smtp.example.com"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">端口</label>
+            <Input
+              v-model="smtpPort"
+              placeholder="587"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">用户名</label>
+            <Input
+              v-model="smtpUsername"
+              placeholder="user@example.com"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">
+              密码
+              <span v-if="smtpHasPassword" class="text-xs text-muted-foreground font-normal ml-1">
+                (已配置，留空不修改)
+              </span>
+            </label>
+            <Input
+              v-model="smtpPassword"
+              type="password"
+              :placeholder="smtpHasPassword ? '留空不修改' : 'SMTP 密码或授权码'"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">发件人邮箱</label>
+            <Input
+              v-model="smtpFromEmail"
+              placeholder="noreply@example.com"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">发件人名称（可选）</label>
+            <Input
+              v-model="smtpFromName"
+              placeholder="如：DeskClaw"
+              class="font-mono text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onSmtpFieldChange"
+            />
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input
+            id="smtp-use-tls"
+            v-model="smtpUseTls"
+            type="checkbox"
+            class="h-4 w-4 rounded border-input"
+            @change="onSmtpFieldChange"
+          />
+          <label for="smtp-use-tls" class="text-sm font-medium">启用 TLS 加密</label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <Button
+            size="sm"
+            :disabled="smtpSaving || !smtpDirty"
+            @click="handleSaveSmtp"
+          >
+            <Loader2 v-if="smtpSaving" class="w-3.5 h-3.5 mr-1 animate-spin" />
+            <Save v-else class="w-3.5 h-3.5 mr-1" />
+            保存
+          </Button>
+          <Input
+            v-model="smtpTestEmail"
+            :placeholder="authStore.user?.email || '测试收件邮箱'"
+            class="font-mono text-sm w-52"
+            :disabled="settingsLoading"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="smtpTesting || !smtpHost.trim()"
+            @click="handleTestSmtp"
+          >
+            <Loader2 v-if="smtpTesting" class="w-3.5 h-3.5 mr-1 animate-spin" />
+            <Send v-else class="w-3.5 h-3.5 mr-1" />
+            发送测试邮件
+          </Button>
+        </div>
+
+        <div class="border-t border-border pt-4 mt-4 space-y-3">
+          <p class="text-sm font-medium">验证码邮件模板</p>
+          <p class="text-xs text-muted-foreground">
+            自定义验证码邮件的主题和 HTML 内容。留空则使用系统默认模板。模板中用 <code class="px-1 py-0.5 bg-muted rounded text-xs">{code}</code> 表示 6 位验证码。
+          </p>
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">邮件主题</label>
+            <Input
+              v-model="verificationSubject"
+              placeholder="DeskClaw - 登录验证码"
+              class="text-sm"
+              :disabled="settingsLoading"
+              @update:model-value="onTemplateFieldChange"
+            />
+          </div>
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">HTML 模板</label>
+            <textarea
+              v-model="verificationTemplate"
+              rows="8"
+              placeholder="留空使用默认模板"
+              class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 resize-y"
+              :disabled="settingsLoading"
+              @input="onTemplateFieldChange"
+            />
+          </div>
+          <Button
+            size="sm"
+            :disabled="templateSaving || !templateDirty"
+            @click="handleSaveTemplate"
+          >
+            <Loader2 v-if="templateSaving" class="w-3.5 h-3.5 mr-1 animate-spin" />
+            <Save v-else class="w-3.5 h-3.5 mr-1" />
+            保存模板
+          </Button>
         </div>
       </CardContent>
     </Card>

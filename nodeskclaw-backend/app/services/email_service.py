@@ -1,8 +1,4 @@
-"""Email sending service — 通过 EmailTransport 抽象解耦 SMTP 配置来源。
-
-CE: 全局 SMTP（GlobalSmtpTransport）
-EE: 组织级 SMTP（OrgSmtpTransport）
-"""
+"""Email sending service — 统一通过全局 SMTP 配置发送邮件。"""
 
 import logging
 from email.message import EmailMessage
@@ -10,7 +6,6 @@ from email.message import EmailMessage
 import aiosmtplib
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.email.factory import get_email_transport
 from app.services.email.transport import SmtpConfig
 
 logger = logging.getLogger(__name__)
@@ -90,9 +85,22 @@ async def _send_email(
 
 async def send_verification_email(
     to_email: str, code: str, smtp_config: SmtpConfig,
+    db: AsyncSession | None = None,
 ) -> None:
-    html = VERIFICATION_EMAIL_HTML.replace("{code}", code)
-    await _send_email(to_email, VERIFICATION_EMAIL_SUBJECT, html, smtp_config)
+    subject = VERIFICATION_EMAIL_SUBJECT
+    template = VERIFICATION_EMAIL_HTML
+
+    if db is not None:
+        from app.services.config_service import get_config
+        custom_subject = await get_config("verification_email_subject", db)
+        custom_template = await get_config("verification_email_template", db)
+        if custom_subject:
+            subject = custom_subject
+        if custom_template:
+            template = custom_template
+
+    html = template.replace("{code}", code)
+    await _send_email(to_email, subject, html, smtp_config)
 
 
 async def send_test_email(
@@ -104,6 +112,7 @@ async def send_test_email(
 async def get_smtp_config_for_email(
     db: AsyncSession, email: str,
 ) -> SmtpConfig | None:
-    """通过 EmailTransport 解析 SMTP 配置（CE: 全局 / EE: 组织级）。"""
-    transport = get_email_transport()
+    """读取全局 SMTP 配置。email 参数保留用于接口兼容。"""
+    from app.services.email.global_smtp import GlobalSmtpTransport
+    transport = GlobalSmtpTransport()
     return await transport.resolve_smtp_config(db, email)

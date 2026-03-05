@@ -564,8 +564,8 @@ async def send_verification_code(account: str, db: AsyncSession) -> dict:
             status_code=400,
             detail={
                 "error_code": 40052,
-                "message_key": "errors.smtp.not_configured_for_user",
-                "message": "无法发送验证码邮件，该邮箱未注册或所属组织未配置 SMTP",
+                "message_key": "errors.smtp.not_configured",
+                "message": "全局 SMTP 未配置，请联系管理员",
             },
         )
 
@@ -586,7 +586,7 @@ async def send_verification_code(account: str, db: AsyncSession) -> dict:
     _verification_codes[account] = (code, time.time() + 300)
 
     try:
-        await send_verification_email(account, code, smtp_config)
+        await send_verification_email(account, code, smtp_config, db)
     except Exception as exc:
         _verification_codes.pop(account, None)
         logger.warning("Failed to send verification email to %s: %s", account, exc)
