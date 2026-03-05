@@ -391,6 +391,7 @@ def build_deployment(
                 metadata=V1ObjectMeta(labels=pod_labels, annotations=pod_annotations),
                 spec=V1PodSpec(
                     hostname=name,
+                    automount_service_account_token=False,
                     init_containers=init_containers or None,
                     containers=all_containers,
                     volumes=volumes or None,
@@ -401,29 +402,85 @@ def build_deployment(
     )
 
 
+def _build_egress_rules(
+    peer_namespaces: list[str],
+    deny_cidrs: list[str],
+    allow_ports: list[int],
+) -> list[dict]:
+    """构建 Egress 规则列表（允许列表模式，未匹配流量默认拒绝）。"""
+    rules: list[dict] = []
+
+    # 1. DNS — 仅允许 kube-system 的 53 端口
+    rules.append({
+        "to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}}],
+        "ports": [
+            {"protocol": "UDP", "port": 53},
+            {"protocol": "TCP", "port": 53},
+        ],
+    })
+
+    # 2. 平台服务 — nodeskclaw-system（LLM Proxy / Ingress Controller 等）
+    rules.append({
+        "to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "nodeskclaw-system"}}}],
+    })
+
+    # 3. 同 Namespace 内 Pod 互访
+    rules.append({
+        "to": [{"podSelector": {}}],
+    })
+
+    # 4. Peer Namespaces — 已配置的互访实例
+    for ns in peer_namespaces:
+        rules.append({
+            "to": [{
+                "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}},
+                "podSelector": {"matchLabels": {"app.kubernetes.io/managed-by": MANAGED_BY}},
+            }],
+        })
+
+    # 5. 公网出站 — 排除内网 CIDR，限定端口
+    ip_block: dict = {"cidr": "0.0.0.0/0"}
+    if deny_cidrs:
+        ip_block["except"] = deny_cidrs
+    ports = [{"protocol": "TCP", "port": p} for p in allow_ports]
+    rules.append({
+        "to": [{"ipBlock": ip_block}],
+        "ports": ports,
+    })
+
+    return rules
+
+
 def build_network_policy(
     name: str,
     namespace: str,
     labels: dict,
     peer_namespaces: list[str],
     org_id: str | None = None,
+    egress_deny_cidrs: list[str] | None = None,
+    egress_allow_ports: list[int] | None = None,
 ) -> dict:
-    """Build NetworkPolicy for multi-tenant isolation.
+    """Build NetworkPolicy for multi-tenant isolation + egress restriction.
 
-    默认策略:
+    Ingress 策略:
     - 允许来自同 Namespace 内的 Pod 访问
     - 允许来自 Ingress Controller 命名空间（nodeskclaw-system）的流量
     - 允许同组织其他 Namespace 的流量（通过 peer_namespaces）
     - 拒绝其他所有入站流量
+
+    Egress 策略:
+    - 允许 DNS（kube-system, 端口 53）
+    - 允许平台服务（nodeskclaw-system, 全端口）
+    - 允许同 Namespace 内 Pod 互访
+    - 允许 Peer Namespaces（已配置的互访实例）
+    - 允许公网出站（0.0.0.0/0 except deny_cidrs, 限 allow_ports）
+    - 拒绝其他所有出站流量
     """
     ingress_from: list[dict] = [
-        # 同 Namespace 内 Pod 互访
         {"podSelector": {}},
-        # 允许 Ingress Controller 访问
         {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "nodeskclaw-system"}}},
     ]
 
-    # 同组织其他实例的命名空间
     for ns in peer_namespaces:
         ingress_from.append({
             "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}},
@@ -434,15 +491,22 @@ def build_network_policy(
     if org_id:
         policy_labels["nodeskclaw.io/org-id"] = org_id
 
+    spec: dict = {
+        "podSelector": {},
+        "policyTypes": ["Ingress", "Egress"],
+        "ingress": [{"from": ingress_from}],
+        "egress": _build_egress_rules(
+            peer_namespaces=peer_namespaces,
+            deny_cidrs=egress_deny_cidrs or [],
+            allow_ports=egress_allow_ports or [80, 443],
+        ),
+    }
+
     return {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "NetworkPolicy",
         "metadata": {"name": name, "namespace": namespace, "labels": policy_labels},
-        "spec": {
-            "podSelector": {},  # 作用于整个 Namespace
-            "policyTypes": ["Ingress"],
-            "ingress": [{"from": ingress_from}],
-        },
+        "spec": spec,
     }
 
 

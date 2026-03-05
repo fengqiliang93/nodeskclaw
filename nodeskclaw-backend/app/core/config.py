@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # ── 出站代理（用于访问 OpenAI/Anthropic 等外部 API）────
     HTTPS_PROXY: str = ""
 
+    # ── Egress NetworkPolicy（AI 员工 Pod 出站流量控制）────
+    EGRESS_DENY_CIDRS: str = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    EGRESS_ALLOW_PORTS: str = "80,443"
+
     # ── GeneHub Registry ────────────────────────────────
     GENEHUB_REGISTRY_URL: str = ""  # e.g. https://genehub.example.com
     GENEHUB_API_KEY: str = ""       # publisher-level API Key

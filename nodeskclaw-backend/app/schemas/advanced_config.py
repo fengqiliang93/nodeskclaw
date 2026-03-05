@@ -42,9 +42,16 @@ class InitContainerConfig(BaseModel):
     env_vars: dict[str, str] = {}
 
 
+class EgressConfig(BaseModel):
+    """实例级出站流量覆盖配置（EE 专属）。None 表示沿用全局默认值。"""
+    deny_cidrs: list[str] | None = None
+    allow_ports: list[int] | None = None
+
+
 class NetworkConfig(BaseModel):
     """跨实例网络配置。"""
     peers: list[str] = []  # 允许互访的实例 ID 列表
+    egress: EgressConfig = EgressConfig()
 
 
 class AdvancedConfig(BaseModel):

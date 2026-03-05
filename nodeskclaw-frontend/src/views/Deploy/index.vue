@@ -319,7 +319,7 @@ const advancedConfig = ref({
   volumes: [] as { name: string; volume_type: string; mount_path: string; pvc: string; config_map_name: string; secret_name: string }[],
   sidecars: [] as { name: string; image: string; cpu_request: string; cpu_limit: string; mem_request: string; mem_limit: string }[],
   init_containers: [] as { name: string; image: string; command: string }[],
-  network: { peers: [] as string[] },
+  network: { peers: [] as string[], egress: { deny_cidrs: null as string[] | null, allow_ports: null as number[] | null } },
   custom_labels: {} as Record<string, string>,
   custom_annotations: {} as Record<string, string>,
 })
@@ -367,6 +367,8 @@ function buildPayload() {
     advancedConfig.value.sidecars.length > 0 ||
     advancedConfig.value.init_containers.length > 0 ||
     advancedConfig.value.network.peers.length > 0 ||
+    advancedConfig.value.network.egress?.deny_cidrs != null ||
+    advancedConfig.value.network.egress?.allow_ports != null ||
     Object.keys(advancedConfig.value.custom_labels).length > 0 ||
     Object.keys(advancedConfig.value.custom_annotations).length > 0
 

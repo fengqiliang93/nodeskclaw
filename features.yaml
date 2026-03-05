@@ -45,6 +45,10 @@ edition_features:
       name: LLM Usage Analytics
       description: LLM 用量统计报表
 
+    - id: network_egress_control
+      name: Network Egress Control
+      description: 实例级出站流量策略定制（Egress NetworkPolicy）
+
     # ── 未来功能（代码将在 ee/ 仓库中新增） ──
     - id: multi_cluster
       name: Multi-Cluster Management

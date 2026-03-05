@@ -214,6 +214,8 @@ cp .env.example .env
 | 变量 | 说明 |
 |------|------|
 | `GATEWAY_KUBECONFIG` | 本地开发时网关集群（infra）的 kubeconfig 文件路径。生产环境使用 in-cluster config，无需配置 |
+| `EGRESS_DENY_CIDRS` | AI 员工 Pod Egress NetworkPolicy 中拒绝访问的 CIDR 列表（逗号分隔），默认 `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
+| `EGRESS_ALLOW_PORTS` | AI 员工 Pod 公网出站允许的 TCP 端口（逗号分隔），默认 `80,443` |
 
 ### 启动
 

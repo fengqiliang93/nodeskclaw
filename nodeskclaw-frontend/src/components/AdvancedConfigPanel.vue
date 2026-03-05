@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Trash2, HardDrive, Container, Zap, Globe, Tag } from 'lucide-vue-next'
+import { Plus, Trash2, HardDrive, Container, Zap, Globe, Shield, Tag } from 'lucide-vue-next'
+import { useAuthStore } from '@/stores/auth'
 
 interface VolumeConfig {
   name: string
@@ -30,12 +32,22 @@ interface InitContainerConfig {
   command: string
 }
 
+interface EgressConfig {
+  deny_cidrs: string[] | null
+  allow_ports: number[] | null
+}
+
+const authStore = useAuthStore()
+const hasEgressControl = computed(() =>
+  authStore.systemInfo?.features?.some((f: any) => f.id === 'network_egress_control' && f.enabled),
+)
+
 const props = defineProps<{
   modelValue: {
     volumes: VolumeConfig[]
     sidecars: SidecarConfig[]
     init_containers: InitContainerConfig[]
-    network: { peers: string[] }
+    network: { peers: string[]; egress: EgressConfig }
     custom_labels: Record<string, string>
     custom_annotations: Record<string, string>
   }
@@ -120,9 +132,33 @@ function togglePeer(peerId: string) {
   const idx = peers.indexOf(peerId)
   if (idx >= 0) peers.splice(idx, 1)
   else peers.push(peerId)
-  update('network', { peers })
+  update('network', { ...props.modelValue.network, peers })
 }
 const hasPeer = (id: string) => props.modelValue.network.peers.includes(id)
+
+// ── Egress (EE) ──
+const egressCidrsText = computed({
+  get: () => (props.modelValue.network.egress?.deny_cidrs ?? []).join('\n'),
+  set: (val: string) => {
+    const cidrs = val.trim() ? val.split('\n').map(s => s.trim()).filter(Boolean) : null
+    update('network', {
+      ...props.modelValue.network,
+      egress: { ...props.modelValue.network.egress, deny_cidrs: cidrs },
+    })
+  },
+})
+const egressPortsText = computed({
+  get: () => (props.modelValue.network.egress?.allow_ports ?? []).join(', '),
+  set: (val: string) => {
+    const ports = val.trim()
+      ? val.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+      : null
+    update('network', {
+      ...props.modelValue.network,
+      egress: { ...props.modelValue.network.egress, allow_ports: ports },
+    })
+  },
+})
 
 // ── Custom labels / annotations (key-value) ──
 function addLabel() {
@@ -342,6 +378,39 @@ const annotationEntries = () => Object.entries(props.modelValue.custom_annotatio
           >
             {{ inst.name }}
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Egress (EE only) -->
+    <Card v-if="hasEgressControl">
+      <CardHeader>
+        <CardTitle class="text-sm flex items-center gap-2">
+          <Shield class="w-4 h-4" /> 出站流量控制
+        </CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <p class="text-xs text-muted-foreground">
+          自定义此实例的出站网络策略。留空则使用全局默认配置。
+        </p>
+        <div>
+          <Label class="text-xs">拒绝访问的网段（每行一个 CIDR）</Label>
+          <textarea
+            :value="egressCidrsText"
+            rows="3"
+            class="w-full mt-1 rounded-md bg-card border border-border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+            placeholder="10.0.0.0/8&#10;172.16.0.0/12&#10;192.168.0.0/16"
+            @input="egressCidrsText = ($event.target as HTMLTextAreaElement).value"
+          />
+        </div>
+        <div>
+          <Label class="text-xs">允许的出站端口（逗号分隔）</Label>
+          <Input
+            :model-value="egressPortsText"
+            class="mt-1 font-mono"
+            placeholder="80, 443"
+            @update:model-value="egressPortsText = $event as string"
+          />
         </div>
       </CardContent>
     </Card>
