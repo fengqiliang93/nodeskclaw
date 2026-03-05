@@ -407,24 +407,14 @@ async def login_with_phone(phone: str, code: str, db: AsyncSession) -> LoginResp
     user = result.scalar_one_or_none()
 
     if user is None:
-        user = User(
-            name=f"用户{phone[-4:]}",
-            phone=phone,
-            role=UserRole.user,
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": 40030,
+                "message_key": "errors.auth.phone_not_registered",
+                "message": "该手机号未注册",
+            },
         )
-        db.add(user)
-
-        from app.models.org_membership import OrgMembership, OrgRole
-        from app.models.organization import Organization
-        org_result = await db.execute(
-            select(Organization).where(Organization.slug.in_(["my-org", "default"]), Organization.deleted_at.is_(None))
-        )
-        default_org = org_result.scalar_one_or_none()
-        if default_org:
-            await db.flush()
-            membership = OrgMembership(user_id=user.id, org_id=default_org.id, role=OrgRole.member)
-            db.add(membership)
-            user.current_org_id = default_org.id
 
     if not user.is_active:
         raise HTTPException(

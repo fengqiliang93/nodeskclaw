@@ -318,9 +318,6 @@ watch(isRegister, () => { error.value = '' })
               {{ t('auth.login') }}
             </button>
 
-            <p class="text-xs text-center text-muted-foreground">
-              {{ t('auth.codeLoginHint') }}
-            </p>
           </form>
 
           <!-- 错误提示 -->
