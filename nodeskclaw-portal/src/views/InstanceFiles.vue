@@ -98,6 +98,10 @@ const filteredItems = computed(() => {
 
 const hasUnsavedChanges = computed(() => editing.value && panelContent.value !== panelOriginalContent.value)
 
+function breadcrumbLabel(part: string): string {
+  return part === '.openclaw' ? t('instanceFiles.workspaceRoot') : part
+}
+
 async function fetchFiles() {
   loading.value = true
   error.value = ''
@@ -240,9 +244,9 @@ onMounted(fetchFiles)
             class="text-muted-foreground hover:text-foreground transition-colors"
             @click="handleBreadcrumb(idx)"
           >
-            {{ part }}
+            {{ breadcrumbLabel(part) }}
           </button>
-          <span v-else class="text-foreground font-medium">{{ part }}</span>
+          <span v-else class="text-foreground font-medium">{{ breadcrumbLabel(part) }}</span>
         </template>
       </template>
     </div>

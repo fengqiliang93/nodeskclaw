@@ -378,3 +378,29 @@ async def write_file_content(
             code=50300, message="无法连接到实例",
             message_key="errors.enterprise_files.instance_not_running", status_code=503,
         )
+
+
+async def write_file_content_for_org(
+    instance_id: str, rel_path: str, content: str, org_id: str, db: AsyncSession,
+) -> dict:
+    """写入文件（企业空间入口，含组织归属校验）。"""
+    safe_path = _validate_path(rel_path)
+    instance = await _get_instance(instance_id, org_id, db)
+
+    if instance.status != InstanceStatus.running:
+        raise AppException(
+            code=50300,
+            message="实例未运行，无法写入文件",
+            message_key="errors.enterprise_files.instance_not_running",
+            status_code=503,
+        )
+
+    try:
+        async with remote_fs(instance, db) as fs:
+            await fs.write_text(safe_path, content)
+            return {"path": safe_path, "size": len(content.encode("utf-8"))}
+    except NFSMountError:
+        raise AppException(
+            code=50300, message="无法连接到实例",
+            message_key="errors.enterprise_files.instance_not_running", status_code=503,
+        )

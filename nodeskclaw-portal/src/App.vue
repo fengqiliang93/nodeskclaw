@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
-import { PawPrint, Settings, LogOut, BarChart3, Boxes, Server, FlaskConical, FolderOpen, User } from 'lucide-vue-next'
+import { PawPrint, Settings, LogOut, BarChart3, Boxes, Server, FlaskConical, User } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 import ToastContainer from '@/components/shared/ToastContainer.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
@@ -16,7 +16,6 @@ const authStore = useAuthStore()
 const { t } = useI18n()
 
 const { isEnabled: hasBilling } = useFeature('billing')
-const { isEnabled: hasEnterpriseFiles } = useFeature('enterprise_files')
 
 const isLoginPage = computed(() => route.path === '/login')
 const hideNav = computed(() => route.meta.hideNav === true)
@@ -120,17 +119,6 @@ function onLocaleChange(value: string) {
             >
               <FlaskConical class="w-4 h-4 inline mr-1.5" />
               {{ t('common.geneMarket') }}
-            </button>
-            <button
-              v-if="hasEnterpriseFiles && authStore.user?.portal_org_role === 'admin'"
-              :class="[
-                'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm transition-colors',
-                route.path.startsWith('/enterprise-files') ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
-              ]"
-              @click="router.push('/enterprise-files')"
-            >
-              <FolderOpen class="w-4 h-4 inline mr-1.5" />
-              {{ t('enterpriseFiles.title') }}
             </button>
             <button
               v-if="authStore.user?.portal_org_role === 'admin'"

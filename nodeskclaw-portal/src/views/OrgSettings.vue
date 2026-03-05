@@ -3,22 +3,35 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useOrgStore } from '@/stores/org'
-import { Settings, Users, Dna, Mail } from 'lucide-vue-next'
+import { Settings, Users, Dna, Mail, FolderOpen } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const orgStore = useOrgStore()
 
-const allNavItems = [
+interface NavItem {
+  name: string
+  label: () => string
+  icon: typeof Settings
+  matchPrefix?: string
+}
+
+const allNavItems: NavItem[] = [
   { name: 'OrgMembers', label: () => t('orgSettings.humanMembers'), icon: Users },
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },
   { name: 'OrgSettingsSmtp', label: () => t('orgSettings.smtpConfigTab'), icon: Mail },
+  { name: 'OrgEnterpriseFiles', label: () => t('enterpriseFiles.title'), icon: FolderOpen, matchPrefix: '/org-settings/files' },
 ]
 
 const navItems = computed(() =>
   allNavItems.filter(item => router.hasRoute(item.name))
 )
+
+function isActive(item: NavItem): boolean {
+  if (item.matchPrefix) return route.path.startsWith(item.matchPrefix)
+  return route.name === item.name
+}
 
 onMounted(async () => {
   if (!orgStore.currentOrg) await orgStore.fetchMyOrg()
@@ -39,7 +52,7 @@ onMounted(async () => {
           :key="item.name"
           :to="{ name: item.name }"
           class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
-          :class="route.name === item.name
+          :class="isActive(item)
             ? 'bg-primary/10 text-primary font-medium'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
         >
