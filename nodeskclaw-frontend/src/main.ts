@@ -4,6 +4,7 @@ import router from '@/router'
 import { i18n } from '@/i18n'
 import App from './App.vue'
 import '@/styles/globals.css'
+import 'vue-sonner/style.css'
 
 const app = createApp(App)
 app.use(createPinia())
