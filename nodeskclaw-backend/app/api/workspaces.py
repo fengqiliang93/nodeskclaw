@@ -21,6 +21,7 @@ from app.schemas.workspace import (
     BlackboardSectionPatch,
     BlackboardUpdate,
     ChatMessageRequest,
+    DecorationUpdate,
     ObjectiveCreate,
     ObjectiveUpdate,
     TaskCreate,
@@ -577,17 +578,14 @@ async def get_decoration(
     if ws is None:
         raise _error(404, 40401, "errors.workspace.not_found", "办公室不存在")
     config = ws.decoration_config or {}
-    return _ok({
-        "y_scale": config.get("y_scale", 1.0),
-        "floor_asset_id": config.get("floor_asset_id"),
-        "furniture": config.get("furniture", []),
-    })
+    hexes = config.get("hexes", {})
+    return _ok({"hexes": hexes})
 
 
 @router.put("/{workspace_id}/decoration")
 async def update_decoration(
     workspace_id: str,
-    data: dict,
+    data: DecorationUpdate,
     db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_dep()),
 ):
@@ -599,25 +597,13 @@ async def update_decoration(
     if ws is None:
         raise _error(404, 40401, "errors.workspace.not_found", "办公室不存在")
 
-    current = ws.decoration_config or {}
-    if "y_scale" in data:
-        val = float(data["y_scale"])
-        current["y_scale"] = max(0.3, min(1.0, val))
-    if "floor_asset_id" in data:
-        current["floor_asset_id"] = data["floor_asset_id"]
-    if "furniture" in data:
-        current["furniture"] = data["furniture"]
-
-    ws.decoration_config = current
+    new_config = {"hexes": {k: v.model_dump() for k, v in (data.hexes or {}).items()}}
+    ws.decoration_config = new_config
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(ws, "decoration_config")
     await db.commit()
     await db.refresh(ws)
-    return _ok({
-        "y_scale": current.get("y_scale", 1.0),
-        "floor_asset_id": current.get("floor_asset_id"),
-        "furniture": current.get("furniture", []),
-    })
+    return _ok({"hexes": new_config["hexes"]})
 
 
 # ── Workspace Schedules ──────────────────────────────

@@ -163,16 +163,13 @@ export interface TopologyInfo {
   edges: TopologyEdge[]
 }
 
-export interface FurniturePlacement {
-  asset_id: string
-  hex_q: number
-  hex_r: number
+export interface HexDecoration {
+  floor_asset_id: string | null
+  furniture: string[]
 }
 
 export interface DecorationConfig {
-  y_scale: number
-  floor_asset_id: string | null
-  furniture: FurniturePlacement[]
+  hexes: Record<string, HexDecoration>
 }
 
 export interface MessageFlowPair {
@@ -994,9 +991,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  async function saveDecoration(workspaceId: string, config: Partial<DecorationConfig>) {
+  async function saveDecoration(workspaceId: string, hexes: Record<string, HexDecoration>) {
     try {
-      const res = await api.put(`/workspaces/${workspaceId}/decoration`, config)
+      const res = await api.put(`/workspaces/${workspaceId}/decoration`, { hexes })
       decoration.value = res.data.data
     } catch (e) {
       console.error('saveDecoration error:', e)

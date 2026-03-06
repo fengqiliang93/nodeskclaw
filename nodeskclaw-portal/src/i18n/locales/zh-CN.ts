@@ -200,16 +200,18 @@ const zhCN = {
   },
   decoration: {
     panel_title: '办公室装修',
-    y_scale: '视角比例',
+    select_hex_hint: '请点击一个工位开始装修',
+    current_hex: '当前工位: {name}',
     floor: {
       title: '地板',
+      terrazzo_diamond: '水磨石',
       carpet_warm: '暖色地毯',
       carpet_cool: '冷色地毯',
       carpet_marble: '大理石',
     },
     furniture: {
       title: '家具',
-      hint: '选择家具后点击格子放置，点击已有家具移除',
+      hint: '点击图标可添加或移除该家具',
       office_chair: '办公椅',
       office_desk: '办公桌',
       desk_lamp: '台灯',

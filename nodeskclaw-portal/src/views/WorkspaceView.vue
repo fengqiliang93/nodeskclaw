@@ -17,7 +17,7 @@ import AgentDetailDialog from '@/components/workspace/AgentDetailDialog.vue'
 import CollaborationTimeline from '@/components/workspace/CollaborationTimeline.vue'
 import DecorationPanel from '@/components/workspace/DecorationPanel.vue'
 import { findFloorAssetById, findAssetById } from '@/config/decorationAssets'
-import type { DecorationConfig, FurniturePlacement } from '@/stores/workspace'
+import type { HexDecoration } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
 import { axialToWorld } from '@/composables/useHexLayout'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
@@ -39,53 +39,57 @@ const agents = computed(() => ws.value?.agents || [])
 const decorationOpen = ref(false)
 const decorationSaving = ref(false)
 const decorationMode = ref(false)
-const activeFurnitureTool = ref<string | null>(null)
-const localDecorationOverride = ref<Partial<DecorationConfig> | null>(null)
+const decoratingHexKey = ref<string | null>(null)
+const localHexOverrides = ref<Record<string, HexDecoration>>({})
 
-const effectiveDecoration = computed(() => {
-  const base = store.decoration
-  const override = localDecorationOverride.value
-  if (!base && !override) return null
-  return {
-    y_scale: override?.y_scale ?? base?.y_scale ?? 1.0,
-    floor_asset_id: override?.floor_asset_id !== undefined ? override.floor_asset_id : (base?.floor_asset_id ?? null),
-    furniture: override?.furniture ?? base?.furniture ?? [],
-  } as DecorationConfig
-})
-
-const computedFloorUrl = computed(() => {
-  const assetId = effectiveDecoration.value?.floor_asset_id
-  if (!assetId) return undefined
-  const asset = findFloorAssetById(assetId)
-  return asset?.url
-})
-
-const computedFurniture = computed(() => {
-  const items = effectiveDecoration.value?.furniture ?? []
-  return items.map((f: FurniturePlacement, idx: number) => {
-    const asset = findAssetById(f.asset_id)
-    return {
-      id: `f-${idx}`,
-      hex_q: f.hex_q,
-      hex_r: f.hex_r,
-      asset_key: f.asset_id,
-      asset_url: asset?.url || `/assets/hex2d/furniture/${f.asset_id}.svg`,
+const occupiedHexKeys = computed(() => {
+  const keys = new Set<string>()
+  keys.add('0,0')
+  for (const a of agents.value) keys.add(`${a.hex_q},${a.hex_r}`)
+  for (const n of store.topologyNodes) {
+    if (n.node_type === 'corridor' || n.node_type === 'human') {
+      keys.add(`${n.hex_q},${n.hex_r}`)
     }
-  })
+  }
+  return keys
 })
 
-const computedYScale = computed(() => effectiveDecoration.value?.y_scale ?? 1.0)
+const effectiveHexDecorations = computed<Record<string, HexDecoration>>(() => {
+  const base = store.decoration?.hexes || {}
+  const overrides = localHexOverrides.value
+  const merged: Record<string, HexDecoration> = {}
+  for (const key of new Set([...Object.keys(base), ...Object.keys(overrides)])) {
+    merged[key] = overrides[key] ?? base[key]
+  }
+  return merged
+})
 
-function onDecorationConfigUpdate(partial: Partial<DecorationConfig>) {
-  localDecorationOverride.value = { ...localDecorationOverride.value, ...partial }
+const computedHexDecorations = computed(() => {
+  const result: Record<string, { floorUrl?: string; furnitureUrls?: string[] }> = {}
+  for (const [key, deco] of Object.entries(effectiveHexDecorations.value)) {
+    const floorAsset = deco.floor_asset_id ? findFloorAssetById(deco.floor_asset_id) : undefined
+    const furnitureUrls = deco.furniture
+      .map(id => findAssetById(id)?.url || `/assets/hex2d/furniture/${id}.svg`)
+    result[key] = { floorUrl: floorAsset?.url, furnitureUrls }
+  }
+  return result
+})
+
+const currentHexDecoration = computed<HexDecoration | null>(() => {
+  if (!decoratingHexKey.value) return null
+  return effectiveHexDecorations.value[decoratingHexKey.value] ?? null
+})
+
+function onHexDecorationUpdate(deco: HexDecoration) {
+  if (!decoratingHexKey.value) return
+  localHexOverrides.value = { ...localHexOverrides.value, [decoratingHexKey.value]: deco }
 }
 
 async function saveDecoration() {
-  if (!localDecorationOverride.value) return
   decorationSaving.value = true
   try {
-    await store.saveDecoration(workspaceId.value, localDecorationOverride.value)
-    localDecorationOverride.value = null
+    await store.saveDecoration(workspaceId.value, effectiveHexDecorations.value)
+    localHexOverrides.value = {}
   } catch {
     console.error('saveDecoration failed')
   } finally {
@@ -94,26 +98,17 @@ async function saveDecoration() {
 }
 
 function onDecorationHexClick(payload: { q: number; r: number }) {
-  if (!activeFurnitureTool.value) return
-  const current = effectiveDecoration.value?.furniture ?? []
-  const existIdx = current.findIndex(
-    (f: FurniturePlacement) => f.hex_q === payload.q && f.hex_r === payload.r,
-  )
-  let updated: FurniturePlacement[]
-  if (existIdx >= 0) {
-    updated = current.filter((_: FurniturePlacement, i: number) => i !== existIdx)
-  } else {
-    updated = [...current, { asset_id: activeFurnitureTool.value, hex_q: payload.q, hex_r: payload.r }]
-  }
-  onDecorationConfigUpdate({ furniture: updated })
+  const key = `${payload.q},${payload.r}`
+  if (!occupiedHexKeys.value.has(key)) return
+  decoratingHexKey.value = key
 }
 
 function toggleDecorationPanel() {
   decorationOpen.value = !decorationOpen.value
   if (!decorationOpen.value) {
     decorationMode.value = false
-    activeFurnitureTool.value = null
-    localDecorationOverride.value = null
+    decoratingHexKey.value = null
+    localHexOverrides.value = {}
   } else {
     decorationMode.value = true
   }
@@ -122,8 +117,8 @@ function toggleDecorationPanel() {
 function closeDecorationPanel() {
   decorationOpen.value = false
   decorationMode.value = false
-  activeFurnitureTool.value = null
-  localDecorationOverride.value = null
+  decoratingHexKey.value = null
+  localHexOverrides.value = {}
 }
 
 const bbTaskCount = computed(() => 0)
@@ -1009,9 +1004,8 @@ function handleKeydown(e: KeyboardEvent) {
             :message-flow-stats="store.messageFlowStats"
             :is-moving-hex="highlightEmptyHexes"
             :moving-hex-source="movingHexSource"
-            :floor-texture-url="computedFloorUrl"
-            :furniture="computedFurniture"
-            :y-scale="computedYScale"
+            :hex-decorations="computedHexDecorations"
+            :decorating-hex-key="decoratingHexKey"
             :is-decoration-mode="decorationMode"
             @hex-click="onHexClick"
             @agent-dblclick="onAgentDblClick"
@@ -1081,12 +1075,12 @@ function handleKeydown(e: KeyboardEvent) {
       <Transition name="chat-slide">
         <DecorationPanel
           v-if="decorationOpen && activeMode === '2d'"
-          :config="effectiveDecoration"
+          :selected-hex-key="decoratingHexKey"
+          :hex-decoration="currentHexDecoration"
           :saving="decorationSaving"
-          @update:config="onDecorationConfigUpdate"
+          @update:hex-decoration="onHexDecorationUpdate"
           @save="saveDecoration"
           @close="closeDecorationPanel"
-          @select-furniture="(id: string | null) => activeFurnitureTool = id"
         />
       </Transition>
 

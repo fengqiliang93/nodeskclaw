@@ -200,16 +200,18 @@ const enUS = {
   },
   decoration: {
     panel_title: 'Office Decoration',
-    y_scale: 'Perspective Scale',
+    select_hex_hint: 'Click a workstation to start decorating',
+    current_hex: 'Current hex: {name}',
     floor: {
       title: 'Floor',
+      terrazzo_diamond: 'Terrazzo',
       carpet_warm: 'Warm Carpet',
       carpet_cool: 'Cool Carpet',
       carpet_marble: 'Marble',
     },
     furniture: {
       title: 'Furniture',
-      hint: 'Select furniture then click a hex to place, click existing furniture to remove',
+      hint: 'Click an icon to add or remove furniture',
       office_chair: 'Office Chair',
       office_desk: 'Office Desk',
       desk_lamp: 'Desk Lamp',
