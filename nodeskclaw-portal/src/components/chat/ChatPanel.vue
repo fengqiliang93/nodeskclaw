@@ -567,7 +567,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
           </div>
 
           <!-- Bubble -->
-          <div class="flex flex-col" :class="msg.sender_type === 'user' ? 'max-w-[75%] items-end' : 'max-w-[92%] items-start'">
+          <div class="flex flex-col min-w-0" :class="msg.sender_type === 'user' ? 'max-w-[75%] items-end' : 'max-w-[92%] items-start'">
             <div class="flex items-center gap-1.5 mb-0.5 max-w-full min-w-0 group/header">
               <span
                 class="text-xs font-medium truncate max-w-[120px] cursor-default"
@@ -853,6 +853,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
 
 .chat-markdown {
   overflow: hidden;
+  max-width: 100%;
 }
 
 .chat-markdown :deep(p) { margin: 0.25em 0; }
