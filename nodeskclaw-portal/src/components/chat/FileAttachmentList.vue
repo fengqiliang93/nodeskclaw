@@ -45,8 +45,8 @@ async function download(att: FileAttachment) {
     >
       <ImageIcon v-if="isImage(att)" class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
       <FileText v-else class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-      <span class="truncate max-w-[120px]">{{ att.original_name }}</span>
-      <span class="text-muted-foreground shrink-0">({{ formatFileSize(att.file_size) }})</span>
+      <span class="truncate max-w-[120px]">{{ att.name }}</span>
+      <span class="text-muted-foreground shrink-0">({{ formatFileSize(att.size) }})</span>
       <Download class="w-3 h-3 shrink-0 text-muted-foreground" />
     </button>
   </div>
