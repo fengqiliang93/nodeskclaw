@@ -186,6 +186,9 @@ function createTopologyTool(cfg: ToolConfig): AnyAgentTool {
                 reachable.push(node);
               } else if (node.node_type === "corridor") {
                 queue.push(nb);
+              } else if (node.node_type === "blackboard") {
+                reachable.push(node);
+                queue.push(nb);
               }
             }
           }

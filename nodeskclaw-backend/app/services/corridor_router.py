@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class ReachableEndpoint:
     hex_q: int
     hex_r: int
-    endpoint_type: str  # "agent" | "human"
+    endpoint_type: str  # "agent" | "human" | "blackboard"
     entity_id: str  # instance_id or user_id
     display_name: str = ""
 
@@ -161,7 +161,11 @@ async def get_reachable_endpoints(
             elif node.node_type == "corridor":
                 queue.append(neighbor)
             elif node.node_type == "blackboard":
-                pass
+                endpoints.append(ReachableEndpoint(
+                    node.hex_q, node.hex_r, "blackboard", "blackboard",
+                    display_name="Blackboard",
+                ))
+                queue.append(neighbor)
 
     return endpoints
 

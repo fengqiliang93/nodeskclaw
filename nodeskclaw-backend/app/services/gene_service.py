@@ -2193,6 +2193,70 @@ async def review_gene(db: AsyncSession, gene_id: str, action: str, reason: str |
     return {"review_status": gene.review_status, "is_published": gene.is_published}
 
 
+async def refresh_gene_skills(db: AsyncSession, gene_slugs: list[str]) -> dict:
+    """Refresh SKILL.md on all instances that have the specified genes installed.
+
+    Fetches the latest manifest from GeneHub (or local cache) and overwrites
+    the skill file on each instance without changing InstanceGene status.
+    """
+    result = await db.execute(
+        select(InstanceGene, Gene, Instance)
+        .join(Gene, InstanceGene.gene_id == Gene.id)
+        .join(Instance, InstanceGene.instance_id == Instance.id)
+        .where(
+            Gene.slug.in_(gene_slugs),
+            InstanceGene.status == InstanceGeneStatus.installed,
+            not_deleted(InstanceGene),
+            not_deleted(Instance),
+        )
+    )
+    rows = result.all()
+
+    refreshed: list[dict] = []
+    failed: list[dict] = []
+
+    for ig, gene, instance in rows:
+        try:
+            hub_manifest = await genehub_client.get_manifest(gene.slug)
+            manifest = hub_manifest or _json_loads(gene.manifest) or {}
+            skill = manifest.get("skill", {})
+            skill_name = skill.get("name", gene.slug)
+            skill_content = skill.get("content", "")
+            if not skill_content:
+                continue
+
+            async with remote_fs(instance, db) as fs:
+                await _write_skill_file(
+                    fs, skill_name, skill_content,
+                    gene.short_description or gene.description or "",
+                )
+                await ensure_skills_discovery(fs)
+                await invalidate_skill_snapshots(fs)
+
+            refreshed.append({
+                "instance_id": instance.id,
+                "instance_name": instance.name,
+                "gene_slug": gene.slug,
+            })
+        except Exception as e:
+            logger.error(
+                "refresh_gene_skills: instance=%s gene=%s error=%s",
+                instance.name, gene.slug, e,
+            )
+            failed.append({
+                "instance_id": instance.id,
+                "instance_name": instance.name,
+                "gene_slug": gene.slug,
+                "error": str(e),
+            })
+
+    logger.info(
+        "refresh_gene_skills: refreshed=%d failed=%d slugs=%s",
+        len(refreshed), len(failed), gene_slugs,
+    )
+    return {"refreshed": refreshed, "failed": failed}
+
+
 async def uninstall_gene(db: AsyncSession, instance_id: str, gene_id: str) -> dict:
     from app.services.instance_service import get_instance
 

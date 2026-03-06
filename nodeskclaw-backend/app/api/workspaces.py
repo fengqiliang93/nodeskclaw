@@ -1454,3 +1454,28 @@ async def repair_channel_accounts(
     from app.services import llm_config_service
     result = await llm_config_service.repair_channel_account_urls(db)
     return _ok(result)
+
+
+@router.post("/maintenance/refresh-gene-skills")
+async def refresh_gene_skills(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Refresh SKILL.md on all instances that have the specified genes installed."""
+    if not user.is_super_admin:
+        raise HTTPException(status_code=403, detail={
+            "error_code": 40310,
+            "message_key": "errors.org.super_admin_required",
+            "message": "仅限平台管理员操作",
+        })
+    gene_slugs = body.get("gene_slugs", [])
+    if not gene_slugs or not isinstance(gene_slugs, list):
+        raise HTTPException(status_code=400, detail={
+            "error_code": 40001,
+            "message_key": "errors.validation.invalid_params",
+            "message": "gene_slugs 为必填的字符串数组",
+        })
+    from app.services import gene_service
+    result = await gene_service.refresh_gene_skills(db, gene_slugs)
+    return _ok(result)
