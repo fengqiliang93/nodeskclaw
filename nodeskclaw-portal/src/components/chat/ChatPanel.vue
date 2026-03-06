@@ -869,14 +869,12 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
             <img
               v-if="isImageFile(file) && pendingFileUrls.get(file)"
               :src="pendingFileUrls.get(file)"
-              class="w-8 h-8 rounded object-cover shrink-0"
+              class="w-5 h-5 rounded object-cover shrink-0"
               :alt="file.name"
             />
             <FileText v-else-if="!isImageFile(file)" class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-            <div class="flex flex-col min-w-0 flex-1">
-              <span class="truncate">{{ file.name }}</span>
-              <span class="text-muted-foreground">({{ formatFileSize(file.size) }})</span>
-            </div>
+            <span class="truncate">{{ file.name }}</span>
+            <span class="text-muted-foreground shrink-0">({{ formatFileSize(file.size) }})</span>
             <button
               class="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
               @click.stop="removePendingFile(idx)"
