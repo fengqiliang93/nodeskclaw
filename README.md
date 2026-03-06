@@ -1,116 +1,119 @@
-# NoDeskClaw
+# DeskClaw
 
-DeskClaw 实例可视化管理平台 -- One-click deploy, full control.
+**Your AI workforce, orchestrated.** Deploy, manage, and scale AI agents on Kubernetes — from a single pane of glass.
 
-通过 Web 界面管理 K8s 集群上的 DeskClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
+DeskClaw 是 AI 员工的可视化编排平台。通过赛博办公室（Cyber Workspace）将多个 AI Agent 组织为协作团队，赋予基因（Gene）能力体系，在 K8s 集群上一键部署、实时监控、弹性伸缩。
 
-## CE/EE 架构
+## Highlights
 
-NoDeskClaw 采用 Community Edition（CE）/ Enterprise Edition（EE）双版本架构：
+- **赛博办公室** — 六边形拓扑工作区，AI 员工自动协作、共享黑板、发布任务
+- **基因系统** — 模块化能力市场，为 Agent 热装载技能，支持企业私有化基因
+- **一键部署** — 从创建到上线，全流程可视化，SSE 实时推送部署进度
+- **多集群管理** — 跨集群实例编排，健康巡检，弹性扩缩
+- **飞书 SSO** — 企业级身份认证，组织架构自动同步
 
-- **CE（社区版）**：本仓库，以 Apache 2.0 协议开源，包含核心功能（实例部署、集群管理、日志监控、基因市场等）
-- **EE（企业版）**：在 CE 基础上叠加企业级功能（多组织、计费、高级审计等），代码位于私有 `ee/` 目录
+## CE / EE
 
-运行时通过 `FeatureGate` 自动检测：`ee/` 目录存在则启用 EE 功能，否则以 CE 模式运行。EE 功能清单定义在 `features.yaml` 中。
+采用 Community Edition / Enterprise Edition 双版本架构：
 
-技术实现：
-- **后端**：Factory 模式抽象层 + 条件导入 EE 模块 + Hook 事件总线
-- **前端**：Stub + Vite Alias Override，CE 构建使用空 stub，EE 构建通过 alias 注入 EE 路由和页面
+| | CE（社区版） | EE（企业版） |
+|---|---|---|
+| 协议 | Apache 2.0 | 商业许可 |
+| 核心功能 | 实例部署、集群管理、日志监控、基因市场 | CE 全部 + 多组织、计费、高级审计 |
+| 代码 | 本仓库 | 私有 `ee/` 目录 |
 
-## 项目结构
+运行时通过 `FeatureGate` 自动检测 — `ee/` 存在即 EE，否则 CE。功能清单定义在 `features.yaml`。
+
+**技术实现**：后端 Factory 抽象层 + Hook 事件总线；前端 Stub + Vite Alias Override。
+
+## Architecture
 
 ```
-NoDeskClaw/
-├── nodeskclaw-frontend/           # 管理后台前端（Vue 3 + shadcn-vue + Tailwind CSS）
-├── nodeskclaw-portal/             # 用户门户前端（Vue 3 + Tailwind CSS）
-├── nodeskclaw-backend/            # 后端 API 服务（Python 3.12 + FastAPI）
-├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Go）
-├── nodeskclaw-artifacts/          # 镜像构建 & 部署制品
-├── openclaw-channel-nodeskclaw/   # DeskClaw channel plugin（工作区 Agent 协同）
-├── features.yaml                  # CE/EE Feature 定义
-├── ee/                            # Enterprise Edition 模块（私有，.gitignore 排除）
-├── openclaw/                      # DeskClaw 源码（独立仓库，不纳入 Git）
-└── vibecraft/                     # VibeCraft 源码（独立仓库，不纳入 Git）
+DeskClaw/
+├── nodeskclaw-portal/             # User Portal — Vue 3 + Tailwind CSS
+├── nodeskclaw-frontend/           # Admin Console — Vue 3 + shadcn-vue + Tailwind CSS
+├── nodeskclaw-backend/            # API Server — Python 3.12 + FastAPI + SQLAlchemy
+├── nodeskclaw-llm-proxy/          # LLM Proxy — Go
+├── nodeskclaw-artifacts/          # Docker images & deploy manifests
+├── openclaw-channel-nodeskclaw/   # Workspace Agent channel plugin
+├── features.yaml                  # CE/EE feature registry
+├── ee/                            # Enterprise Edition (private)
+├── openclaw/                      # DeskClaw runtime source (external)
+└── vibecraft/                     # VibeCraft source (external)
 ```
 
-## 全局 i18n（国际化）
+## i18n
 
-- 覆盖范围：`nodeskclaw-portal`（用户门户前端）、`nodeskclaw-frontend`（管理前端）、`nodeskclaw-backend`（后端错误契约）
-- 语言选择：浏览器语言 `zh*` -> `zh-CN`，`en*` -> `en-US`，其他默认 `en-US`
-- 前端错误展示：优先使用后端 `message_key`（文案键）本地翻译；词条缺失时回退后端 `message`（文案）
-- 后端失败响应：`code` + `error_code`（错误码） + `message_key`（文案键） + `message`（文案） + `data`
+全栈国际化，覆盖 Portal、Admin、Backend 三端。
 
-## 本地启动
+- 语言检测：`zh*` -> `zh-CN`，`en*` -> `en-US`，fallback `en-US`
+- 错误展示：优先 `message_key` 本地翻译，缺失时回退 `message`
+- 后端契约：`code` + `error_code` + `message_key` + `message` + `data`
 
-### 前置条件
+## Quick Start
 
-| 依赖 | 说明 |
-|------|------|
-| Python >= 3.12 | 后端运行环境 |
-| [uv](https://docs.astral.sh/uv/) | Python 包管理 |
-| Node.js >= 18 | 前端运行环境 |
-| npm / pnpm | 前端包管理 |
-| PostgreSQL | 数据库，需提前创建好库 |
-| 飞书开放平台应用 | SSO 登录，需要 App ID / App Secret |
+### Prerequisites
 
-### 1. 配置后端环境变量
+| Dependency | |
+|---|---|
+| Python >= 3.12 + [uv](https://docs.astral.sh/uv/) | Backend runtime & package manager |
+| Node.js >= 18 + npm | Frontend runtime |
+| PostgreSQL | Database |
+| Feishu App | SSO (App ID + App Secret) |
+
+### 1. Configure
 
 ```bash
 cd nodeskclaw-backend
 cp .env.example .env
+# Edit .env — fill in the required values below
 ```
 
-编辑 `.env`，填入实际值（必填项见下表）：
-
-| 变量 | 说明 |
-|------|------|
+| Variable | Description |
+|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://user:pass@host:5432/dbname` |
-| `JWT_SECRET` | JWT 签名密钥，生产环境务必替换 |
-| `ENCRYPTION_KEY` | KubeConfig AES 加密密钥（32 字节 base64） |
-| `FEISHU_APP_ID` | 飞书应用 App ID |
-| `FEISHU_APP_SECRET` | 飞书应用 App Secret |
-| `FEISHU_REDIRECT_URI` | 飞书 OAuth 回调地址，本地开发填 `http://localhost:5173/api/v1/auth/feishu/callback` |
+| `JWT_SECRET` | JWT signing key |
+| `ENCRYPTION_KEY` | KubeConfig AES key (32-byte base64) |
+| `FEISHU_APP_ID` | Feishu App ID |
+| `FEISHU_APP_SECRET` | Feishu App Secret |
+| `FEISHU_REDIRECT_URI` | `http://localhost:5173/api/v1/auth/feishu/callback` |
 
-### 2. 启动后端
+### 2. Backend
 
 ```bash
 cd nodeskclaw-backend
-uv sync                    # 安装依赖（首次）
+uv sync
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-后端启动后：
-- API 地址: `http://localhost:8000`
-- Swagger 文档: `http://localhost:8000/docs`
-- 首次启动自动建表，无需手动迁移
+API at `http://localhost:8000` | Swagger at `http://localhost:8000/docs` | Auto-migration on first boot.
 
-### 3. 启动前端
+### 3. Frontend
 
 ```bash
 cd nodeskclaw-frontend
-npm install                # 安装依赖（首次）
-npm run dev
+npm install && npm run dev
 ```
 
-前端启动后：
-- 访问地址: `http://localhost:5173`
-- `/api` 和 `/stream` 请求自动代理到后端 `http://localhost:8000`
+Portal at `http://localhost:5173` | `/api` and `/stream` auto-proxy to backend.
 
-### 4. 访问
+### 4. Go
 
-浏览器打开 `http://localhost:5173`，通过飞书账号登录即可。
+Open `http://localhost:5173`, sign in with Feishu.
 
-> 飞书开放平台的重定向 URL 需配置为 `http://localhost:5173/api/v1/auth/feishu/callback`
+> Feishu redirect URL: `http://localhost:5173/api/v1/auth/feishu/callback`
 
-## 各子项目文档
+## Documentation
 
-- [后端 README](nodeskclaw-backend/README.md) -- API 概览、目录结构、环境变量详解
-- [制品 README](nodeskclaw-artifacts/README.md) -- DeskClaw 镜像构建、Dockerfile 说明
-- [Channel Plugin README](openclaw-channel-nodeskclaw/README.md) -- 工作区 Agent 协同 channel plugin
+| | |
+|---|---|
+| [Backend](nodeskclaw-backend/README.md) | API overview, directory layout, env vars |
+| [Artifacts](nodeskclaw-artifacts/README.md) | DeskClaw image build & Dockerfile |
+| [Channel Plugin](openclaw-channel-nodeskclaw/README.md) | Workspace agent collaboration plugin |
 
 ## Contributing
 
-欢迎贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发流程和规范。
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
