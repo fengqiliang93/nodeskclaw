@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class OrgCreate(BaseModel):
@@ -20,6 +20,13 @@ class OrgUpdate(BaseModel):
     max_storage_total: str | None = None
     cluster_id: str | None = None  # 绑定/解绑专属集群
     is_active: bool | None = None
+
+    @field_validator("max_cpu_total", "max_mem_total", "max_storage_total", mode="before")
+    @classmethod
+    def _coerce_to_str(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        return str(v)
 
 
 class OrgInfo(BaseModel):
