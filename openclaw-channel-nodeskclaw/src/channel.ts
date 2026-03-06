@@ -30,6 +30,7 @@ function resolveAccount(
       accountId: id,
       enabled: false,
       configured: false,
+      apiUrl: "",
       workspaceId: "",
       instanceId: "",
       apiToken: "",
@@ -40,10 +41,45 @@ function resolveAccount(
     accountId: id,
     enabled: raw.enabled !== false,
     configured: Boolean(raw.workspaceId && raw.instanceId),
+    apiUrl: raw.apiUrl ?? "",
     workspaceId: raw.workspaceId ?? "",
     instanceId: raw.instanceId ?? "",
     apiToken: raw.apiToken ?? "",
   };
+}
+
+async function listNoDeskClawPeers(params: {
+  cfg: OpenClawConfig;
+  accountId?: string | null;
+  query?: string | null;
+  limit?: number | null;
+  runtime?: unknown;
+}): Promise<Array<{ kind: "user"; id: string; name: string }>> {
+  const account = resolveAccount(params.cfg, params.accountId);
+  if (!account.configured || !account.apiUrl) return [];
+  try {
+    const url = `${account.apiUrl}/workspaces/${account.workspaceId}/topology/reachable?instance_id=${account.instanceId}`;
+    const resp = await fetch(url, {
+      headers: { "X-Proxy-Token": account.apiToken },
+    });
+    if (!resp.ok) return [];
+    const body = await resp.json();
+    const reachable: Array<{ type: string; entity_id: string; display_name?: string }> =
+      body?.data?.reachable || [];
+    const q = (params.query ?? "").toLowerCase();
+    let entries = reachable
+      .filter((ep) => ep.type === "agent" || ep.type === "human")
+      .map((ep) => ({
+        kind: "user" as const,
+        id: ep.type === "agent" ? `agent:${ep.display_name}` : `human:${ep.entity_id}`,
+        name: ep.display_name || ep.entity_id,
+      }));
+    if (q) entries = entries.filter((e) => e.name.toLowerCase().includes(q));
+    if (params.limit && params.limit > 0) entries = entries.slice(0, params.limit);
+    return entries;
+  } catch {
+    return [];
+  }
 }
 
 export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
@@ -96,6 +132,25 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
 
       const messageId = `cb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       return { channel: CHANNEL_KEY, messageId };
+    },
+  },
+  directory: {
+    listPeers: (params) => listNoDeskClawPeers(params),
+    listPeersLive: (params) => listNoDeskClawPeers(params),
+  },
+  messaging: {
+    normalizeTarget: (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return undefined;
+      if (/^(agent|human):/.test(trimmed) || trimmed === "broadcast") return trimmed;
+      return `agent:${trimmed}`;
+    },
+    targetResolver: {
+      looksLikeId: (raw: string, normalized?: string) => {
+        const check = (s: string) => /^(agent|human):/.test(s) || s === "broadcast";
+        return check(raw) || (normalized ? check(normalized) : false);
+      },
+      hint: "agent:{name} | human:{hex_id} | broadcast",
     },
   },
   agentPrompt: {
