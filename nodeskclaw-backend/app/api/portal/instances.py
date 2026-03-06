@@ -228,6 +228,19 @@ async def sync_token(
     return ApiResponse(data={"token": token})
 
 
+@router.post("/{instance_id}/regenerate-token", response_model=ApiResponse[dict])
+async def regenerate_token(
+    instance_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await instance_member_service.check_instance_access(
+        instance_id, current_user, InstanceRole.editor, db
+    )
+    token = await instance_service.regenerate_gateway_token(instance_id, db)
+    return ApiResponse(message="已重设访问令牌，实例正在重启", data={"token": token})
+
+
 @router.get("/{instance_id}/pods/{pod_name}/logs", response_model=ApiResponse[str])
 async def pod_logs(
     instance_id: str,

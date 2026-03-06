@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, Settings, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, MessageSquare, Plus, Keyboard, ChevronDown, X, Bot, ListChecks, AlertTriangle, Wifi, User, Users, MapPin, Focus, Minimize, Paintbrush } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useAuthStore } from '@/stores/auth'
 import { useViewTransition } from '@/composables/useViewTransition'
 import Workspace3D from '@/components/hex3d/Workspace3D.vue'
 import Workspace2D from '@/components/hex2d/Workspace2D.vue'
@@ -26,6 +27,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useWorkspaceStore()
+const authStore = useAuthStore()
 
 const locale = ref(getCurrentLocale())
 function onLocaleChange(value: string) {
@@ -314,6 +316,26 @@ watch(workspaceId, async (newId, oldId) => {
 })
 
 function onSSEEvent(event: string, data: Record<string, unknown>) {
+  if (event === 'agent:skill_learned') {
+    const currentUserId = authStore.user?.id
+    const audienceUserIds = Array.isArray(data.audience_user_ids)
+      ? data.audience_user_ids.filter((id): id is string => typeof id === 'string')
+      : []
+    if (!currentUserId || !audienceUserIds.includes(currentUserId)) return
+
+    const agentName = typeof data.agent_name === 'string' ? data.agent_name : ''
+    const geneName = typeof data.gene_name === 'string' ? data.gene_name : ''
+    const summary = typeof data.summary === 'string' ? data.summary.trim() : ''
+    if (!agentName || !geneName) return
+
+    toast.info(
+      summary
+        ? t('workspaceView.skillLearnedToastWithSummary', { agentName, geneName, summary })
+        : t('workspaceView.skillLearnedToast', { agentName, geneName }),
+    )
+    return
+  }
+
   if (event === 'agent:collaboration') {
     const instanceId = data.instance_id as string
     const target = data.target as string

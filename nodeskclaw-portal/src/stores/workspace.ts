@@ -739,6 +739,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const geneEvents = [
       'gene:install_start', 'gene:learn_start', 'gene:learn_decided',
       'gene:installed', 'gene:learn_failed', 'gene:variant_published',
+      'agent:skill_learned',
       'gene:created', 'gene:effect_logged', 'gene:recommended',
     ]
     for (const eventName of geneEvents) {
