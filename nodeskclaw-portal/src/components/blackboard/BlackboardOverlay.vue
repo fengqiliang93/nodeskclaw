@@ -4,6 +4,8 @@ import { X, Save, Loader2, Pencil, Eye, Wifi, WifiOff, Circle } from 'lucide-vue
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
+import TaskKanban from './TaskKanban.vue'
+import ObjectivePanel from './ObjectivePanel.vue'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -30,51 +32,17 @@ const tabs: { key: TabKey; labelKey: string }[] = [
 const editing = ref(false)
 const draft = ref('')
 const saving = ref(false)
-
-const TAB1_HEADINGS = ['目标', '任务']
-
-function extractSections(content: string, headings: string[]): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let capturing = false
-
-  for (const line of lines) {
-    if (line.startsWith('## ')) {
-      const heading = line.replace(/^##\s+/, '').trim()
-      capturing = headings.includes(heading)
-    }
-    if (capturing) result.push(line)
-  }
-  return result.join('\n').trim()
-}
-
-function excludeSections(content: string, headings: string[]): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let excluding = false
-
-  for (const line of lines) {
-    if (line.startsWith('## ')) {
-      const heading = line.replace(/^##\s+/, '').trim()
-      excluding = headings.includes(heading)
-    }
-    if (!excluding) result.push(line)
-  }
-  return result.join('\n').trim()
-}
+const taskKanbanRef = ref<InstanceType<typeof TaskKanban> | null>(null)
+const objectivePanelRef = ref<InstanceType<typeof ObjectivePanel> | null>(null)
 
 const fullContent = computed(() => store.blackboard?.content || '')
-
-const tab1Content = computed(() => extractSections(fullContent.value, TAB1_HEADINGS))
-const tab3Content = computed(() => excludeSections(fullContent.value, TAB1_HEADINGS))
 
 function renderMd(raw: string): string {
   if (!raw.trim()) return `<p class="text-muted-foreground text-sm">${t('blackboard.noContent')}</p>`
   return marked.parse(raw) as string
 }
 
-const tab1Html = computed(() => renderMd(tab1Content.value))
-const tab3Html = computed(() => renderMd(tab3Content.value))
+const notesHtml = computed(() => renderMd(fullContent.value))
 
 const agents = computed(() => store.currentWorkspace?.agents || [])
 const members = computed(() => store.members)
@@ -89,24 +57,16 @@ watch(() => props.open, (isOpen) => {
 })
 
 function enterEdit() {
-  if (activeTab.value === 'objectives-tasks') {
-    draft.value = tab1Content.value
-  } else if (activeTab.value === 'notes-perf') {
-    draft.value = tab3Content.value
+  if (activeTab.value === 'notes-perf') {
+    draft.value = fullContent.value
+    editing.value = true
   }
-  editing.value = true
 }
 
 async function save() {
   saving.value = true
   try {
-    if (activeTab.value === 'objectives-tasks') {
-      const newFull = draft.value.trim() + '\n\n' + tab3Content.value.trim()
-      await store.updateBlackboard(props.workspaceId, newFull.trim())
-    } else if (activeTab.value === 'notes-perf') {
-      const newFull = tab1Content.value.trim() + '\n\n' + draft.value.trim()
-      await store.updateBlackboard(props.workspaceId, newFull.trim())
-    }
+    await store.updateBlackboard(props.workspaceId, draft.value.trim())
     editing.value = false
   } catch (e) {
     console.error('save blackboard error:', e)
@@ -115,7 +75,7 @@ async function save() {
   }
 }
 
-const canEdit = computed(() => activeTab.value === 'objectives-tasks' || activeTab.value === 'notes-perf')
+const canEditTab = computed(() => activeTab.value === 'notes-perf')
 
 function nodeTypeLabel(type: string): string {
   const map: Record<string, string> = { agent: 'AI 员工', corridor: t('blackboard.topoCorridorNode'), human: t('blackboard.topoHumanNode'), blackboard: t('blackboard.topoBlackboardNode') }
@@ -139,7 +99,7 @@ function nodeTypeLabel(type: string): string {
           <h2 :class="embedded ? 'text-sm font-semibold' : 'text-lg font-semibold'">{{ t('hexAction.centralBlackboard') }}</h2>
           <div class="flex items-center gap-1">
             <button
-              v-if="canEdit && !editing"
+              v-if="canEditTab && !editing"
               class="p-1.5 rounded hover:bg-muted transition-colors"
               :title="t('blackboard.edit')"
               @click="enterEdit"
@@ -177,15 +137,10 @@ function nodeTypeLabel(type: string): string {
         <div class="flex-1 overflow-y-auto px-5 py-4">
 
           <template v-if="activeTab === 'objectives-tasks'">
-            <div v-if="editing">
-              <textarea
-                v-model="draft"
-                rows="18"
-                class="w-full bg-muted rounded-lg p-4 text-sm font-mono resize-none outline-none focus:ring-1 focus:ring-primary/50 min-h-[300px]"
-                :placeholder="t('blackboard.editPlaceholder')"
-              />
+            <div class="space-y-6">
+              <ObjectivePanel ref="objectivePanelRef" :workspace-id="workspaceId" />
+              <TaskKanban ref="taskKanbanRef" :workspace-id="workspaceId" />
             </div>
-            <div v-else class="prose prose-sm prose-invert max-w-none" v-html="tab1Html" />
           </template>
 
           <template v-if="activeTab === 'status'">
@@ -238,7 +193,7 @@ function nodeTypeLabel(type: string): string {
                 :placeholder="t('blackboard.editPlaceholder')"
               />
             </div>
-            <div v-else class="prose prose-sm prose-invert max-w-none" v-html="tab3Html" />
+            <div v-else class="prose prose-sm prose-invert max-w-none" v-html="notesHtml" />
           </template>
 
           <template v-if="activeTab === 'topology'">

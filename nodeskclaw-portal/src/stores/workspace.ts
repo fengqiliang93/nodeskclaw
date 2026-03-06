@@ -52,10 +52,43 @@ export interface WorkspaceTemplateItem {
   created_at: string | null
 }
 
+export interface TaskInfo {
+  id: string
+  workspace_id: string
+  title: string
+  description: string | null
+  status: string
+  priority: string
+  assignee_instance_id: string | null
+  assignee_name: string | null
+  created_by_instance_id: string | null
+  estimated_value: number | null
+  actual_value: number | null
+  token_cost: number | null
+  blocker_reason: string | null
+  completed_at: string | null
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ObjectiveInfo {
+  id: string
+  workspace_id: string
+  title: string
+  description: string | null
+  progress: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface BlackboardInfo {
   id: string
   workspace_id: string
   content: string
+  tasks: TaskInfo[]
+  objectives: ObjectiveInfo[]
   updated_at: string
 }
 
@@ -300,6 +333,44 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function updateBlackboard(workspaceId: string, content: string) {
     const res = await api.put(`/workspaces/${workspaceId}/blackboard`, { content })
     blackboard.value = res.data.data
+  }
+
+  async function fetchTasks(workspaceId: string, status?: string, excludeArchived = true) {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (!excludeArchived) params.set('exclude_archived', 'false')
+    const res = await api.get(`/workspaces/${workspaceId}/blackboard/tasks?${params.toString()}`)
+    return (res.data.data || []) as TaskInfo[]
+  }
+
+  async function createTask(workspaceId: string, data: { title: string; description?: string; priority?: string; assignee_id?: string; estimated_value?: number }) {
+    const res = await api.post(`/workspaces/${workspaceId}/blackboard/tasks`, data)
+    return res.data.data as TaskInfo
+  }
+
+  async function updateTask(workspaceId: string, taskId: string, data: Record<string, unknown>) {
+    const res = await api.put(`/workspaces/${workspaceId}/blackboard/tasks/${taskId}`, data)
+    return res.data.data as TaskInfo
+  }
+
+  async function archiveTask(workspaceId: string, taskId: string) {
+    const res = await api.post(`/workspaces/${workspaceId}/blackboard/tasks/${taskId}/archive`)
+    return res.data.data as TaskInfo
+  }
+
+  async function fetchObjectives(workspaceId: string) {
+    const res = await api.get(`/workspaces/${workspaceId}/blackboard/objectives`)
+    return (res.data.data || []) as ObjectiveInfo[]
+  }
+
+  async function createObjective(workspaceId: string, data: { title: string; description?: string }) {
+    const res = await api.post(`/workspaces/${workspaceId}/blackboard/objectives`, data)
+    return res.data.data as ObjectiveInfo
+  }
+
+  async function updateObjective(workspaceId: string, objectiveId: string, data: Record<string, unknown>) {
+    const res = await api.put(`/workspaces/${workspaceId}/blackboard/objectives/${objectiveId}`, data)
+    return res.data.data as ObjectiveInfo
   }
 
   // ── Members ───────────────────────────────────────
@@ -608,6 +679,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       } catch { /* ignore */ }
     })
+
+    for (const evtName of ['task:created', 'task:updated', 'task:archived', 'task:status_changed']) {
+      eventSource.addEventListener(evtName, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data)
+          externalCallback?.(evtName, data)
+        } catch { /* ignore */ }
+      })
+    }
+
+    for (const evtName of ['objective:created', 'objective:updated']) {
+      eventSource.addEventListener(evtName, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data)
+          externalCallback?.(evtName, data)
+        } catch { /* ignore */ }
+      })
+    }
 
     eventSource.addEventListener('system:info', (e: MessageEvent) => {
       try {
@@ -993,6 +1082,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateAgentThemeColor,
     fetchBlackboard,
     updateBlackboard,
+    fetchTasks,
+    createTask,
+    updateTask,
+    archiveTask,
+    fetchObjectives,
+    createObjective,
+    updateObjective,
     fetchMembers,
     fetchChatHistory,
     sendWorkspaceMessage,
