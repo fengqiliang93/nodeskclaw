@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { i18n } from '@/i18n'
 import { eePortalRoutes, eeOrgSettingsChildren } from '@/router/ee-stub'
 
 const ceRoutes: RouteRecordRaw[] = [
@@ -162,6 +163,11 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   next()
+})
+
+router.afterEach(() => {
+  const { t } = i18n.global
+  document.title = t('common.appTitle')
 })
 
 export default router

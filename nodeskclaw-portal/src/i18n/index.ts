@@ -49,6 +49,7 @@ export function setCurrentLocale(locale: string): AppLocale {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, resolved)
     document.documentElement.lang = resolved
+    document.title = i18n.global.t('common.appTitle')
   }
   return resolved
 }

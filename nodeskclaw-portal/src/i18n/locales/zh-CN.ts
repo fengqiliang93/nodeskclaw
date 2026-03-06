@@ -1,5 +1,6 @@
 const zhCN = {
   common: {
+    appTitle: "DeskClaw 控制台",
     workspace: "赛博办公室",
     instance: "AI 员工",
     members: "成员",

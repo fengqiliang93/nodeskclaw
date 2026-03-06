@@ -1,5 +1,6 @@
 const enUS = {
   common: {
+    appTitle: "DeskClaw Console",
     workspace: "Cyber Office",
     instance: "AI Employees",
     members: "Members",
