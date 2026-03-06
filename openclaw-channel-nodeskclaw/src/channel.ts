@@ -71,7 +71,7 @@ async function listNoDeskClawPeers(params: {
       .filter((ep) => ep.type === "agent" || ep.type === "human")
       .map((ep) => ({
         kind: "user" as const,
-        id: ep.type === "agent" ? `agent:${ep.display_name}` : `human:${ep.entity_id}`,
+        id: ep.type === "agent" ? `agent:${ep.display_name}` : `human:${ep.display_name || ep.entity_id}`,
         name: ep.display_name || ep.entity_id,
       }));
     if (q) entries = entries.filter((e) => e.name.toLowerCase().includes(q));
@@ -173,12 +173,13 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
         const check = (s: string) => /^(agent|human):/.test(s) || s === "broadcast";
         return check(raw) || (normalized ? check(normalized) : false);
       },
-      hint: "agent:{name} | human:{hex_id} | broadcast",
+      hint: "agent:{name} | human:{name} | broadcast",
     },
   },
   agentPrompt: {
     messageToolHints: () => [
       `Use "send -t nodeskclaw -to \\"agent:{name}\\" -m \\"message\\"" to collaborate with other AI employees.`,
+      `To message a reachable human workstation: send -t nodeskclaw -to "human:{name}" -m "message". The {name} is the display_name shown in get_my_neighbors.`,
       `IMPORTANT: You can ONLY message agents/humans reachable from your hex position via corridor connections. Before claiming you can contact someone, call get_my_neighbors to check. If an agent is not in the result, you CANNOT message them.`,
       `If you are in multiple workspaces, add accountId=<workspace_account_id> to specify which workspace to send from.`,
       `If get_my_neighbors returns a blackboard (node_type=blackboard), you can interact with it via the nodeskclaw_blackboard tool. The blackboard is for shared tasks and objectives — do NOT use send to message it.`,

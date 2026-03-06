@@ -115,29 +115,33 @@ async def handle_collaboration_message(
                         depth=depth + 1,
                     )
                 )
-        elif target.startswith("human:"):
-            human_hex_id = target[6:]
-            from app.services import corridor_router
-            has_topo = await corridor_router.has_any_connections(workspace_id, db)
-            src_hex = await corridor_router.get_agent_hex_in_workspace(source_instance_id, workspace_id, db) if has_topo else None
-            if has_topo and src_hex is not None:
-                hh = await _get_human_hex(db, human_hex_id)
+            else:
+                hh = await _find_human_by_display_name(db, workspace_id, target[6:])
                 if hh:
-                    can = await corridor_router.can_reach(
-                        workspace_id,
-                        src_hex[0], src_hex[1],
-                        hh.hex_q, hh.hex_r,
-                        db,
+                    await _route_to_human(
+                        db, workspace_id, source_instance_id, source_name, hh, text,
                     )
-                    if not can:
-                        logger.info("Corridor topology blocks %s -> human:%s", source_name, human_hex_id)
-                        return
-                    _fire_task(deliver_to_human(
-                        workspace_id=workspace_id,
-                        human_hex_id=hh.id,
-                        source_name=source_name,
-                        message=text,
-                    ))
+                else:
+                    logger.warning(
+                        "Unresolvable collaboration target %s from %s",
+                        target, source_name,
+                    )
+        elif target.startswith("human:"):
+            human_ref = target[6:]
+            from app.services import corridor_router
+            if _looks_like_uuid(human_ref):
+                hh = await _get_human_hex(db, human_ref)
+            else:
+                hh = await _find_human_by_display_name(db, workspace_id, human_ref)
+            if hh:
+                await _route_to_human(
+                    db, workspace_id, source_instance_id, source_name, hh, text,
+                )
+            else:
+                logger.warning(
+                    "Unresolvable collaboration target %s from %s",
+                    target, source_name,
+                )
         elif target == "broadcast":
             from app.services import corridor_router
             has_topo = await corridor_router.has_any_connections(workspace_id, db)
@@ -187,6 +191,40 @@ async def handle_collaboration_message(
                                 depth=depth + 1,
                             )
                         )
+
+
+async def _route_to_human(
+    db: AsyncSession,
+    workspace_id: str,
+    source_instance_id: str,
+    source_name: str,
+    hh: HumanHex,
+    text: str,
+) -> None:
+    from app.services import corridor_router
+    has_topo = await corridor_router.has_any_connections(workspace_id, db)
+    src_hex = await corridor_router.get_agent_hex_in_workspace(
+        source_instance_id, workspace_id, db,
+    ) if has_topo else None
+    if has_topo and src_hex is not None:
+        can = await corridor_router.can_reach(
+            workspace_id,
+            src_hex[0], src_hex[1],
+            hh.hex_q, hh.hex_r,
+            db,
+        )
+        if not can:
+            logger.info(
+                "Corridor topology blocks %s -> human:%s",
+                source_name, hh.display_name or hh.id,
+            )
+            return
+    _fire_task(deliver_to_human(
+        workspace_id=workspace_id,
+        human_hex_id=hh.id,
+        source_name=source_name,
+        message=text,
+    ))
 
 
 # ── Human delivery ────────────────────────────────────
@@ -281,6 +319,27 @@ async def _get_human_hex(db: AsyncSession, human_hex_id: str) -> HumanHex | None
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _find_human_by_display_name(
+    db: AsyncSession, workspace_id: str, name: str,
+) -> HumanHex | None:
+    result = await db.execute(
+        select(HumanHex).where(
+            HumanHex.workspace_id == workspace_id,
+            not_deleted(HumanHex),
+        )
+    )
+    rows = result.scalars().all()
+    name_lower = name.lower()
+    for hh in rows:
+        if (hh.display_name or "").lower() == name_lower:
+            return hh
+    return None
+
+
+def _looks_like_uuid(s: str) -> bool:
+    return len(s) == 36 and s.count("-") == 4
 
 
 async def _get_instance(db: AsyncSession, instance_id: str) -> Instance | None:
