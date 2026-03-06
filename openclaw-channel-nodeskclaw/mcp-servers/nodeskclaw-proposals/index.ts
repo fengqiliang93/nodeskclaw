@@ -37,11 +37,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   switch (name) {
     case "submit_approval_request":
-      result = await apiFetch(`/workspaces/${ws}/approval-requests`, "POST", args);
+      result = await apiFetch(`/workspaces/approval-requests`, "POST", { workspace_id: ws, ...(args as object) });
       break;
     case "check_trust_policy": {
       const a = args as any;
-      result = await apiFetch(`/workspaces/${ws}/trust-policies/check?agent_instance_id=${a.agent_instance_id}&action_type=${a.action_type}`);
+      result = await apiFetch(`/workspaces/trust-policies/check?workspace_id=${ws}&agent_instance_id=${a.agent_instance_id}&action_type=${a.action_type}`);
       break;
     }
     case "list_my_decisions": {

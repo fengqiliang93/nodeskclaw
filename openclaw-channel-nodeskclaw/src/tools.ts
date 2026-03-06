@@ -245,7 +245,8 @@ function createProposalsTool(cfg: ToolConfig): AnyAgentTool {
       switch (p.action) {
         case "submit_approval_request":
           return jsonResult(
-            await apiFetch(cfg, `/workspaces/${ws}/approval-requests`, "POST", {
+            await apiFetch(cfg, `/workspaces/approval-requests`, "POST", {
+              workspace_id: ws,
               agent_instance_id: agentId,
               action_type: p.action_type,
               proposal: p.proposal,
@@ -256,7 +257,7 @@ function createProposalsTool(cfg: ToolConfig): AnyAgentTool {
           return jsonResult(
             await apiFetch(
               cfg,
-              `/workspaces/${ws}/trust-policies/check?agent_instance_id=${agentId}&action_type=${p.action_type}`,
+              `/workspaces/trust-policies/check?workspace_id=${ws}&agent_instance_id=${agentId}&action_type=${p.action_type}`,
             ),
           );
         case "list_my_decisions":
@@ -304,9 +305,8 @@ function createGeneDiscoveryTool(cfg: ToolConfig): AnyAgentTool {
           return jsonResult(await apiFetch(cfg, `/genes/${p.gene_id}`));
         case "request_gene_learning":
           return jsonResult(
-            await apiFetch(cfg, `/genes/${p.gene_slug}/install`, "POST", {
-              instance_id: cfg.instanceId,
-              learning_type: "direct",
+            await apiFetch(cfg, `/instances/${cfg.instanceId}/genes/install`, "POST", {
+              gene_slug: p.gene_slug,
             }),
           );
         default:

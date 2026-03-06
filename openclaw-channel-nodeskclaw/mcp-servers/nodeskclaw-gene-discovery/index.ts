@@ -47,9 +47,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       break;
     case "request_gene_learning": {
       const a = args as any;
-      result = await apiFetch(`/genes/${a.gene_slug}/install`, "POST", {
-        instance_id: a.instance_id,
-        learning_type: "direct",
+      result = await apiFetch(`/instances/${a.instance_id}/genes/install`, "POST", {
+        gene_slug: a.gene_slug,
       });
       break;
     }
