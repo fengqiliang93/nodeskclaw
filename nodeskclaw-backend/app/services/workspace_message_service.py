@@ -25,6 +25,7 @@ async def record_message(
     message_type: str = "chat",
     target_instance_id: str | None = None,
     depth: int = 0,
+    attachments: list[dict] | None = None,
 ) -> WorkspaceMessage:
     msg = WorkspaceMessage(
         workspace_id=workspace_id,
@@ -35,6 +36,7 @@ async def record_message(
         message_type=message_type,
         target_instance_id=target_instance_id,
         depth=depth,
+        attachments=attachments,
     )
     db.add(msg)
     await db.commit()
@@ -132,7 +134,12 @@ def build_context_prompt(
         msg_lines = []
         for m in other_messages[-30:]:
             ts = m.created_at.strftime("%H:%M") if isinstance(m.created_at, datetime) else ""
-            msg_lines.append(f"[{ts} {m.sender_name}]: {m.content}")
+            line = f"[{ts} {m.sender_name}]: {m.content}"
+            if m.attachments:
+                for att in m.attachments:
+                    size_kb = att.get("size", 0) // 1024
+                    line += f"\n  [附件: {att.get('name', '?')} ({size_kb}KB)]"
+            msg_lines.append(line)
         messages_text = "\n".join(msg_lines)
     else:
         messages_text = "(no recent messages from other members)"

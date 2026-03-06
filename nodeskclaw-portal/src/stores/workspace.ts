@@ -178,6 +178,13 @@ export interface MessageFlowPair {
   count: number
 }
 
+export interface FileAttachment {
+  id: string
+  name: string
+  size: number
+  content_type: string
+}
+
 export interface GroupChatMessage {
   id: string
   sender_type: 'user' | 'agent' | 'system'
@@ -187,6 +194,7 @@ export interface GroupChatMessage {
   message_type: string
   created_at: string
   streaming?: boolean
+  attachments?: FileAttachment[]
 }
 
 export type ChatSSECallback = (event: string, data: Record<string, unknown>) => void
@@ -226,6 +234,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const myPermissions = ref<string[]>([])
   const isWorkspaceAdmin = ref(false)
   const isOrgAdmin = ref(false)
+  const fileUploadEnabled = ref(false)
 
   // ── Workspace CRUD ────────────────────────────────
 
@@ -238,6 +247,39 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       console.error('fetchWorkspaces error:', e)
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchSystemCapabilities() {
+    try {
+      const res = await api.get('/system/capabilities')
+      fileUploadEnabled.value = !!res.data?.file_upload_enabled
+    } catch {
+      fileUploadEnabled.value = false
+    }
+  }
+
+  async function uploadFile(workspaceId: string, file: File): Promise<FileAttachment | null> {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await api.post(`/workspaces/${workspaceId}/files/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return res.data.data as FileAttachment
+    } catch (e) {
+      console.error('uploadFile error:', e)
+      return null
+    }
+  }
+
+  async function getFileUrl(workspaceId: string, fileId: string): Promise<string | null> {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/files/${fileId}/url`)
+      return res.data.data?.url || null
+    } catch (e) {
+      console.error('getFileUrl error:', e)
+      return null
     }
   }
 
@@ -430,13 +472,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         content: m.content as string,
         message_type: m.message_type as string,
         created_at: m.created_at as string,
+        attachments: (m.attachments as FileAttachment[]) || undefined,
       }))
     } catch (e) {
       console.error('fetchChatHistory error:', e)
     }
   }
 
-  async function sendWorkspaceMessage(workspaceId: string, message: string, mentions?: string[]) {
+  async function sendWorkspaceMessage(
+    workspaceId: string,
+    message: string,
+    mentions?: string[],
+    fileIds?: string[],
+    attachments?: FileAttachment[],
+  ) {
     if (chatLoading.value) return
     chatLoading.value = true
 
@@ -449,12 +498,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       content: message,
       message_type: 'chat',
       created_at: new Date().toISOString(),
+      attachments: attachments || undefined,
     }
     chatMessages.value.push(userMsg)
 
     try {
       const body: Record<string, unknown> = { message }
       if (mentions && mentions.length > 0) body.mentions = mentions
+      if (fileIds && fileIds.length > 0) body.file_ids = fileIds
       await api.post(`/workspaces/${workspaceId}/chat`, body)
     } catch (e) {
       console.error('sendWorkspaceMessage error:', e)
@@ -1087,6 +1138,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     isOrgAdmin,
     resetCurrentState,
     setChatVisible,
+    fileUploadEnabled,
+    fetchSystemCapabilities,
+    uploadFile,
+    getFileUrl,
     fetchWorkspaces,
     fetchWorkspace,
     createWorkspace,

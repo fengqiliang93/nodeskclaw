@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Coroutine
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select as sa_select
@@ -814,6 +814,87 @@ async def search_users(
 
 # ── Group Chat (Broadcast) ───────────────────────────
 
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024
+
+
+@router.post("/{workspace_id}/files/upload")
+async def upload_workspace_file(
+    workspace_id: str,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Upload a file to a workspace (multipart/form-data)."""
+    from app.services import storage_service
+    from app.models.workspace_file import WorkspaceFile
+
+    if not storage_service.is_configured():
+        raise _error(503, 50301, "errors.storage.not_configured", "TOS 对象存储未配置")
+
+    await wm_service.check_workspace_access(workspace_id, user, "send_chat", db)
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise _error(400, 40002, "errors.file.too_large", "文件大小超过限制（最大 20MB）")
+
+    tos_key = await storage_service.upload_file(
+        file_content=content,
+        filename=file.filename or "unnamed",
+        content_type=file.content_type or "application/octet-stream",
+        workspace_id=workspace_id,
+    )
+
+    wf = WorkspaceFile(
+        workspace_id=workspace_id,
+        uploader_id=user.id,
+        original_name=file.filename or "unnamed",
+        file_size=len(content),
+        content_type=file.content_type or "application/octet-stream",
+        tos_key=tos_key,
+    )
+    db.add(wf)
+    await db.commit()
+    await db.refresh(wf)
+
+    return _ok({
+        "id": wf.id,
+        "name": wf.original_name,
+        "size": wf.file_size,
+        "content_type": wf.content_type,
+    })
+
+
+@router.get("/{workspace_id}/files/{file_id}/url")
+async def get_file_presigned_url(
+    workspace_id: str,
+    file_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Get a presigned download URL for a workspace file."""
+    from app.services import storage_service
+    from app.models.workspace_file import WorkspaceFile
+
+    if not storage_service.is_configured():
+        raise _error(503, 50301, "errors.storage.not_configured", "TOS 对象存储未配置")
+
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    result = await db.execute(
+        sa_select(WorkspaceFile).where(
+            WorkspaceFile.id == file_id,
+            WorkspaceFile.workspace_id == workspace_id,
+            WorkspaceFile.deleted_at.is_(None),
+        )
+    )
+    wf = result.scalar_one_or_none()
+    if wf is None:
+        raise _error(404, 40431, "errors.file.not_found", "文件不存在")
+
+    url = await storage_service.get_presigned_url(wf.tos_key)
+    return _ok({"url": url, "expires_in": 3600})
+
+
 @router.post("/{workspace_id}/chat")
 async def workspace_chat(
     workspace_id: str,
@@ -827,6 +908,30 @@ async def workspace_chat(
     if ws_info is None:
         raise _error(404, 40430, "errors.workspace.not_found", "办公室不存在")
 
+    attachments_meta: list[dict] | None = None
+    attachments_with_urls: list[dict] = []
+    if data.file_ids:
+        from app.models.workspace_file import WorkspaceFile
+        from app.services import storage_service
+
+        result = await db.execute(
+            sa_select(WorkspaceFile).where(
+                WorkspaceFile.id.in_(data.file_ids),
+                WorkspaceFile.workspace_id == workspace_id,
+                WorkspaceFile.deleted_at.is_(None),
+            )
+        )
+        files = result.scalars().all()
+        attachments_meta = []
+        for f in files:
+            url = await storage_service.get_presigned_url(f.tos_key)
+            meta = {
+                "id": f.id, "name": f.original_name,
+                "size": f.file_size, "content_type": f.content_type,
+            }
+            attachments_meta.append(meta)
+            attachments_with_urls.append({**meta, "url": url})
+
     await msg_service.record_message(
         db,
         workspace_id=workspace_id,
@@ -834,6 +939,7 @@ async def workspace_chat(
         sender_id=user.id,
         sender_name=user.name,
         content=data.message,
+        attachments=attachments_meta,
     )
 
     running_agents = await _get_running_agents(db, workspace_id)
@@ -904,6 +1010,7 @@ async def workspace_chat(
                 user_message=data.message,
                 ws_name=ws_info.name,
                 mentions=data.mentions,
+                attachments=attachments_with_urls or None,
             )
         )
 
@@ -973,6 +1080,7 @@ async def list_workspace_messages(
             "sender_name": m.sender_name,
             "content": m.content,
             "message_type": m.message_type,
+            "attachments": m.attachments,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
         for m in messages
@@ -1283,6 +1391,7 @@ async def _stream_agent_response(
     user_message: str,
     ws_name: str,
     mentions: list[str] | None = None,
+    attachments: list[dict] | None = None,
 ):
     """Stream a single agent's response and relay via SSE broadcast.
 
@@ -1308,9 +1417,17 @@ async def _stream_agent_response(
         else:
             context_prompt += "\n[提示] 用户没有 @提及你。如果消息与你无关，请回复 NO_REPLY。\n"
 
+    user_content = f"[{user_name}]: {user_message}"
+    if attachments:
+        file_lines = []
+        for att in attachments:
+            size_kb = att["size"] // 1024
+            file_lines.append(f"- {att['name']} ({size_kb}KB, {att['content_type']}): {att['url']}")
+        user_content += "\n\n附件:\n" + "\n".join(file_lines)
+
     messages = [
         {"role": "system", "content": context_prompt},
-        {"role": "user", "content": f"[{user_name}]: {user_message}"},
+        {"role": "user", "content": user_content},
     ]
 
     base_url, token = _get_instance_connection(instance)

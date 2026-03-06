@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     GENEHUB_API_KEY: str = ""       # publisher-level API Key
     GENEHUB_WEB_URL: str = ""       # GeneHub Web UI, e.g. https://genehub.example.com
 
+    # ── TOS 对象存储 ─────────────────────────────────────
+    TOS_ENDPOINT: str = ""
+    TOS_REGION: str = ""
+    TOS_BUCKET: str = ""
+    TOS_ACCESS_KEY_ID: str = ""
+    TOS_SECRET_ACCESS_KEY: str = ""
+
     # ── CORS ─────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 

@@ -6,9 +6,10 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Extension } from '@tiptap/core'
 import { PluginKey } from '@tiptap/pm/state'
-import { useWorkspaceStore, type GroupChatMessage, type AgentBrief } from '@/stores/workspace'
+import { useWorkspaceStore, type GroupChatMessage, type AgentBrief, type FileAttachment } from '@/stores/workspace'
+import FileAttachmentList from './FileAttachmentList.vue'
 import { useAuthStore } from '@/stores/auth'
-import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown } from 'lucide-vue-next'
+import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText, Image as ImageIcon } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -90,6 +91,62 @@ async function copySlug(agentId: string) {
   if (!slug) return
   await navigator.clipboard.writeText(slug)
   toast.success(t('chat.slugCopied'))
+}
+
+// ── File upload ──────────────────────────────────────
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const pendingFiles = ref<File[]>([])
+const fileUploading = ref(false)
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024
+
+function triggerFileInput() {
+  if (!store.fileUploadEnabled) return
+  fileInputRef.value?.click()
+}
+
+function handleFileSelect(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files) return
+  addFiles(Array.from(input.files))
+  input.value = ''
+}
+
+function addFiles(files: File[]) {
+  for (const f of files) {
+    if (f.size > MAX_FILE_SIZE) {
+      toast.error(t('chat.fileTooLarge', { size: 20 }))
+      continue
+    }
+    pendingFiles.value.push(f)
+  }
+}
+
+function removePendingFile(idx: number) {
+  pendingFiles.value.splice(idx, 1)
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/')
+}
+
+function handleDragOver(e: DragEvent) {
+  if (!store.fileUploadEnabled) return
+  e.preventDefault()
+}
+
+function handleDrop(e: DragEvent) {
+  if (!store.fileUploadEnabled) return
+  e.preventDefault()
+  if (e.dataTransfer?.files) {
+    addFiles(Array.from(e.dataTransfer.files))
+  }
 }
 
 // ── Commands ────────────────────────────────────────
@@ -263,11 +320,16 @@ function getEditorContent(): { text: string; mentions: string[]; commands: strin
 
 // ── Message send ──────────────────────────────────
 async function sendMessage() {
-  if (!editor.value || editor.value.isEmpty) return
-  if (sending.value) return
+  const hasFiles = pendingFiles.value.length > 0
+  const editorIsEmpty = !editor.value || editor.value.isEmpty
 
-  const { text, mentions, commands } = getEditorContent()
-  editor.value.commands.clearContent()
+  if (editorIsEmpty && !hasFiles) return
+  if (sending.value || fileUploading.value) return
+
+  const { text, mentions, commands } = editorIsEmpty
+    ? { text: '', mentions: [] as string[], commands: [] as string[] }
+    : getEditorContent()
+  editor.value?.commands.clearContent()
 
   if (commands.length > 0) {
     for (const cmdName of commands) {
@@ -287,9 +349,42 @@ async function sendMessage() {
     return
   }
 
-  if (!text.trim()) return
+  if (!text.trim() && !hasFiles) return
 
-  await store.sendWorkspaceMessage(props.workspaceId, text, mentions.length > 0 ? mentions : undefined)
+  let fileIds: string[] | undefined
+  let attachments: FileAttachment[] | undefined
+
+  if (hasFiles) {
+    fileUploading.value = true
+    const filesToUpload = [...pendingFiles.value]
+    pendingFiles.value = []
+    try {
+      const uploaded: FileAttachment[] = []
+      for (const f of filesToUpload) {
+        const result = await store.uploadFile(props.workspaceId, f)
+        if (result) uploaded.push(result)
+      }
+      if (uploaded.length > 0) {
+        fileIds = uploaded.map(u => u.id)
+        attachments = uploaded
+      }
+    } catch (e) {
+      toast.error(t('chat.fileUploadFailed'))
+      console.error('File upload error:', e)
+    } finally {
+      fileUploading.value = false
+    }
+  }
+
+  if (!text.trim() && !fileIds?.length) return
+
+  await store.sendWorkspaceMessage(
+    props.workspaceId,
+    text || '',
+    mentions.length > 0 ? mentions : undefined,
+    fileIds,
+    attachments,
+  )
   scrollToBottom()
 }
 
@@ -507,6 +602,7 @@ watch(messages, scrollToBottom, { deep: true })
 
 onMounted(() => {
   store.fetchChatHistory(props.workspaceId)
+  store.fetchSystemCapabilities()
 })
 
 function formatTime(dateStr: string): string {
@@ -634,6 +730,11 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 <span v-else>{{ seg.value }}</span>
               </template>
             </div>
+            <FileAttachmentList
+              v-if="msg.attachments?.length"
+              :attachments="msg.attachments"
+              :workspace-id="workspaceId"
+            />
             <span v-if="msg.streaming" class="inline-block w-1.5 h-4 bg-current animate-pulse ml-0.5 align-text-bottom" />
           </div>
         </div>
@@ -709,10 +810,61 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
       </Transition>
 
       <!-- Tiptap editor container -->
-      <div v-if="canSend" class="rounded-lg border border-border bg-muted overflow-hidden focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-colors">
+      <div
+        v-if="canSend"
+        class="rounded-lg border border-border bg-muted overflow-hidden focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-colors"
+        @dragover="handleDragOver"
+        @drop="handleDrop"
+      >
+        <!-- Pending files preview -->
+        <div v-if="pendingFiles.length > 0" class="flex flex-wrap gap-2 px-3 pt-2">
+          <div
+            v-for="(file, idx) in pendingFiles"
+            :key="idx"
+            class="group relative flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border text-xs max-w-[180px]"
+          >
+            <ImageIcon v-if="isImageFile(file)" class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <FileText v-else class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <span class="truncate">{{ file.name }}</span>
+            <span class="text-muted-foreground shrink-0">({{ formatFileSize(file.size) }})</span>
+            <button
+              class="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              @click="removePendingFile(idx)"
+            >
+              <X class="w-2.5 h-2.5" />
+            </button>
+          </div>
+        </div>
+
         <EditorContent :editor="editor" class="tiptap-editor" />
+
+        <div v-if="fileUploading" class="px-3 pb-1">
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 class="w-3 h-3 animate-spin" />
+            <span>{{ t('chat.fileUploading') }}</span>
+          </div>
+        </div>
+
         <div class="flex items-center justify-between px-2 pb-1.5">
           <div class="flex items-center gap-0.5">
+            <input
+              ref="fileInputRef"
+              type="file"
+              multiple
+              class="hidden"
+              @change="handleFileSelect"
+            />
+            <button
+              class="p-1.5 rounded-md transition-colors"
+              :class="store.fileUploadEnabled
+                ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                : 'text-muted-foreground/40 cursor-not-allowed'"
+              :title="store.fileUploadEnabled ? t('chat.attachFile') : t('chat.fileUploadDisabled')"
+              :disabled="!store.fileUploadEnabled"
+              @click="triggerFileInput"
+            >
+              <Paperclip class="w-3.5 h-3.5" />
+            </button>
             <button
               class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               :title="t('chat.mentionAgent')"
@@ -730,10 +882,10 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
           </div>
           <button
             class="p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
-            :disabled="editorEmpty || sending"
+            :disabled="(editorEmpty && pendingFiles.length === 0) || sending || fileUploading"
             @click="sendMessage"
           >
-            <Loader2 v-if="sending" class="w-3.5 h-3.5 animate-spin" />
+            <Loader2 v-if="sending || fileUploading" class="w-3.5 h-3.5 animate-spin" />
             <Send v-else class="w-3.5 h-3.5" />
           </button>
         </div>

@@ -1,6 +1,7 @@
 """WorkspaceMessage — a chat message in a workspace group chat."""
 
 from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -24,3 +25,4 @@ class WorkspaceMessage(BaseModel):
         String(36), nullable=True,
     )
     depth: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    attachments: Mapped[list | None] = mapped_column(JSONB, nullable=True)

@@ -765,6 +765,18 @@ async def lifespan(app: FastAPI):
                     "自动迁移：%s.%s 唯一约束已替换为 partial unique index", _tbl, _con_name,
                 )
 
+    # ── 迁移: workspace_messages 添加 attachments 列（文件上传功能） ──
+    async with engine.begin() as conn:
+        att_col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'workspace_messages' AND column_name = 'attachments'"
+        ))
+        if att_col.first() is None:
+            await conn.execute(text(
+                "ALTER TABLE workspace_messages ADD COLUMN attachments JSONB"
+            ))
+            logger.info("自动迁移：已为 workspace_messages 表添加 attachments 列")
+
     # ── 迁移 31: 企业私有化内容 — visibility 字段 + 索引重建 ──
     async with engine.begin() as conn:
         vis_tables = ["genes", "genomes", "instance_templates", "workspace_templates"]

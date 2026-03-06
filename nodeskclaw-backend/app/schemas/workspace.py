@@ -213,6 +213,7 @@ class ChatMessageRequest(BaseModel):
 class WorkspaceChatRequest(BaseModel):
     message: str
     mentions: list[str] | None = None
+    file_ids: list[str] | None = None
 
 
 class WorkspaceMessageInfo(BaseModel):

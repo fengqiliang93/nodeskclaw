@@ -58,6 +58,15 @@ async def system_info():
     }
 
 
+@api_router.get("/system/capabilities", tags=["系统"])
+async def system_capabilities():
+    """暴露系统能力状态（如文件上传是否可用），供前端控制 UI 状态。"""
+    from app.services import storage_service
+    return {
+        "file_upload_enabled": storage_service.is_configured(),
+    }
+
+
 api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(org_router, prefix="/orgs", tags=["组织"])
 api_router.include_router(org_settings_router, prefix="/orgs", tags=["组织设置"])

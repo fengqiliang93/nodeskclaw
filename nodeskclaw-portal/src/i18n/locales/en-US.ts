@@ -414,6 +414,12 @@ const enUS = {
     mentionAgent: "{'@'} Mention AI Employee",
     slashCommand: "/ Command",
     immediate: "Immediate",
+    attachFile: "Attach file",
+    fileUploadDisabled: "File upload not enabled (object storage not configured)",
+    fileTooLarge: "File size cannot exceed {size}MB",
+    fileUploading: "Uploading files...",
+    fileUploadFailed: "File upload failed",
+    downloadFile: "Download file",
   },
   createWorkspace: {
     title: "New Cyber Office",
