@@ -109,7 +109,7 @@ kubectl get deploy -n <namespace> --context <context-name>
 - **K8s 操作必须指定 `--context <name>`**，禁止依赖 current-context 默认值
 - **破坏性操作（删除 namespace/资源、数据库 DELETE、git force push）必须逐项确认**
 - **OpenClaw 行为判断必须有源码依据**，优先读取本地 `openclaw/src/` 副本
-- **自动提交**：每次完成有意义的改动后必须主动提交 commit，不等用户提醒
+- **自动提交**：每完成一个单元性改动后必须主动提交 commit，不等用户提醒，也不允许攒多个独立改动最后一次性提交
 - **禁止在代码中出现真人个人信息**，邮箱等占位统一使用 `@example.com`
 
 ### 问题排查原则
