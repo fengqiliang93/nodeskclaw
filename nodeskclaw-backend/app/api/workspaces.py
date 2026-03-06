@@ -294,6 +294,35 @@ async def patch_blackboard_section(
     return _ok(bb.model_dump(mode="json"))
 
 
+async def _notify_agents_task_done(workspace_id: str, task_title: str):
+    """Send system message to workspace agents when a task completes."""
+    try:
+        from app.services import corridor_router
+        from app.services.collaboration_service import send_system_message_to_agents
+        from app.models.base import not_deleted
+
+        async with async_session_factory() as db:
+            has_topo = await corridor_router.has_any_connections(workspace_id, db)
+            if has_topo:
+                audience = await corridor_router.get_blackboard_audience(workspace_id, db)
+                agent_ids = [ep.entity_id for ep in audience if ep.endpoint_type == "agent"]
+            else:
+                agents_q = await db.execute(
+                    sa_select(Instance).where(
+                        Instance.workspace_id == workspace_id,
+                        Instance.status == "running",
+                        not_deleted(Instance),
+                    )
+                )
+                agent_ids = [a.id for a in agents_q.scalars().all()]
+
+            if agent_ids:
+                message = f"任务「{task_title}」已完成，请检查黑板是否有新的待办任务。"
+                await send_system_message_to_agents(workspace_id, agent_ids, message, db)
+    except Exception as e:
+        logger.warning("通知 Agent 任务完成失败: %s", e)
+
+
 # ── Tasks ────────────────────────────────────────────
 
 @router.get("/{workspace_id}/blackboard/tasks")
@@ -343,6 +372,8 @@ async def update_task(
             "old_status": old_status,
             "new_status": new_status,
         })
+        if new_status == "done":
+            _fire_task(_notify_agents_task_done(workspace_id, task_info.title))
     return _ok(task_info.model_dump(mode="json"))
 
 
