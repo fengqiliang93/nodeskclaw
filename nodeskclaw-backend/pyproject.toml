@@ -1,7 +1,7 @@
 [project]
 name = "nodeskclaw-backend"
 version = "0.1.0"
-description = "NoDeskClaw - K8s visual management console for OpenClaw"
+description = "NoDeskClaw - K8s visual management console for DeskClaw"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

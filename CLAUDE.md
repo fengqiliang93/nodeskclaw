@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-DeskClaw（曾用名 NoDeskClaw）— OpenClaw 实例可视化管理平台，通过 Web 界面管理 K8s 集群上的 OpenClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
+DeskClaw（曾用名 NoDeskClaw）— DeskClaw 实例可视化管理平台，通过 Web 界面管理 K8s 集群上的 DeskClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
 
 采用 CE（社区版）/ EE（企业版）双版本架构：CE 为本仓库开源部分，EE 在私有 `ee/` 目录，运行时通过 `FeatureGate` 自动检测。
 
@@ -17,10 +17,10 @@ NoDeskClaw/
 ├── nodeskclaw-backend/             # 后端 API 服务（Python 3.12 + FastAPI）
 ├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Go）
 ├── nodeskclaw-artifacts/          # 镜像构建 & 部署制品
-├── openclaw-channel-nodeskclaw/   # OpenClaw channel plugin
+├── openclaw-channel-nodeskclaw/   # DeskClaw channel plugin
 ├── features.yaml                   # CE/EE Feature 定义
 ├── ee/                             # Enterprise Edition 模块（私有）
-├── openclaw/                       # OpenClaw 源码（独立仓库）
+├── openclaw/                       # DeskClaw 源码（独立仓库）
 └── vibecraft/                      # VibeCraft 源码（独立仓库）
 ```
 
@@ -70,7 +70,7 @@ npm run lint              # ESLint 检查
 - **前端**：双前端架构。`nodeskclaw-frontend`（Admin 管理后台）仅 EE 版部署，CE 用户只有 `nodeskclaw-portal`（用户门户）。图标统一使用 `lucide-vue-next`
 - **后端**：FastAPI + SQLAlchemy + asyncpg，采用 Service Layer 模式
 - **K8s**：通过 kubectl 与 K8s 集群交互，目标节点架构 `linux/amd64`
-- **OpenClaw 源码**：本地副本位于 `openclaw/src/`，用于调试和问题排查
+- **DeskClaw 源码**：本地副本位于 `openclaw/src/`，用于调试和问题排查
 
 ## K8s 调试常用命令
 
@@ -99,7 +99,7 @@ kubectl get deploy -n <namespace> --context <context-name>
 
 - **禁止使用 emoji**，图标统一使用 `lucide-vue-next`
 - **Docker 操作必须指定 `--platform linux/amd64`**（开发机 Apple Silicon arm64，目标集群 amd64）
-- **涉及 K8s/OpenClaw 问题必须用 kubectl 实际查看集群状态**
+- **涉及 K8s/DeskClaw 问题必须用 kubectl 实际查看集群状态**
 - **所有数据删除必须软删除**（设置 `deleted_at`），唯一约束使用 Partial Unique Index
 - **JSONC 配置文件解析前必须剥离行注释**
 - **NFS 路径需正确转换**（容器路径 ↔ 本地挂载路径）
@@ -108,7 +108,7 @@ kubectl get deploy -n <namespace> --context <context-name>
 - **变更涉及 ≥1 个独立功能点时必须提示用户进入 Plan 模式**
 - **K8s 操作必须指定 `--context <name>`**，禁止依赖 current-context 默认值
 - **破坏性操作（删除 namespace/资源、数据库 DELETE、git force push）必须逐项确认**
-- **OpenClaw 行为判断必须有源码依据**，优先读取本地 `openclaw/src/` 副本
+- **DeskClaw 行为判断必须有源码依据**，优先读取本地 `openclaw/src/` 副本
 - **自动提交**：每完成一个单元性改动后必须主动提交 commit，不等用户提醒，也不允许攒多个独立改动最后一次性提交
 - **禁止在代码中出现真人个人信息**，邮箱等占位统一使用 `@example.com`
 

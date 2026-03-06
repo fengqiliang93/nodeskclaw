@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-NoDeskClaw 是 OpenClaw 实例可视化管理系统，通过 Web 界面管理 K8s 集群上的 OpenClaw 实例。
+NoDeskClaw 是 DeskClaw 实例可视化管理系统，通过 Web 界面管理 K8s 集群上的 DeskClaw 实例。
 
 | 组件 | 技术 | 可用版本 |
 |------|------|---------|
@@ -113,7 +113,7 @@ docker build --platform linux/amd64 -t my-image:latest .
 - 禁止半吊子回答（查一半就急着回答）
 - 禁止信息编造
 
-## K8s/OpenClaw 排查
+## K8s/DeskClaw 排查
 
 **必须先通过 kubectl 实际查看集群状态，再作判断。**
 

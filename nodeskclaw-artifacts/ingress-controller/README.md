@@ -1,6 +1,6 @@
 # Nginx Ingress Controller 部署清单
 
-NoDeskClaw 使用 Nginx Ingress Controller 实现 OpenClaw 实例的子域名自动路由。
+NoDeskClaw 使用 Nginx Ingress Controller 实现 DeskClaw 实例的子域名自动路由。
 
 ## 架构
 
@@ -23,7 +23,7 @@ inst nginx-ingress-controller
 实例 ClusterIP Service (:18789)
   |
   v
-OpenClaw Pod (:18789)
+DeskClaw Pod (:18789)
 ```
 
 每个 inst 集群需要独立安装本 deploy.yaml。infra 集群和 inst 集群各有一套 nginx-ingress-controller。
@@ -90,7 +90,7 @@ kubectl apply -f tls-secret.yaml
 - **子域名后缀**: `nodeskclaw`
 - **TLS Secret 名称**: `wildcard-nodeskai-tls`
 
-配置完成后，每次部署 OpenClaw 实例时，NoDeskClaw 会自动创建 Ingress 规则，域名格式为 `{name}-nodeskapp.example.com`。
+配置完成后，每次部署 DeskClaw 实例时，NoDeskClaw 会自动创建 Ingress 规则，域名格式为 `{name}-nodeskapp.example.com`。
 
 ## 文件说明
 

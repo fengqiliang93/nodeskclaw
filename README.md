@@ -1,8 +1,8 @@
 # NoDeskClaw
 
-OpenClaw 实例可视化管理平台 -- One-click deploy, full control.
+DeskClaw 实例可视化管理平台 -- One-click deploy, full control.
 
-通过 Web 界面管理 K8s 集群上的 OpenClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
+通过 Web 界面管理 K8s 集群上的 DeskClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
 
 ## CE/EE 架构
 
@@ -26,10 +26,10 @@ NoDeskClaw/
 ├── nodeskclaw-backend/            # 后端 API 服务（Python 3.12 + FastAPI）
 ├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Go）
 ├── nodeskclaw-artifacts/          # 镜像构建 & 部署制品
-├── openclaw-channel-nodeskclaw/   # OpenClaw channel plugin（工作区 Agent 协同）
+├── openclaw-channel-nodeskclaw/   # DeskClaw channel plugin（工作区 Agent 协同）
 ├── features.yaml                  # CE/EE Feature 定义
 ├── ee/                            # Enterprise Edition 模块（私有，.gitignore 排除）
-├── openclaw/                      # OpenClaw 源码（独立仓库，不纳入 Git）
+├── openclaw/                      # DeskClaw 源码（独立仓库，不纳入 Git）
 └── vibecraft/                     # VibeCraft 源码（独立仓库，不纳入 Git）
 ```
 
@@ -105,7 +105,7 @@ npm run dev
 ## 各子项目文档
 
 - [后端 README](nodeskclaw-backend/README.md) -- API 概览、目录结构、环境变量详解
-- [制品 README](nodeskclaw-artifacts/README.md) -- OpenClaw 镜像构建、Dockerfile 说明
+- [制品 README](nodeskclaw-artifacts/README.md) -- DeskClaw 镜像构建、Dockerfile 说明
 - [Channel Plugin README](openclaw-channel-nodeskclaw/README.md) -- 工作区 Agent 协同 channel plugin
 
 ## Contributing

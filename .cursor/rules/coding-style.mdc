@@ -60,7 +60,7 @@ import { Search, Bell, Settings } from 'lucide-vue-next'
 - **知道就是知道**：明确说明依据（看了哪个文件、哪行代码、哪条日志、哪个命令的输出）
 - **不知道就是不知道**：列出你做了哪些信息获取（读了什么文件、跑了什么命令、搜了什么关键词），最终为什么仍然不确定
 - **先查再答**：涉及项目状态的问题（端口是否在用、进程是否在跑、文件是否存在），先用工具验证，不要凭记忆回答
-- **先读代码再写代码**：涉及第三方项目/依赖的行为（如 OpenClaw 的认证方式、API 用法），必须先读源码确认，不要凭"常见做法"臆断。写提示信息、文档、注释前，确认描述的行为与代码一致
+- **先读代码再写代码**：涉及第三方项目/依赖的行为（如 DeskClaw 的认证方式、API 用法），必须先读源码确认，不要凭"常见做法"臆断。写提示信息、文档、注释前，确认描述的行为与代码一致
 - **出错就认**：说错了直接承认，不要找借口圆
 
 ### 严禁
@@ -146,24 +146,24 @@ import { Search, Bell, Settings } from 'lucide-vue-next'
 - 在测试环境中用户已声明可以随意操作时
 - 创建操作（不涉及删除、修改现有资源）
 
-## K8s / OpenClaw 排查规则
+## K8s / DeskClaw 排查规则
 
-**用户提到的任何 OpenClaw 或 K8s 相关问题，必须先通过 kubectl 实际查看集群状态，再做判断。** 不允许凭代码逻辑或经验猜测。
+**用户提到的任何 DeskClaw 或 K8s 相关问题，必须先通过 kubectl 实际查看集群状态，再做判断。** 不允许凭代码逻辑或经验猜测。
 
-### OpenClaw 行为判断必须有源码依据
+### DeskClaw 行为判断必须有源码依据
 
-**对 OpenClaw 内部行为（skill 加载、session 管理、system prompt 构建、配置生效机制等）的任何判断，必须通过读取实际源码来验证。** 不允许凭"可能是这样"、"一般框架都这么做"等推测下结论。
+**对 DeskClaw 内部行为（skill 加载、session 管理、system prompt 构建、配置生效机制等）的任何判断，必须通过读取实际源码来验证。** 不允许凭"可能是这样"、"一般框架都这么做"等推测下结论。
 
-- **必须做**：读取 OpenClaw 源码，找到具体函数和文件作为依据
+- **必须做**：读取 DeskClaw 源码，找到具体函数和文件作为依据
 - **必须做**：涉及多个模块的交互时，追踪完整调用链（如 gateway → skills → pi-coding-agent → system-prompt），不能只看一层就下结论
 - **必须做**：结论中明确引用源码位置（如 "`src/agents/system-prompt.ts` 中的 `buildSkillsSection` 函数"）
-- **严禁**：没读过 OpenClaw 源码就断言"这属于 OpenClaw 自身的行为"、"不是我们的 bug"
+- **严禁**：没读过 DeskClaw 源码就断言"这属于 DeskClaw 自身的行为"、"不是我们的 bug"
 - **严禁**：基于 UI 表现推测内部机制（如看到 Skills 页面显示 enabled 就断言 agent 一定能用）
 - **严禁**：只查了一层就下结论（如只看 `loadSkillsFromDir` 返回了 skill 就说"skill 已加载"，必须追到 system prompt 层确认 skill 是否真的在 prompt 中）
 
 ### 源码获取方式
 
-**本项目在 `/Users/xy718/workspace/NoDeskClaw/openclaw/` 有 OpenClaw 的完整 TypeScript 源码副本。** 优先使用本地源码，可读性远优于 Pod 上的 minified dist 文件。
+**本项目在 `/Users/xy718/workspace/NoDeskClaw/openclaw/` 有 DeskClaw 的完整 TypeScript 源码副本。** 优先使用本地源码，可读性远优于 Pod 上的 minified dist 文件。
 
 按优先级：
 
@@ -171,7 +171,7 @@ import { Search, Bell, Settings } from 'lucide-vue-next'
 2. **Pod 上验证**：需要确认运行时实际状态（如 session store 内容、config 文件）时，通过 `kubectl exec` 查看
 3. **Pod 上读 dist（备用）**：本地源码版本与线上不一致时，通过 `kubectl exec <pod> -- node -e "..."` 读取 dist 文件
 
-### 常用 OpenClaw 源码路径
+### 常用 DeskClaw 源码路径
 
 | 模块 | 本地路径（`openclaw/src/`） | Pod 内 dist 路径 |
 |---|---|---|
@@ -184,21 +184,21 @@ import { Search, Bell, Settings } from 'lucide-vue-next'
 | 配置加载 | `config/` | `dist/config-*.js` |
 | Session Store（运行时） | — | `/root/.openclaw/agents/main/sessions/sessions.json` |
 
-> 注：`pi-coding-agent` 是 OpenClaw 的闭源 NPM 依赖，源码不在本地。相关逻辑（`loadSkillsFromDir`、`formatSkillsForPrompt`、`ResourceLoader`、`PackageManager`、以及 `systemSent` 的读取逻辑）需通过 Pod 上的 `node_modules/@mariozechner/pi-coding-agent/dist/core/` 读取。**搜不到不等于不存在**——OpenClaw 开源代码可能仅定义了类型（如 `SessionEntry.systemSent`），而运行时逻辑在 pi-coding-agent 中。判断某字段"被忽略"前，必须同时搜索开源代码和 dist 文件，或通过实际行为验证（如修改字段后观察 Pod 行为变化）。
+> 注：`pi-coding-agent` 是 DeskClaw 的闭源 NPM 依赖，源码不在本地。相关逻辑（`loadSkillsFromDir`、`formatSkillsForPrompt`、`ResourceLoader`、`PackageManager`、以及 `systemSent` 的读取逻辑）需通过 Pod 上的 `node_modules/@mariozechner/pi-coding-agent/dist/core/` 读取。**搜不到不等于不存在**——DeskClaw 开源代码可能仅定义了类型（如 `SessionEntry.systemSent`），而运行时逻辑在 pi-coding-agent 中。判断某字段"被忽略"前，必须同时搜索开源代码和 dist 文件，或通过实际行为验证（如修改字段后观察 Pod 行为变化）。
 
 ### 必查项
 
-用户反馈 OpenClaw 实例问题时，按以下顺序执行：
+用户反馈 DeskClaw 实例问题时，按以下顺序执行：
 
 1. **Pod 状态**：`kubectl get pods -n <namespace>` — 确认 Running / CrashLoopBackOff / Pending 等
 2. **Pod 详情**：`kubectl describe pod <pod> -n <namespace>` — 查看 Events、Conditions、Container State
-3. **Pod 日志**：`kubectl logs <pod> -n <namespace> --tail=30` — 查看 OpenClaw 启动日志和错误输出
+3. **Pod 日志**：`kubectl logs <pod> -n <namespace> --tail=30` — 查看 DeskClaw 启动日志和错误输出
 4. **Deployment 状态**：`kubectl get deploy -n <namespace>` — 确认 READY、UP-TO-DATE、AVAILABLE
 5. **配置文件**：`kubectl exec <pod> -- cat /root/.openclaw/openclaw.json` — 确认实际运行配置
 6. **环境变量**：`kubectl exec <pod> -- printenv | grep OPENCLAW` — 确认 token 等关键变量
 7. **Events**：`kubectl get events -n <namespace> --sort-by='.lastTimestamp'` — 查看最近集群事件
 
-### 什么算"OpenClaw 或 K8s 相关"
+### 什么算"DeskClaw 或 K8s 相关"
 
 - 实例打不开、502、503、连接失败
 - pairing required、token mismatch、disconnected

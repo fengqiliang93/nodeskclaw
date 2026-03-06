@@ -1,6 +1,6 @@
 # openclaw-channel-learning
 
-OpenClaw channel plugin for NoDeskClaw Gene Evolution Ecosystem.
+DeskClaw channel plugin for NoDeskClaw Gene Evolution Ecosystem.
 
 ## Overview
 
