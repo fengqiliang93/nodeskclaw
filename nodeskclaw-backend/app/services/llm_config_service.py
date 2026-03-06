@@ -612,8 +612,7 @@ def _inject_channel_config(
     accounts = ch.setdefault("accounts", {})
     entry = _make_account_entry(instance, workspace_id)
     accounts[workspace_id] = entry
-    if "default" not in accounts:
-        accounts["default"] = entry
+    accounts["default"] = entry
 
     plugins = config.setdefault("plugins", {})
     load = plugins.setdefault("load", {})
@@ -686,7 +685,9 @@ async def add_workspace_channel_account(
 
         ch = existing.setdefault("channels", {}).setdefault("nodeskclaw", {})
         accounts = ch.setdefault("accounts", {})
-        accounts[workspace_id] = _make_account_entry(instance, workspace_id)
+        entry = _make_account_entry(instance, workspace_id)
+        accounts[workspace_id] = entry
+        accounts["default"] = entry
 
         _ensure_gateway_config(existing, instance)
         await _write_config_file(fs, existing)
@@ -908,62 +909,94 @@ async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
 
 
 async def repair_channel_account_urls(db: AsyncSession) -> dict:
-    """One-time repair: update apiUrl in all channel accounts and ensure 'default' exists.
+    """Repair channel accounts: fix apiUrl, workspaceId, sync plugin files.
 
-    Scans all active instances that belong to a workspace, reads their
-    openclaw.json, patches every nodeskclaw account's apiUrl to the
-    current AGENT_API_BASE_URL, adds a 'default' account if missing,
-    and writes back.
+    For each active instance in any workspace:
+    1. Query WorkspaceAgent to get all workspace memberships
+    2. Ensure each workspace has a correct account entry
+    3. Set 'default' to the most recently joined workspace
+    4. Fix apiUrl across all accounts
+    5. Re-deploy plugin source files (tools.ts factory mode etc.)
     """
-    result = await db.execute(
+    from app.models.workspace_agent import WorkspaceAgent
+
+    wa_result = await db.execute(
+        select(WorkspaceAgent.instance_id)
+        .where(WorkspaceAgent.deleted_at.is_(None))
+        .distinct()
+    )
+    instance_ids = [r.instance_id for r in wa_result.all()]
+
+    if not instance_ids:
+        return {"repaired": [], "skipped": [], "failed": []}
+
+    inst_result = await db.execute(
         select(Instance).where(
-            Instance.workspace_id.isnot(None),
+            Instance.id.in_(instance_ids),
             Instance.deleted_at.is_(None),
         )
     )
-    instances = list(result.scalars().all())
+    instances = list(inst_result.scalars().all())
 
     new_api_url = settings.AGENT_API_BASE_URL
+    plugin_source = _get_plugin_source_dir()
     repaired = []
     skipped = []
     failed = []
 
     for inst in instances:
         try:
+            ws_result = await db.execute(
+                select(WorkspaceAgent.workspace_id)
+                .where(
+                    WorkspaceAgent.instance_id == inst.id,
+                    WorkspaceAgent.deleted_at.is_(None),
+                )
+                .order_by(WorkspaceAgent.created_at.desc())
+            )
+            workspace_ids = [r.workspace_id for r in ws_result.all()]
+
+            if not workspace_ids:
+                skipped.append({"id": inst.id, "name": inst.name, "reason": "no workspace_agent"})
+                continue
+
             async with remote_fs(inst, db) as fs:
+                await _deploy_plugin_files(fs, plugin_source)
+
                 try:
                     config = await _read_config_file(fs)
                 except ValueError as e:
                     failed.append({"id": inst.id, "name": inst.name, "error": f"parse: {e}"})
                     continue
                 if config is None:
-                    skipped.append({"id": inst.id, "name": inst.name, "reason": "no config"})
-                    continue
+                    config = {}
 
-                accounts = (
-                    config.get("channels", {})
-                    .get("nodeskclaw", {})
-                    .get("accounts", {})
-                )
-                if not accounts:
-                    skipped.append({"id": inst.id, "name": inst.name, "reason": "no accounts"})
-                    continue
+                ch = config.setdefault("channels", {}).setdefault("nodeskclaw", {})
+                accounts = ch.setdefault("accounts", {})
 
                 changed = False
-                for key, acct in accounts.items():
+
+                for ws_id in workspace_ids:
+                    correct = _make_account_entry(inst, ws_id)
+                    existing = accounts.get(ws_id)
+                    if not isinstance(existing, dict) or existing != correct:
+                        accounts[ws_id] = correct
+                        changed = True
+
+                primary_entry = _make_account_entry(inst, workspace_ids[0])
+                cur_default = accounts.get("default")
+                if not isinstance(cur_default, dict) or cur_default != primary_entry:
+                    accounts["default"] = primary_entry
+                    changed = True
+
+                for key, acct in list(accounts.items()):
                     if isinstance(acct, dict) and acct.get("apiUrl") != new_api_url:
                         acct["apiUrl"] = new_api_url
                         changed = True
 
-                if "default" not in accounts:
-                    first = next(iter(accounts.values()), None)
-                    if isinstance(first, dict):
-                        accounts["default"] = dict(first)
-                        changed = True
-
                 if changed:
                     await _write_config_file(fs, config)
-                    repaired.append({"id": inst.id, "name": inst.name})
+                    repaired.append({"id": inst.id, "name": inst.name, "workspaces": workspace_ids})
                 else:
                     skipped.append({"id": inst.id, "name": inst.name, "reason": "already correct"})
         except Exception as e:

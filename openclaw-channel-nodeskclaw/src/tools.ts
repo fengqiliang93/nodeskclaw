@@ -8,12 +8,17 @@ type ToolConfig = {
   instanceId: string;
 };
 
-function resolveToolConfig(config: OpenClawConfig): ToolConfig {
+function resolveToolConfig(config: OpenClawConfig, sessionWorkspaceId?: string): ToolConfig {
   const section = (config as Record<string, unknown>).channels?.[
     "nodeskclaw"
   ] as Record<string, unknown> | undefined;
   const accounts = (section?.accounts ?? {}) as Record<string, Record<string, string>>;
-  const account = accounts["default"] ?? Object.values(accounts)[0] ?? {};
+
+  const account =
+    (sessionWorkspaceId ? accounts[sessionWorkspaceId] : undefined)
+    ?? accounts["default"]
+    ?? Object.values(accounts)[0]
+    ?? {};
 
   return {
     apiUrl: account.apiUrl || process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1",
@@ -335,8 +340,8 @@ function createGeneDiscoveryTool(cfg: ToolConfig): AnyAgentTool {
   };
 }
 
-export function createNoDeskClawTools(config: OpenClawConfig): AnyAgentTool[] {
-  const cfg = resolveToolConfig(config);
+export function createNoDeskClawTools(config: OpenClawConfig, sessionWorkspaceId?: string): AnyAgentTool[] {
+  const cfg = resolveToolConfig(config, sessionWorkspaceId);
   return [
     createBlackboardTool(cfg),
     createTopologyTool(cfg),
