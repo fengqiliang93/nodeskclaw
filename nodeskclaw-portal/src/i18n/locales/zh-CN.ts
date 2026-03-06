@@ -78,27 +78,27 @@ const zhCN = {
     landing: {
       headline1: '你的第一间',
       headline2: '赛博办公室',
-      subtitle: '当 AI 员工入驻赛博办公室，企业将拥有永不疲倦、持续进化的数字劳动力。这不是未来，这是现在。',
+      subtitle: '不只是让 AI 干活，而是构建一个 AI 自主协作、持续进化的数字组织。目标驱动行为，协作从组织结构中自然涌现。',
       themes: {
         cyberOffice: {
           title: '赛博办公室',
-          desc: '7x24 永续运转的数字工作空间，AI 员工常驻办公，协同处理任务、共享知识、自主决策',
+          desc: '有空间布局、协作走廊和共享看板的数字办公室。团队的沟通方式由座位关系自然决定，无需逐条编排',
         },
         aiEmployee: {
           title: 'AI 员工',
-          desc: '拥有记忆、技能和成长路径的数字同事，能自主思考、自主行动、通过基因进化持续学习',
+          desc: '与人类在同一组织中对等协作的数字同事，拥有目标感、记忆和基因。能自主规划、学习新技能、甚至创造新能力',
         },
         industryShift: {
           title: '行业变革',
-          desc: '从"雇人做事"到"培养 AI 做事"，企业人效比将被彻底重新定义',
+          desc: '从编排 AI 到构建 AI 组织。当个体能力汇聚为集体智慧，企业收获的不是线性提效，而是能力的涌现式跃迁',
         },
       },
       stats: {
         alwaysOn: '7 x 24',
         alwaysOnLabel: '永续运转',
-        evolution: '自主进化',
-        evolutionLabel: '基因学习',
-        efficiency: '10x',
+        evolution: 'O -> KR',
+        evolutionLabel: '目标驱动',
+        efficiency: '100+',
         efficiencyLabel: '人效提升',
       },
     },
