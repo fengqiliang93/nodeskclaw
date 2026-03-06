@@ -78,19 +78,19 @@ const enUS = {
     landing: {
       headline1: 'Your First',
       headline2: 'Cyber Office',
-      subtitle: 'Not just putting AI to work -- build a digital organization where AI collaborates autonomously and evolves continuously. Goals drive behavior; collaboration emerges from structure.',
+      subtitle: 'Not just putting AI to work -- build a self-organizing, ever-evolving AI workforce for your organization. Goals drive behavior; collaboration emerges from structure.',
       themes: {
         cyberOffice: {
           title: 'Cyber Office',
-          desc: 'A digital office with spatial layout, collaboration corridors, and a shared board. Communication patterns are shaped by organizational structure, not hard-coded step by step.',
+          desc: 'A digital office with spatial layout, collaboration corridors, and a shared board. Communication patterns are shaped by seating, not hard-coded step by step',
         },
         aiEmployee: {
           title: 'AI Employees',
-          desc: 'Digital colleagues who collaborate as equals alongside humans -- with goals, memory, and genes. They plan autonomously, learn new skills, and even create new capabilities.',
+          desc: 'Digital colleagues who collaborate as equals alongside humans -- with goals, memory, and genes. They plan autonomously, learn new skills, and even create new capabilities',
         },
         industryShift: {
           title: 'Industry Shift',
-          desc: 'From orchestrating AI to building AI organizations. When individual capabilities converge into collective intelligence, the result is not linear efficiency -- it is an emergent leap in capability.',
+          desc: 'From orchestrating AI to building AI organizations. When individual capabilities converge into collective intelligence, the result is not linear efficiency -- it is an emergent leap',
         },
       },
       stats: {
