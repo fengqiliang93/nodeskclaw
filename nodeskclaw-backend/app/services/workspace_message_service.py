@@ -146,7 +146,8 @@ def build_context_prompt(
 
 ---
 你可以直接回复参与讨论。如果当前话题与你无关或你没有要补充的，回复 NO_REPLY 即可。
-如需主动联系其他 AI 员工，使用 send 工具: send -t nodeskclaw -to "agent:{{name}}" -m "消息"
+注意：办公室成员列表仅供了解同事身份，不代表你可以和所有人通讯。办公室使用过道系统连接工位，你只能联系通过过道与你相连的成员。
+如需确认你能联系谁，必须调用 nodeskclaw_topology 工具（action: get_my_neighbors, my_instance_id: 你的实例 ID）。未经工具确认，不要声称可以联系任何人。
 """
 
 

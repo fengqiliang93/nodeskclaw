@@ -130,7 +130,7 @@ function createTopologyTool(cfg: ToolConfig): AnyAgentTool {
   return {
     name: "nodeskclaw_topology",
     description:
-      "Query workspace topology: get full topology graph, list members with status, find directly reachable neighbors.",
+      "Query workspace topology: get full topology graph, list members with status, find reachable neighbors via corridor BFS.",
     parameters: {
       type: "object",
       properties: {
@@ -158,14 +158,33 @@ function createTopologyTool(cfg: ToolConfig): AnyAgentTool {
           const edges = (data?.edges ?? []) as Record<string, unknown>[];
           const myNode = nodes.find((n) => n.entity_id === p.my_instance_id);
           if (!myNode) return jsonResult({ error: "Node not found for this instance" });
-          const neighborCoords = new Set<string>();
+
+          const adj = new Map<string, string[]>();
           for (const e of edges) {
-            if (e.a_q === myNode.hex_q && e.a_r === myNode.hex_r)
-              neighborCoords.add(`${e.b_q},${e.b_r}`);
-            if (e.b_q === myNode.hex_q && e.b_r === myNode.hex_r)
-              neighborCoords.add(`${e.a_q},${e.a_r}`);
+            const a = `${e.a_q},${e.a_r}`, b = `${e.b_q},${e.b_r}`;
+            adj.set(a, [...(adj.get(a) || []), b]);
+            adj.set(b, [...(adj.get(b) || []), a]);
           }
-          return jsonResult(nodes.filter((n) => neighborCoords.has(`${n.hex_q},${n.hex_r}`)));
+          const nodeMap = new Map(nodes.map((n) => [`${n.hex_q},${n.hex_r}`, n]));
+          const start = `${myNode.hex_q},${myNode.hex_r}`;
+          const visited = new Set([start]);
+          const queue = [start];
+          const reachable: Record<string, unknown>[] = [];
+          while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const nb of adj.get(cur) || []) {
+              if (visited.has(nb)) continue;
+              visited.add(nb);
+              const node = nodeMap.get(nb);
+              if (!node) continue;
+              if (node.node_type === "agent" || node.node_type === "human") {
+                reachable.push(node);
+              } else if (node.node_type === "corridor") {
+                queue.push(nb);
+              }
+            }
+          }
+          return jsonResult(reachable);
         }
         default:
           return jsonResult({ error: `Unknown action: ${p.action}` });
