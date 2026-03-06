@@ -629,6 +629,18 @@ def _inject_channel_config(
     endpoints = http_cfg.setdefault("endpoints", {})
     endpoints["chatCompletions"] = {"enabled": True}
 
+    tools_cfg = config.setdefault("tools", {})
+    allow = tools_cfg.setdefault("allow", [])
+    for tool_name in (
+        "nodeskclaw_blackboard",
+        "nodeskclaw_topology",
+        "nodeskclaw_performance",
+        "nodeskclaw_proposals",
+        "nodeskclaw_gene_discovery",
+    ):
+        if tool_name not in allow:
+            allow.append(tool_name)
+
     skills = config.setdefault("skills", {})
     s_load = skills.setdefault("load", {})
     extra_dirs = s_load.setdefault("extraDirs", [])
@@ -688,6 +700,16 @@ async def add_workspace_channel_account(
         entry = _make_account_entry(instance, workspace_id)
         accounts[workspace_id] = entry
         accounts["default"] = entry
+
+        tools_cfg = existing.setdefault("tools", {})
+        allow = tools_cfg.setdefault("allow", [])
+        for tool_name in (
+            "nodeskclaw_blackboard", "nodeskclaw_topology",
+            "nodeskclaw_performance", "nodeskclaw_proposals",
+            "nodeskclaw_gene_discovery",
+        ):
+            if tool_name not in allow:
+                allow.append(tool_name)
 
         _ensure_gateway_config(existing, instance)
         await _write_config_file(fs, existing)
@@ -1000,6 +1022,17 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
                 for key, acct in list(accounts.items()):
                     if isinstance(acct, dict) and acct.get("apiUrl") != new_api_url:
                         acct["apiUrl"] = new_api_url
+                        changed = True
+
+                tools_cfg = config.setdefault("tools", {})
+                allow = tools_cfg.setdefault("allow", [])
+                for tool_name in (
+                    "nodeskclaw_blackboard", "nodeskclaw_topology",
+                    "nodeskclaw_performance", "nodeskclaw_proposals",
+                    "nodeskclaw_gene_discovery",
+                ):
+                    if tool_name not in allow:
+                        allow.append(tool_name)
                         changed = True
 
                 if changed:
