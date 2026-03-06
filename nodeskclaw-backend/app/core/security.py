@@ -152,6 +152,61 @@ async def get_current_user_from_query(
     return await _get_user_by_token(token, db, allowed_scopes={"sse"})
 
 
+async def get_current_user_or_agent(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """JWT 优先，失败后尝试 proxy_token（OPENCLAW_GATEWAY_TOKEN）认证。"""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error_code": 40100,
+                "message_key": "errors.auth.credentials_missing",
+                "message": "未提供认证信息",
+            },
+        )
+
+    token = credentials.credentials
+
+    try:
+        return await _get_user_by_token(token, db)
+    except HTTPException:
+        pass
+
+    from app.models.instance import Instance
+    result = await db.execute(
+        select(Instance).where(
+            Instance.proxy_token == token,
+            Instance.deleted_at.is_(None),
+        )
+    )
+    instance = result.scalar_one_or_none()
+    if instance is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error_code": 40101,
+                "message_key": "errors.auth.token_invalid",
+                "message": "Token 无效",
+            },
+        )
+
+    user = (await db.execute(
+        select(User).where(User.id == instance.created_by, User.deleted_at.is_(None))
+    )).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error_code": 40105,
+                "message_key": "errors.auth.user_not_found_or_disabled",
+                "message": "用户不存在或已禁用",
+            },
+        )
+    return user
+
+
 # ── KubeConfig AES-256-GCM Encryption ────────────────────
 
 def _get_aes_key() -> bytes:

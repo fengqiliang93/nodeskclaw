@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import NotFoundError
 
 from app.models.cluster import Cluster
@@ -321,6 +322,9 @@ async def deploy_instance(
     if "OPENCLAW_GATEWAY_TOKEN" not in env_vars:
         env_vars["OPENCLAW_GATEWAY_TOKEN"] = _secrets.token_hex(24)
     gateway_token = env_vars["OPENCLAW_GATEWAY_TOKEN"]
+
+    env_vars.setdefault("NODESKCLAW_API_URL", settings.AGENT_API_BASE_URL)
+    env_vars.setdefault("NODESKCLAW_TOKEN", gateway_token)
 
     # 创建实例记录
     instance = Instance(

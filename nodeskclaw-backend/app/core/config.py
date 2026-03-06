@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     LLM_PROXY_URL: str = ""  # 独立 LLM Proxy 服务外部地址，如 https://llm-proxy.example.com
     LLM_PROXY_INTERNAL_URL: str = ""  # K8s 集群内网地址，用于 openclaw.json 中的 baseUrl（绕过 ALB）
 
+    # ── Agent API（AI 员工 Pod 回调后端的内网地址）────────
+    AGENT_API_BASE_URL: str = "http://localhost:8000/api/v1"
+
     # ── 出站代理（用于访问 OpenAI/Anthropic 等外部 API）────
     HTTPS_PROXY: str = ""
 

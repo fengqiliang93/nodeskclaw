@@ -16,7 +16,7 @@ function resolveToolConfig(config: OpenClawConfig): ToolConfig {
   const account = accounts["default"] ?? {};
 
   return {
-    apiUrl: process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1",
+    apiUrl: account.apiUrl || process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1",
     token: account.apiToken || process.env.NODESKCLAW_TOKEN || "",
     workspaceId: account.workspaceId || process.env.NODESKCLAW_WORKSPACE_ID || "",
     instanceId: account.instanceId || "",

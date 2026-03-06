@@ -77,6 +77,11 @@ def _get_current_user_from_query_dep():
     return get_current_user_from_query
 
 
+def _get_current_user_or_agent_dep():
+    from app.core.security import get_current_user_or_agent
+    return get_current_user_or_agent
+
+
 # ── Workspace CRUD ───────────────────────────────────
 
 @router.post("")
@@ -258,7 +263,7 @@ async def remove_agent(
 async def get_blackboard(
     workspace_id: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_member(workspace_id, user, db)
     bb = await workspace_service.get_blackboard(db, workspace_id)
@@ -272,7 +277,7 @@ async def update_blackboard(
     workspace_id: str,
     data: BlackboardUpdate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     bb = await workspace_service.update_blackboard(db, workspace_id, data)
@@ -332,7 +337,7 @@ async def list_tasks(
     status: str | None = Query(None),
     exclude_archived: bool = Query(True),
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_member(workspace_id, user, db)
     tasks = await workspace_service.list_tasks(db, workspace_id, status, exclude_archived)
@@ -344,7 +349,7 @@ async def create_task(
     workspace_id: str,
     data: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     task = await workspace_service.create_task(db, workspace_id, data)
@@ -358,7 +363,7 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     result = await workspace_service.update_task(db, workspace_id, task_id, data)
@@ -383,7 +388,7 @@ async def archive_task(
     workspace_id: str,
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     task = await workspace_service.archive_task(db, workspace_id, task_id)
@@ -399,7 +404,7 @@ async def archive_task(
 async def list_objectives(
     workspace_id: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_member(workspace_id, user, db)
     objs = await workspace_service.list_objectives(db, workspace_id)
@@ -411,7 +416,7 @@ async def create_objective(
     workspace_id: str,
     data: ObjectiveCreate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     obj = await workspace_service.create_objective(db, workspace_id, data, user.id)
@@ -425,7 +430,7 @@ async def update_objective(
     objective_id: str,
     data: ObjectiveUpdate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
     obj = await workspace_service.update_objective(db, workspace_id, objective_id, data)

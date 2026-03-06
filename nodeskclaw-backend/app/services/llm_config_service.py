@@ -596,6 +596,7 @@ def _inject_channel_config(
         "accounts": {
             "default": {
                 "enabled": True,
+                "apiUrl": settings.AGENT_API_BASE_URL,
                 "workspaceId": workspace_id,
                 "instanceId": instance.id,
                 "apiToken": json.loads(instance.env_vars or "{}").get(
