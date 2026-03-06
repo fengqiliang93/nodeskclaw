@@ -25,6 +25,7 @@ class ReachableEndpoint:
     hex_r: int
     endpoint_type: str  # "agent" | "human"
     entity_id: str  # instance_id or user_id
+    display_name: str = ""
 
 
 @dataclass
@@ -146,10 +147,12 @@ async def get_reachable_endpoints(
             if node.node_type == "agent":
                 endpoints.append(ReachableEndpoint(
                     node.hex_q, node.hex_r, "agent", node.entity_id or "",
+                    display_name=node.display_name or "",
                 ))
             elif node.node_type == "human":
                 endpoints.append(ReachableEndpoint(
                     node.hex_q, node.hex_r, "human", node.entity_id or "",
+                    display_name=node.display_name or "",
                 ))
             elif node.node_type == "corridor":
                 queue.append(neighbor)

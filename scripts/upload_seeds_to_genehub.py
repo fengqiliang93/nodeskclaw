@@ -165,12 +165,15 @@ def main() -> None:
 
     ok, fail, skip = 0, 0, 0
 
-    def _publish_gene(slug: str) -> bool:
-        """PUT to approve + publish a gene after upload."""
+    def _publish_gene(slug: str, manifest: dict | None = None) -> bool:
+        """PUT to approve + publish a gene, optionally updating its manifest."""
+        body: dict = {"is_published": True, "review_status": "approved"}
+        if manifest:
+            body["manifest"] = manifest
         try:
             resp = httpx.put(
                 f"{registry_url}/api/v1/genes/{slug}",
-                json={"is_published": True, "review_status": "approved"},
+                json=body,
                 headers=headers,
                 timeout=10.0,
             )
@@ -210,8 +213,8 @@ def main() -> None:
                 print(f"  {status}  {slug} -> id={gene_id}")
                 ok += 1
             elif resp.status_code == 409:
-                published = _publish_gene(slug)
-                status = "EXIST+PUB" if published else "EXIST"
+                published = _publish_gene(slug, manifest=manifest)
+                status = "EXIST+UPDATE" if published else "EXIST"
                 print(f"  {status}  {slug} (already on GeneHub)")
                 ok += 1
             else:

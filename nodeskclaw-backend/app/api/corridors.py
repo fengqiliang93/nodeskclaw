@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -564,6 +564,32 @@ async def get_topology(
             for e in topo.edges
         ],
     ).model_dump())
+
+
+@router.get("/{workspace_id}/topology/reachable")
+async def get_reachable_from_instance(
+    workspace_id: str,
+    instance_id: str = Query(...),
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    """Return agents/humans reachable from the given instance via corridor traversal."""
+    user, org = org_ctx
+    await _check_workspace(workspace_id, org, db)
+    await wm_service.check_workspace_member(workspace_id, user, db)
+    instance = await db.get(Instance, instance_id)
+    if not instance or instance.hex_position_q is None:
+        return _ok({"reachable": []})
+    endpoints = await corridor_router.get_reachable_endpoints(
+        workspace_id, instance.hex_position_q, instance.hex_position_r, db,
+    )
+    return _ok({"reachable": [
+        {
+            "hex_q": ep.hex_q, "hex_r": ep.hex_r,
+            "type": ep.endpoint_type, "entity_id": ep.entity_id,
+            "display_name": ep.display_name,
+        }
+        for ep in endpoints
+    ]})
 
 
 @router.get("/{workspace_id}/topology/health")

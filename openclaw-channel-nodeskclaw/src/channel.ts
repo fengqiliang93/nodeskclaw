@@ -100,7 +100,8 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
   },
   agentPrompt: {
     messageToolHints: () => [
-      `Use "send -t nodeskclaw -to \\"agent:{name}\\" -m \\"message\\"" to collaborate with other AI employees in the cyber office.`,
+      `Use "send -t nodeskclaw -to \\"agent:{name}\\" -m \\"message\\"" to collaborate with other AI employees.`,
+      `IMPORTANT: You can ONLY message agents/humans reachable from your hex position via corridor connections. Before claiming you can contact someone, call get_my_neighbors to check. If an agent is not in the result, you CANNOT message them.`,
     ],
   },
   status: {
