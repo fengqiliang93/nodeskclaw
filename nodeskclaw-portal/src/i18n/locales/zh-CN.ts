@@ -88,6 +88,10 @@ const zhCN = {
           title: 'AI 员工',
           desc: '与人类在同一组织中对等协作的数字同事，拥有目标感、记忆和基因。能自主规划、学习新技能、甚至创造新能力',
         },
+        aiOkr: {
+          title: 'AI OKR',
+          desc: '不是人类定 OKR 让 AI 执行，而是 AI 自主将目标拆解为关键结果和任务。目标层层传导，执行自动涌现',
+        },
         industryShift: {
           title: '行业变革',
           desc: '从编排 AI 到构建 AI 组织。当个体能力汇聚为集体智慧，你的组织收获的不是线性提效，而是能力的涌现式跃迁',
@@ -96,8 +100,8 @@ const zhCN = {
       stats: {
         alwaysOn: '7 x 24',
         alwaysOnLabel: '永续运转',
-        evolution: 'O -> KR',
-        evolutionLabel: '目标驱动',
+        evolution: 'AKR',
+        evolutionLabel: 'AI 目标体系',
         efficiency: '100+',
         efficiencyLabel: '人效提升',
       },

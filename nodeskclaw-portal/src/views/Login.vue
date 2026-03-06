@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useConfirm } from '@/composables/useConfirm'
-import { Loader2, Building2, BrainCircuit, Rocket, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
+import { Loader2, Building2, BrainCircuit, Rocket, Target, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 
 const router = useRouter()
@@ -30,6 +30,7 @@ const locale = ref(getCurrentLocale())
 const themes = [
   { icon: Building2, key: 'cyberOffice' },
   { icon: BrainCircuit, key: 'aiEmployee' },
+  { icon: Target, key: 'aiOkr' },
   { icon: Rocket, key: 'industryShift' },
 ]
 

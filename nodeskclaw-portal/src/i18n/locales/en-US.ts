@@ -88,6 +88,10 @@ const enUS = {
           title: 'AI Employees',
           desc: 'Digital colleagues who collaborate as equals alongside humans -- with goals, memory, and genes. They plan autonomously, learn new skills, and even create new capabilities',
         },
+        aiOkr: {
+          title: 'AI OKR',
+          desc: 'AI agents autonomously decompose objectives into key results and tasks -- goals cascade down, execution emerges up',
+        },
         industryShift: {
           title: 'Industry Shift',
           desc: 'From orchestrating AI to building AI organizations. When individual capabilities converge into collective intelligence, the result is not linear efficiency -- it is an emergent leap',
@@ -96,8 +100,8 @@ const enUS = {
       stats: {
         alwaysOn: '7 x 24',
         alwaysOnLabel: 'Always On',
-        evolution: 'O -> KR',
-        evolutionLabel: 'Goal-Driven',
+        evolution: 'AKR',
+        evolutionLabel: 'AI Goals',
         efficiency: '100+',
         efficiencyLabel: 'Productivity',
       },
