@@ -293,6 +293,15 @@ function handleZoomOut() {
 function handleResetView() {
   if (activeMode.value === '3d') workspace3dRef.value?.resetView()
   else workspace2dRef.value?.resetView()
+
+  const wsId = workspaceId.value
+  Promise.all([
+    store.fetchWorkspace(wsId),
+    store.fetchTopology(wsId),
+    store.fetchBlackboard(wsId),
+    store.fetchDecoration(wsId),
+    loadPerfSummary(wsId),
+  ])
 }
 
 onMounted(async () => {
