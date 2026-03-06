@@ -331,6 +331,10 @@ function formatTime(ts: string | null): string {
                 <div class="flex justify-between"><span class="text-muted-foreground">命名空间</span><span class="font-mono text-xs">{{ detail.namespace }}</span></div>
                 <div class="flex justify-between"><span class="text-muted-foreground">镜像</span><span>{{ detail.image_version }}</span></div>
                 <div class="flex justify-between"><span class="text-muted-foreground">集群</span><span>{{ detail.cluster_id }}</span></div>
+                <div v-if="detail.workspaces?.length" class="flex justify-between items-start">
+                  <span class="text-muted-foreground">办公室</span>
+                  <span class="text-right">{{ detail.workspaces.map((w) => w.name).join(', ') }}</span>
+                </div>
                 <div class="flex justify-between"><span class="text-muted-foreground">创建时间</span><span>{{ formatTime(detail.created_at) }}</span></div>
               </CardContent>
             </Card>
@@ -687,8 +691,8 @@ function formatTime(ts: string | null): string {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>删除实例</AlertDialogTitle>
-          <AlertDialogDescription v-if="detail?.workspace_id" class="space-y-2">
-            <p>该实例当前已加入办公室「<strong class="text-foreground">{{ detail.workspace_name }}</strong>」，无法直接删除。</p>
+          <AlertDialogDescription v-if="detail?.workspaces && detail.workspaces.length > 0" class="space-y-2">
+            <p>该实例当前已加入办公室「<strong class="text-foreground">{{ detail.workspaces.map((w) => w.name).join('、') }}</strong>」，无法直接删除。</p>
             <p class="text-xs">请先在办公室中将此 AI 员工移除，然后再执行删除操作。</p>
           </AlertDialogDescription>
           <AlertDialogDescription v-else class="space-y-2">
@@ -701,12 +705,12 @@ function formatTime(ts: string | null): string {
             <p>请输入实例名称 <strong>{{ detail?.name }}</strong> 以确认删除。</p>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div v-if="!detail?.workspace_id" class="py-2">
+        <div v-if="!detail?.workspaces?.length" class="py-2">
           <Input v-model="deleteConfirmName" placeholder="输入实例名称确认" />
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel @click="deleteConfirmName = ''">{{ detail?.workspace_id ? '知道了' : '取消' }}</AlertDialogCancel>
-          <AlertDialogAction v-if="!detail?.workspace_id" :disabled="!canDelete" class="bg-destructive text-destructive-foreground" @click="handleDelete">
+          <AlertDialogCancel @click="deleteConfirmName = ''">{{ detail?.workspaces?.length ? '知道了' : '取消' }}</AlertDialogCancel>
+          <AlertDialogAction v-if="!detail?.workspaces?.length" :disabled="!canDelete" class="bg-destructive text-destructive-foreground" @click="handleDelete">
             删除
           </AlertDialogAction>
         </AlertDialogFooter>

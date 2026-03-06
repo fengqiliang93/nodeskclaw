@@ -90,6 +90,7 @@ const zhCN = {
     tableName: "实例名",
     tableSlug: "标识",
     tableNamespace: "命名空间",
+    tableWorkspaces: "办公室",
     tableImageVersion: "镜像版本",
     tableReplicas: "副本",
     tableActions: "操作",

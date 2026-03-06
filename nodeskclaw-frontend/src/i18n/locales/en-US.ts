@@ -90,6 +90,7 @@ const enUS = {
     tableName: "Instance Name",
     tableSlug: "Slug",
     tableNamespace: "Namespace",
+    tableWorkspaces: "Workspaces",
     tableImageVersion: "Image Version",
     tableReplicas: "Replicas",
     tableActions: "Actions",

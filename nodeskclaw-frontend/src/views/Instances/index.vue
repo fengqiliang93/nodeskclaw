@@ -93,8 +93,9 @@ function formatStatus(status: string) {
 }
 
 async function handleDelete(inst: InstanceInfo) {
-  if (inst.workspace_id) {
-    notify.error(t('instancesPage.cannotDeleteInWorkspace', { workspace: inst.workspace_name ?? '' }))
+  const wsNames = inst.workspaces?.map((w) => w.name).join(', ')
+  if (inst.workspaces && inst.workspaces.length > 0) {
+    notify.error(t('instancesPage.cannotDeleteInWorkspace', { workspace: wsNames }))
     return
   }
   const ok = await confirm({
@@ -207,6 +208,9 @@ async function handleDelete(inst: InstanceInfo) {
                 <span class="ml-2">
                   {{ t('instancesPage.replicas', { available: inst.available_replicas, total: inst.replicas }) }}
                 </span>
+                <span v-if="inst.workspaces?.length" class="ml-2">
+                  · {{ inst.workspaces.map((w) => w.name).join(', ') }}
+                </span>
               </div>
             </div>
           </div>
@@ -243,6 +247,7 @@ async function handleDelete(inst: InstanceInfo) {
             <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableName') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableSlug') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableNamespace') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableWorkspaces') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableImageVersion') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('instancesPage.tableReplicas') }}</th>
             <th class="text-right px-4 py-2.5 font-medium">{{ t('instancesPage.tableActions') }}</th>
@@ -266,6 +271,9 @@ async function handleDelete(inst: InstanceInfo) {
             <td class="px-4 py-2.5 font-medium">{{ inst.name }}</td>
             <td class="px-4 py-2.5 font-mono text-xs text-muted-foreground">{{ inst.slug }}</td>
             <td class="px-4 py-2.5 text-muted-foreground font-mono text-xs">{{ inst.namespace }}</td>
+            <td class="px-4 py-2.5 text-muted-foreground text-xs">
+              {{ inst.workspaces?.length ? inst.workspaces.map((w) => w.name).join(', ') : '-' }}
+            </td>
             <td class="px-4 py-2.5 font-mono text-xs">{{ inst.image_version }}</td>
             <td class="px-4 py-2.5">{{ inst.available_replicas }}/{{ inst.replicas }}</td>
             <td class="px-4 py-2.5 text-right">
