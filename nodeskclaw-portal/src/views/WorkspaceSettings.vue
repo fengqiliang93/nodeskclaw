@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Save, Trash2, Loader2, Users, Palette, UserPlus, Search, Shield, ShieldCheck, X } from 'lucide-vue-next'
+import { ArrowLeft, Save, Trash2, Loader2, Users, Palette, UserPlus, Search, Shield, ShieldCheck, X, LayoutTemplate } from 'lucide-vue-next'
 import { useWorkspaceStore, WORKSPACE_PERMISSIONS, PERMISSION_PRESETS, type WorkspaceMemberInfo } from '@/stores/workspace'
 import { useAuthStore } from '@/stores/auth'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -242,6 +242,40 @@ async function handleSavePermissions() {
 
 // ── Remove Member ────────────────────────────────────
 
+// ── Save as Template ─────────────────────────────────
+
+const showTemplateDialog = ref(false)
+const templateName = ref('')
+const templateDesc = ref('')
+const savingTemplate = ref(false)
+
+function openTemplateDialog() {
+  templateName.value = store.currentWorkspace?.name ? `${store.currentWorkspace.name}` : ''
+  templateDesc.value = ''
+  showTemplateDialog.value = true
+}
+
+async function handleSaveAsTemplate() {
+  if (!templateName.value.trim()) return
+  savingTemplate.value = true
+  try {
+    await store.saveAsTemplate({
+      name: templateName.value.trim(),
+      description: templateDesc.value.trim(),
+      workspace_id: workspaceId.value,
+      visibility: 'org_private',
+    })
+    toast.success(t('workspaceSettings.templateSaved'))
+    showTemplateDialog.value = false
+  } catch (e: any) {
+    toast.error(resolveApiErrorMessage(e, t('workspaceSettings.templateSaveFailed')))
+  } finally {
+    savingTemplate.value = false
+  }
+}
+
+// ── Remove Member ────────────────────────────────────
+
 const removingUserId = ref<string | null>(null)
 
 async function handleRemoveMember(member: WorkspaceMemberInfo) {
@@ -437,6 +471,17 @@ async function handleRemoveMember(member: WorkspaceMemberInfo) {
         </div>
       </div>
 
+      <!-- Save as Template -->
+      <div v-if="canManageSettings" class="pt-2 border-t border-border">
+        <button
+          class="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+          @click="openTemplateDialog"
+        >
+          <LayoutTemplate class="w-4 h-4" />
+          {{ t('workspaceSettings.saveAsTemplate') }}
+        </button>
+      </div>
+
       <!-- Save / Delete -->
       <div class="flex gap-3">
         <button
@@ -460,6 +505,54 @@ async function handleRemoveMember(member: WorkspaceMemberInfo) {
         </button>
       </div>
     </div>
+
+    <!-- Save as Template Dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showTemplateDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showTemplateDialog = false">
+          <div class="bg-card rounded-xl shadow-2xl w-[400px] border border-border">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 class="text-sm font-semibold">{{ t('workspaceSettings.saveAsTemplate') }}</h3>
+              <button class="p-1 rounded hover:bg-muted" @click="showTemplateDialog = false">
+                <X class="w-4 h-4" />
+              </button>
+            </div>
+            <div class="px-5 py-4 space-y-4">
+              <div class="space-y-1.5">
+                <label class="text-xs font-medium text-muted-foreground">{{ t('workspaceSettings.templateNameLabel') }}</label>
+                <input
+                  v-model="templateName"
+                  class="w-full px-3 py-2 text-sm rounded-lg bg-muted border border-border outline-none focus:ring-1 focus:ring-primary/50"
+                  :placeholder="t('workspaceSettings.templateNamePlaceholder')"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-medium text-muted-foreground">{{ t('workspaceSettings.templateDescLabel') }}</label>
+                <textarea
+                  v-model="templateDesc"
+                  rows="2"
+                  class="w-full px-3 py-2 text-sm rounded-lg bg-muted border border-border outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+                  :placeholder="t('workspaceSettings.templateDescPlaceholder')"
+                />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button class="px-4 py-2 text-sm rounded-lg hover:bg-muted transition-colors" @click="showTemplateDialog = false">
+                  {{ t('workspaceSettings.cancel') }}
+                </button>
+                <button
+                  class="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  :disabled="savingTemplate || !templateName.trim()"
+                  @click="handleSaveAsTemplate"
+                >
+                  <Loader2 v-if="savingTemplate" class="w-4 h-4 animate-spin inline mr-1" />
+                  {{ t('workspaceSettings.saveTemplate') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Add Member Dialog -->
     <Teleport to="body">

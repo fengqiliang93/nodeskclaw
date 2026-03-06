@@ -41,6 +41,17 @@ export interface WorkspaceInfo {
   updated_at: string
 }
 
+export interface WorkspaceTemplateItem {
+  id: string
+  name: string
+  description: string
+  is_preset: boolean
+  org_id: string | null
+  visibility: string
+  created_by: string | null
+  created_at: string | null
+}
+
 export interface BlackboardInfo {
   id: string
   workspace_id: string
@@ -209,11 +220,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  async function createWorkspace(data: { name: string; description?: string; color?: string; icon?: string }) {
+  async function createWorkspace(data: { name: string; description?: string; color?: string; icon?: string; template_id?: string }) {
     const res = await api.post('/workspaces', data)
     const ws = res.data.data
     workspaces.value.unshift(ws)
     return ws as WorkspaceInfo
+  }
+
+  async function fetchWorkspaceTemplates(visibility?: string) {
+    const params: Record<string, string> = {}
+    if (visibility) params.visibility = visibility
+    const res = await api.get('/workspaces/templates', { params })
+    return res.data.data as WorkspaceTemplateItem[]
+  }
+
+  async function saveAsTemplate(data: { name: string; description?: string; workspace_id: string; visibility?: string }) {
+    const res = await api.post('/workspaces/templates', data)
+    return res.data.data
   }
 
   async function updateWorkspace(id: string, data: Record<string, unknown>) {
@@ -960,6 +983,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchWorkspaces,
     fetchWorkspace,
     createWorkspace,
+    fetchWorkspaceTemplates,
+    saveAsTemplate,
     updateWorkspace,
     deleteWorkspace,
     addAgent,
