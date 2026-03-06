@@ -441,7 +441,7 @@ function selectInstance(instanceId: string) {
 
           <section class="mb-8">
             <h2 class="text-lg font-semibold mb-3">{{ t('gene.rating') }}</h2>
-            <div class="flex items-center gap-6">
+            <div class="flex items-center gap-6 mb-4">
               <div class="flex items-center gap-1">
                 <Star
                   v-for="i in 5"
@@ -464,6 +464,63 @@ function selectInstance(instanceId: string) {
                     class="h-full rounded-full bg-primary/60"
                     :style="{ width: `${Math.min(100, (gene.effectiveness_score ?? 0) * 100)}%` }"
                   />
+                </div>
+              </div>
+            </div>
+
+            <div v-if="gene.effectiveness_breakdown" class="rounded-xl border border-border bg-card p-4">
+              <div class="text-xs font-medium text-muted-foreground mb-3">{{ t('gene.effectivenessBreakdown') }}</div>
+              <div class="space-y-3">
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-foreground">{{ t('gene.userRatingComponent') }}</span>
+                    <span class="text-xs text-muted-foreground">
+                      {{ Math.round(gene.effectiveness_breakdown.user_rating * 100) }}%
+                      <span class="text-muted-foreground/60 ml-1">{{ t('gene.weightLabel', { weight: '25%' }) }}</span>
+                    </span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      class="h-full rounded-full bg-amber-400 transition-all"
+                      :style="{ width: `${Math.min(100, gene.effectiveness_breakdown.user_rating * 100)}%` }"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-foreground">{{ t('gene.agentEvalComponent') }}</span>
+                    <span class="text-xs text-muted-foreground">
+                      {{ Math.round(gene.effectiveness_breakdown.agent_eval * 100) }}%
+                      <span class="text-muted-foreground/60 ml-1">{{ t('gene.weightLabel', { weight: '25%' }) }}</span>
+                    </span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      class="h-full rounded-full bg-blue-400 transition-all"
+                      :style="{ width: `${Math.min(100, gene.effectiveness_breakdown.agent_eval * 100)}%` }"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-foreground">{{ t('gene.usageEffectComponent') }}</span>
+                    <span class="text-xs text-muted-foreground">
+                      {{ Math.round(gene.effectiveness_breakdown.usage_effect * 100) }}%
+                      <span class="text-muted-foreground/60 ml-1">{{ t('gene.weightLabel', { weight: '50%' }) }}</span>
+                      <span
+                        v-if="gene.effectiveness_breakdown.positive_count + gene.effectiveness_breakdown.negative_count > 0"
+                        class="text-muted-foreground/60 ml-1"
+                      >
+                        ({{ t('gene.posNegCount', { pos: gene.effectiveness_breakdown.positive_count, neg: gene.effectiveness_breakdown.negative_count }) }})
+                      </span>
+                    </span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      class="h-full rounded-full bg-emerald-400 transition-all"
+                      :style="{ width: `${Math.min(100, gene.effectiveness_breakdown.usage_effect * 100)}%` }"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

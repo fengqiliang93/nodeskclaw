@@ -416,9 +416,12 @@ async def get_gene(db: AsyncSession, gene_id: str) -> dict:
     hub_data = await genehub_client.get_gene(gene.slug)
     if hub_data:
         _fire_task(_upsert_and_commit(hub_data))
-        return genehub_gene_to_local(hub_data, _gene_to_dict(gene))
+        data = genehub_gene_to_local(hub_data, _gene_to_dict(gene))
+    else:
+        data = _gene_to_dict(gene)
 
-    return _gene_to_dict(gene)
+    data["effectiveness_breakdown"] = await _get_effectiveness_breakdown(db, gene_id, gene.avg_rating)
+    return data
 
 
 async def _upsert_and_commit(gene_data: dict) -> None:
@@ -1714,6 +1717,49 @@ async def _recalc_effectiveness_score(db: AsyncSession, gene_id: str) -> None:
     score = user_rating_norm * 0.25 + float(agent_eval) * 0.25 + usage_effect * 0.50
     gene.effectiveness_score = round(score, 4)
     await db.commit()
+
+
+async def _get_effectiveness_breakdown(
+    db: AsyncSession, gene_id: str, avg_rating: float
+) -> dict:
+    """Return the three components that make up effectiveness_score."""
+    user_rating_norm = avg_rating / 5.0 if avg_rating else 0.0
+
+    agent_eval_result = await db.execute(
+        select(func.avg(InstanceGene.agent_self_eval)).where(
+            InstanceGene.gene_id == gene_id,
+            InstanceGene.agent_self_eval.isnot(None),
+            not_deleted(InstanceGene),
+        )
+    )
+    agent_eval = float(agent_eval_result.scalar() or 0.0)
+
+    pos_result = await db.execute(
+        select(func.count()).where(
+            GeneEffectLog.gene_id == gene_id,
+            GeneEffectLog.metric_type == EffectMetricType.user_positive,
+        )
+    )
+    pos_count = pos_result.scalar() or 0
+
+    neg_result = await db.execute(
+        select(func.count()).where(
+            GeneEffectLog.gene_id == gene_id,
+            GeneEffectLog.metric_type == EffectMetricType.user_negative,
+        )
+    )
+    neg_count = neg_result.scalar() or 0
+
+    total = pos_count + neg_count
+    usage_effect = (pos_count / total) if total > 0 else 0.5
+
+    return {
+        "user_rating": round(user_rating_norm, 4),
+        "agent_eval": round(agent_eval, 4),
+        "usage_effect": round(usage_effect, 4),
+        "positive_count": pos_count,
+        "negative_count": neg_count,
+    }
 
 
 # ═══════════════════════════════════════════════════

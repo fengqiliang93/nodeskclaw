@@ -2,6 +2,14 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 
+export interface EffectivenessBreakdown {
+  user_rating: number
+  agent_eval: number
+  usage_effect: number
+  positive_count: number
+  negative_count: number
+}
+
 export interface GeneItem {
   id: string
   name: string
@@ -16,6 +24,7 @@ export interface GeneItem {
   install_count: number
   avg_rating: number
   effectiveness_score: number
+  effectiveness_breakdown?: EffectivenessBreakdown
   is_featured: boolean
   parent_gene_id?: string
   created_by_instance_id?: string
