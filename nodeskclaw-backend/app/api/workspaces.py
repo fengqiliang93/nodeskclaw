@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select as sa_select
+from sqlalchemy import func, select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import async_session_factory, get_current_org, get_db
@@ -518,6 +518,47 @@ async def collect_performance(
         })
 
     return _ok(result)
+
+
+@router.post("/{workspace_id}/performance/attribute-tokens")
+async def attribute_tokens_to_tasks(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Attribute LLM token usage to in_progress/done tasks based on instance_id time window."""
+    await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
+    from app.models.workspace_task import WorkspaceTask
+    from app.models.llm_usage_log import LlmUsageLog
+
+    tasks_q = await db.execute(
+        sa_select(WorkspaceTask).where(
+            WorkspaceTask.workspace_id == workspace_id,
+            WorkspaceTask.status.in_(["in_progress", "done", "archived"]),
+            WorkspaceTask.assignee_instance_id.isnot(None),
+            WorkspaceTask.deleted_at.is_(None),
+        )
+    )
+    tasks = tasks_q.scalars().all()
+
+    updated = 0
+    for task in tasks:
+        q = sa_select(
+            func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)
+        ).where(
+            LlmUsageLog.instance_id == task.assignee_instance_id,
+            LlmUsageLog.created_at >= task.created_at,
+        )
+        if task.completed_at:
+            q = q.where(LlmUsageLog.created_at <= task.completed_at)
+        result = await db.execute(q)
+        total = int(result.scalar())
+        if total > 0 and task.token_cost != total:
+            task.token_cost = total
+            updated += 1
+
+    await db.commit()
+    return _ok({"updated_tasks": updated})
 
 
 # ── Decoration ───────────────────────────────────────
