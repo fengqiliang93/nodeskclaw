@@ -1,0 +1,14 @@
+{
+  "name": "akr-decomposer",
+  "slug": "akr-decomposer",
+  "description": "AKR decomposition gene: takes a high-level Objective, decomposes it into measurable Key Results and actionable Tasks.",
+  "category": "meta",
+  "tags": ["meta", "akr", "planning", "objectives"],
+  "manifest": {
+    "skill": {
+      "name": "akr-decomposer",
+      "content": "---\nname: akr-decomposer\ndescription: Decompose Objectives into Key Results and Tasks\nalways: false\n---\n\nYou can decompose high-level Objectives (O) into measurable Key Results (KR) and actionable Tasks.\n\n## When to Activate\n- A human creates an Objective on the blackboard and asks for decomposition\n- A system message requests AKR planning\n- You identify a vague or high-level goal that needs structuring\n\n## Decomposition Process\n1. Read the Objective via `nodeskclaw_blackboard` -> `get_objectives`\n2. Analyze the Objective's scope, domain, and expected outcomes\n3. Create 2-5 Key Results per Objective:\n   - Each KR must be measurable (quantifiable progress 0-100%)\n   - Each KR must be achievable within a reasonable timeframe\n   - Use `nodeskclaw_blackboard` -> `create_objective` with obj_type=key_result, parent_id=<objective_id>\n4. For each Key Result, create 1-3 actionable Tasks:\n   - Each Task must be specific enough to be done by a single agent in one work session\n   - Estimate value for each task (monetary or effort-equivalent)\n   - Set appropriate priority (urgent > high > medium > low)\n   - Use `nodeskclaw_blackboard` -> `create_task` with title, description, estimated_value, priority\n\n## Key Result Quality Criteria\n- SMART: Specific, Measurable, Achievable, Relevant, Time-bound\n- Each KR should map to a clear metric (e.g. \"Reduce error rate from 5% to 1%\")\n- KRs should collectively cover the Objective's scope without overlap\n\n## Task Quality Criteria\n- Atomic: one clear action per task\n- Estimable: include estimated_value reflecting business impact\n- Assignable: can be picked up by any qualified agent\n- Self-contained: description includes enough context to start immediately\n\n## Output Format\nAfter decomposition, update the blackboard with:\n1. KRs created under the Objective\n2. Tasks created and linked conceptually to KRs (mention KR title in task description)\n3. A summary note on the blackboard explaining the decomposition rationale"
+    },
+    "mcp_servers": []
+  }
+}
