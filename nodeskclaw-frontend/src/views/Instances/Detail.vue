@@ -27,7 +27,6 @@ import {
   ArrowLeft, RefreshCw, FileText, MoreVertical, Scale, Trash2, RotateCw,
   ArrowUpCircle, Cpu, MemoryStick, HardDrive, Globe, Container, Copy,
 } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
 import { useNotify } from '@/components/ui/notify'
 
 const route = useRoute()
@@ -130,11 +129,11 @@ function podStatusToDot(phase: string) {
 async function handleScale() {
   try {
     await instanceStore.scale(instanceId, scaleReplicas.value)
-    toast.success(`已扩缩容至 ${scaleReplicas.value} 副本`)
+    notify.success(`已扩缩容至 ${scaleReplicas.value} 副本`)
     showScaleDialog.value = false
     detail.value = await instanceStore.fetchDetail(instanceId)
   } catch {
-    toast.error('扩缩容失败')
+    notify.error('扩缩容失败')
   }
 }
 
@@ -142,10 +141,10 @@ async function handleScale() {
 async function handleRestart() {
   try {
     await instanceStore.restart(instanceId)
-    toast.success('已触发滚动重启')
+    notify.success('已触发滚动重启')
     showRestartDialog.value = false
   } catch {
-    toast.error('重启失败')
+    notify.error('重启失败')
   }
 }
 
@@ -153,10 +152,10 @@ async function handleRestart() {
 async function handleDelete() {
   try {
     await instanceStore.deleteInstance(instanceId)
-    toast.success('实例已删除')
+    notify.success('实例已删除')
     router.push('/instances')
   } catch {
-    toast.error('删除失败')
+    notify.error('删除失败')
   }
 }
 
@@ -173,11 +172,11 @@ async function handleUpdate() {
       mem_request: updateForm.value.mem_request || undefined,
       mem_limit: updateForm.value.mem_limit || undefined,
     })
-    toast.success('配置已保存，请在"配置"页签点击"应用"以生效')
+    notify.success('配置已保存，请在"配置"页签点击"应用"以生效')
     showUpdateDialog.value = false
     detail.value = await instanceStore.fetchDetail(instanceId)
   } catch {
-    toast.error('保存失败')
+    notify.error('保存失败')
   }
 }
 
@@ -186,12 +185,12 @@ async function handleApply() {
   applyingConfig.value = true
   try {
     await instanceStore.applyConfig(instanceId)
-    toast.success('配置已应用，滚动更新已触发')
+    notify.success('配置已应用，滚动更新已触发')
     showApplyConfirm.value = false
     detail.value = await instanceStore.fetchDetail(instanceId)
     history.value = await instanceStore.getHistory(instanceId)
   } catch {
-    toast.error('应用失败')
+    notify.error('应用失败')
   } finally {
     applyingConfig.value = false
   }
@@ -201,11 +200,11 @@ async function handleApply() {
 async function handleRollback(revision: number) {
   try {
     await instanceStore.rollback(instanceId, revision)
-    toast.success(`已回滚到 Revision ${revision}`)
+    notify.success(`已回滚到 Revision ${revision}`)
     detail.value = await instanceStore.fetchDetail(instanceId)
     history.value = await instanceStore.getHistory(instanceId)
   } catch {
-    toast.error('回滚失败')
+    notify.error('回滚失败')
   }
 }
 
@@ -233,9 +232,9 @@ async function handleSyncToken() {
   try {
     await instanceStore.syncToken(instanceId)
     detail.value = await instanceStore.fetchDetail(instanceId)
-    toast.success('Token 获取成功')
+    notify.success('Token 获取成功')
   } catch {
-    toast.error('获取 Token 失败，请确保实例 Pod 正在运行')
+    notify.error('获取 Token 失败，请确保实例 Pod 正在运行')
   } finally {
     syncingToken.value = false
   }

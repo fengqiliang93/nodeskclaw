@@ -22,7 +22,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, RefreshCw, CircleAlert,
   ChevronsUpDown, Check, Building2,
 } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { pinyin } from 'pinyin-pro'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -34,6 +34,7 @@ const authStore = useAuthStore()
 const clusterStore = useClusterStore()
 const instanceStore = useInstanceStore()
 const orgStore = useOrgStore()
+const notify = useNotify()
 
 const K8S_NAME_MAX = 63
 const NS_PREFIX_BASE = 'nodeskclaw-'.length + 1
@@ -242,9 +243,9 @@ async function fetchImageTags(autoSelect = false) {
 async function refreshImageTags() {
   await fetchImageTags(true)
   if (imageTags.value.length > 0) {
-    toast.info(`已刷新，最新版本: ${imageTags.value[0]}`)
+    notify.info(`已刷新，最新版本: ${imageTags.value[0]}`)
   } else {
-    toast.warning('未获取到镜像 Tag')
+    notify.warning('未获取到镜像 Tag')
   }
 }
 
@@ -396,7 +397,7 @@ function buildPayload() {
 
 async function runPrecheck() {
   if (!selectedCluster.value) {
-    toast.error('请先选择集群')
+    notify.error('请先选择集群')
     return
   }
   checking.value = true
@@ -405,7 +406,7 @@ async function runPrecheck() {
     const res = await api.post('/deploy/precheck', buildPayload())
     precheckResult.value = res.data.data
   } catch {
-    toast.error('预检失败')
+    notify.error('预检失败')
   } finally {
     checking.value = false
   }
@@ -418,7 +419,7 @@ async function handleDeploy() {
   try {
     const res = await api.post('/deploy', buildPayload())
     const deployId = res.data.data.deploy_id
-    toast.info('部署任务已提交，正在执行...')
+    notify.info('部署任务已提交，正在执行...')
 
     // 跳转到独立的部署进度页
     router.push({
@@ -427,7 +428,7 @@ async function handleDeploy() {
       query: { name: form.value.name },
     })
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, '部署请求失败'))
+    notify.error(resolveApiErrorMessage(e, '部署请求失败'))
     deploying.value = false
   }
 }

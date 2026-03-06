@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge'
 import StatusDot from '@/components/StatusDot.vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { ArrowLeft, Server, Cpu, MemoryStick, Box, KeyRound, Plug, Pencil, Check, X, Globe } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { useI18n } from 'vue-i18n'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
 
 const { t } = useI18n()
+const notify = useNotify()
 
 const route = useRoute()
 const router = useRouter()
@@ -130,9 +131,9 @@ async function handleSaveName() {
     const updated = await clusterStore.updateCluster(clusterId, { name: trimmed })
     cluster.value = updated
     editingName.value = false
-    toast.success('集群名称已更新')
+    notify.success('集群名称已更新')
   } catch (e: any) {
-    toast.error(resolveApiErrorMessage(e, '重命名失败'))
+    notify.error(resolveApiErrorMessage(e, '重命名失败'))
   } finally {
     savingName.value = false
   }
@@ -152,9 +153,9 @@ async function handleUpdateKubeconfig() {
     cluster.value = updated
     showKubeconfigDialog.value = false
     newKubeconfig.value = ''
-    toast.success('KubeConfig 已更新')
+    notify.success('KubeConfig 已更新')
   } catch {
-    toast.error('更新失败')
+    notify.error('更新失败')
   } finally {
     updatingKubeconfig.value = false
   }
@@ -165,14 +166,14 @@ async function handleTestConnection() {
   try {
     const result = await clusterStore.testConnection(clusterId)
     if (result.ok) {
-      toast.success(`连接成功: K8s ${result.version}, ${result.nodes} 节点`)
+      notify.success(`连接成功: K8s ${result.version}, ${result.nodes} 节点`)
       await clusterStore.fetchClusters()
       cluster.value = clusterStore.clusters.find((c) => c.id === clusterId) ?? cluster.value
     } else {
-      toast.error(`连接失败: ${result.message}`)
+      notify.error(`连接失败: ${result.message}`)
     }
   } catch {
-    toast.error('测试连接失败')
+    notify.error('测试连接失败')
   } finally {
     testingConnection.value = false
   }
@@ -185,9 +186,9 @@ async function handleIngressClassChange(event: Event) {
   try {
     const updated = await clusterStore.updateCluster(clusterId, { ingress_class: value })
     cluster.value = updated
-    toast.success(t('clusterDetail.ingressClassUpdated'))
+    notify.success(t('clusterDetail.ingressClassUpdated'))
   } catch (e: any) {
-    toast.error(resolveApiErrorMessage(e, t('clusterDetail.ingressClassUpdateFailed')))
+    notify.error(resolveApiErrorMessage(e, t('clusterDetail.ingressClassUpdateFailed')))
   } finally {
     savingIngressClass.value = false
   }

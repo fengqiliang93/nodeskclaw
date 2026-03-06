@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/input'
 import GlowCard from '@/components/GlowCard.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { Plus, Trash2, Plug, Server, Pencil } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useConfirm } from '@/composables/useConfirm'
 
 const router = useRouter()
 const { confirm } = useConfirm()
+const notify = useNotify()
 const clusterStore = useClusterStore()
 
 const showAddDialog = ref(false)
@@ -74,13 +75,13 @@ async function handleAdd() {
   adding.value = true
   try {
     const cluster = await clusterStore.addCluster(addForm.value.name, addForm.value.kubeconfig)
-    toast.success(`集群 "${cluster.name}" 添加成功`)
+    notify.success(`集群 "${cluster.name}" 添加成功`)
     showAddDialog.value = false
     addForm.value = { name: '', kubeconfig: '' }
     nameAutoFilled.value = false
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '添加失败'
-    toast.error(msg)
+    notify.error(msg)
   } finally {
     adding.value = false
   }
@@ -91,13 +92,13 @@ async function handleTest(id: string) {
   try {
     const result = await clusterStore.testConnection(id)
     if (result.ok) {
-      toast.success(`连接成功: K8s ${result.version}, ${result.nodes} 节点`)
+      notify.success(`连接成功: K8s ${result.version}, ${result.nodes} 节点`)
       await clusterStore.fetchClusters()
     } else {
-      toast.error(`连接失败: ${result.message}`)
+      notify.error(`连接失败: ${result.message}`)
     }
   } catch {
-    toast.error('连接测试失败')
+    notify.error('连接测试失败')
   } finally {
     testingId.value = null
   }
@@ -113,9 +114,9 @@ async function handleDelete(id: string, name: string) {
   if (!ok) return
   try {
     await clusterStore.deleteCluster(id)
-    toast.success('集群已删除')
+    notify.success('集群已删除')
   } catch {
-    toast.error('删除失败')
+    notify.error('删除失败')
   }
 }
 
@@ -135,10 +136,10 @@ async function handleRename() {
   renaming.value = true
   try {
     await clusterStore.updateCluster(id, { name: name.trim() })
-    toast.success('集群已重命名')
+    notify.success('集群已重命名')
     renameDialogOpen.value = false
   } catch (e: any) {
-    toast.error(resolveApiErrorMessage(e, '重命名失败'))
+    notify.error(resolveApiErrorMessage(e, '重命名失败'))
   } finally {
     renaming.value = false
   }

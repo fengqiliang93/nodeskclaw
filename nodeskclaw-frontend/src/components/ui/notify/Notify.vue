@@ -21,7 +21,7 @@ const colorMap: Record<string, string> = {
 
 <template>
   <Teleport to="body">
-    <div class="fixed top-4 right-4 z-9999 flex flex-col gap-2 pointer-events-none">
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-9999 flex flex-col items-center gap-2 pointer-events-none">
       <TransitionGroup name="notify">
         <div
           v-for="item in queue"
@@ -34,7 +34,16 @@ const colorMap: Record<string, string> = {
           ]"
         >
           <component :is="iconMap[item.type]" class="w-4 h-4 shrink-0 mt-0.5" />
-          <span class="flex-1 break-words">{{ item.message }}</span>
+          <div class="flex-1 flex flex-col gap-1">
+            <span class="wrap-break-word">{{ item.message }}</span>
+            <button
+              v-if="item.action"
+              class="text-xs underline opacity-70 hover:opacity-100 text-left transition-opacity"
+              @click="item.action.onClick(); dismiss(item.id)"
+            >
+              {{ item.action.label }}
+            </button>
+          </div>
           <button
             class="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
             @click="dismiss(item.id)"
@@ -54,11 +63,11 @@ const colorMap: Record<string, string> = {
 }
 .notify-enter-from {
   opacity: 0;
-  transform: translateX(100%);
+  transform: translateY(-100%);
 }
 .notify-leave-to {
   opacity: 0;
-  transform: translateX(100%);
+  transform: translateY(-100%);
 }
 .notify-move {
   transition: transform 0.3s ease;

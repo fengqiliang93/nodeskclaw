@@ -9,11 +9,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { ArrowLeft, GitCompare } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 
 const route = useRoute()
 const router = useRouter()
 const instanceStore = useInstanceStore()
+const notify = useNotify()
 
 const instanceId = route.params.id as string
 const instanceName = ref('')
@@ -63,10 +64,10 @@ function statusVariant(status: string) {
 async function handleRollback(revision: number) {
   try {
     await instanceStore.rollback(instanceId, revision)
-    toast.success(`已回滚到 Revision ${revision}`)
+    notify.success(`已回滚到 Revision ${revision}`)
     history.value = await instanceStore.getHistory(instanceId)
   } catch {
-    toast.error('回滚失败')
+    notify.error('回滚失败')
   }
 }
 

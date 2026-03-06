@@ -3,7 +3,6 @@ import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vu
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
-import { Toaster } from '@/components/ui/sonner'
 import { Notify } from '@/components/ui/notify'
 import { useAuthStore } from '@/stores/auth'
 import { useClusterStore } from '@/stores/cluster'
@@ -338,8 +337,6 @@ const sseStatusText = computed(() => {
       </div>
     </div>
 
-    <!-- Toast (Sonner) -->
-    <Toaster position="top-right" :theme="'dark'" />
     <!-- Notify -->
     <Notify />
     <!-- Confirm Dialog -->

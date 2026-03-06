@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import GlowCard from '@/components/GlowCard.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { Box, Trash2, Eye, Rocket, Search, LayoutGrid, List } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { useConfirm } from '@/composables/useConfirm'
 
 const router = useRouter()
 const { confirm } = useConfirm()
 const { t, te } = useI18n()
+const notify = useNotify()
 const instanceStore = useInstanceStore()
 const clusterStore = useClusterStore()
 
@@ -93,7 +94,7 @@ function formatStatus(status: string) {
 
 async function handleDelete(inst: InstanceInfo) {
   if (inst.workspace_id) {
-    toast.error(t('instancesPage.cannotDeleteInWorkspace', { workspace: inst.workspace_name ?? '' }))
+    notify.error(t('instancesPage.cannotDeleteInWorkspace', { workspace: inst.workspace_name ?? '' }))
     return
   }
   const ok = await confirm({
@@ -105,9 +106,9 @@ async function handleDelete(inst: InstanceInfo) {
   if (!ok) return
   try {
     await instanceStore.deleteInstance(inst.id)
-    toast.success(t('instancesPage.deleteSuccess'))
+    notify.success(t('instancesPage.deleteSuccess'))
   } catch (error) {
-    toast.error(resolveApiErrorMessage(error, t('instancesPage.deleteFailed')))
+    notify.error(resolveApiErrorMessage(error, t('instancesPage.deleteFailed')))
   }
 }
 </script>

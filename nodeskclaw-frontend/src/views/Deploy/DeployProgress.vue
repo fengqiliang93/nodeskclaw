@@ -9,12 +9,13 @@ import {
 } from 'lucide-vue-next'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import api, { API_BASE } from '@/services/api'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { useConfirm } from '@/composables/useConfirm'
 
 const route = useRoute()
 const router = useRouter()
 const { confirm } = useConfirm()
+const notify = useNotify()
 
 const deployId = route.params.deployId as string
 const instanceName = (route.query.name as string) || ''
@@ -167,9 +168,9 @@ async function handleCancel() {
   cancelling.value = true
   try {
     const res = await api.post(`/deploy/${deployId}/cancel`)
-    toast.info(res.data?.data?.message || '部署已取消')
+    notify.info(res.data?.data?.message || '部署已取消')
   } catch {
-    toast.error('取消请求失败')
+    notify.error('取消请求失败')
   } finally {
     cancelling.value = false
   }

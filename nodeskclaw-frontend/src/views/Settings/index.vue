@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { LogOut, User, Package, Save, Plug, Loader2, Lock, Globe, HardDrive, Mail, Send } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
+import { useNotify } from '@/components/ui/notify'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import api from '@/services/api'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
+const notify = useNotify()
 
 // ── 镜像仓库配置 ──
 const registryUrl = ref('')
@@ -31,7 +32,7 @@ const settingsLoading = ref(false)
 
 async function handleLogout() {
   await authStore.logout()
-  toast.success('已登出')
+  notify.success('已登出')
   router.push('/login')
 }
 
@@ -92,11 +93,11 @@ async function handleSaveRegistry() {
     if (registryUsername.value.trim()) {
       registryHasPassword.value = true
     }
-    toast.success(t('settings.registry.saved'))
+    notify.success(t('settings.registry.saved'))
     // 保存后自动测试连接
     await handleTestRegistry()
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.registry.saveFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.registry.saveFailed')))
   } finally {
     registrySaving.value = false
   }
@@ -153,9 +154,9 @@ async function handleSaveNetwork() {
       api.put('/settings/tls_secret_name', { value: tlsSecretName.value.trim() || null }),
     ])
     networkDirty.value = false
-    toast.success(t('settings.network.saved'))
+    notify.success(t('settings.network.saved'))
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.network.saveFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.network.saveFailed')))
   } finally {
     networkSaving.value = false
   }
@@ -208,9 +209,9 @@ async function handleSaveSmtp() {
     if (smtpUsername.value.trim()) {
       smtpHasPassword.value = true
     }
-    toast.success(t('settings.smtp.saved'))
+    notify.success(t('settings.smtp.saved'))
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.smtp.saveFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.smtp.saveFailed')))
   } finally {
     smtpSaving.value = false
   }
@@ -219,15 +220,15 @@ async function handleSaveSmtp() {
 async function handleTestSmtp() {
   const email = smtpTestEmail.value.trim() || authStore.user?.email
   if (!email) {
-    toast.error(t('settings.smtp.testEmailRequired'))
+    notify.error(t('settings.smtp.testEmailRequired'))
     return
   }
   smtpTesting.value = true
   try {
     await api.post('/settings/smtp/test', { recipient_email: email })
-    toast.success(t('settings.smtp.testSent'))
+    notify.success(t('settings.smtp.testSent'))
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.smtp.testFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.smtp.testFailed')))
   } finally {
     smtpTesting.value = false
   }
@@ -241,9 +242,9 @@ async function handleSaveTemplate() {
       api.put('/settings/verification_email_template', { value: verificationTemplate.value.trim() || null }),
     ])
     templateDirty.value = false
-    toast.success(t('settings.emailTemplate.saved'))
+    notify.success(t('settings.emailTemplate.saved'))
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.emailTemplate.saveFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.emailTemplate.saveFailed')))
   } finally {
     templateSaving.value = false
   }
@@ -287,9 +288,9 @@ async function saveAllowedStorageClasses() {
   try {
     const enabledNames = storageClasses.value.filter((s) => s.enabled).map((s) => s.name)
     await api.put('/settings/allowed_storage_classes', { value: JSON.stringify(enabledNames) })
-    toast.success(t('settings.storage.saved'))
+    notify.success(t('settings.storage.saved'))
   } catch (e: unknown) {
-    toast.error(resolveApiErrorMessage(e, t('settings.storage.saveFailed')))
+    notify.error(resolveApiErrorMessage(e, t('settings.storage.saveFailed')))
   } finally {
     storageSaving.value = false
   }
