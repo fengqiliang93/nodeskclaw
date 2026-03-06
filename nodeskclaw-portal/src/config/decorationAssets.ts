@@ -13,24 +13,6 @@ export const FLOOR_ASSETS: DecorationAsset[] = [
     category: 'floor',
     url: '/assets/hex2d/floors/terrazzo-tile.png',
   },
-  {
-    id: 'carpet-warm',
-    nameKey: 'decoration.floor.carpet_warm',
-    category: 'floor',
-    url: '/assets/hex2d/floors/carpet-warm.svg',
-  },
-  {
-    id: 'carpet-cool',
-    nameKey: 'decoration.floor.carpet_cool',
-    category: 'floor',
-    url: '/assets/hex2d/floors/carpet-cool.svg',
-  },
-  {
-    id: 'carpet-marble',
-    nameKey: 'decoration.floor.carpet_marble',
-    category: 'floor',
-    url: '/assets/hex2d/floors/carpet-marble.svg',
-  },
 ]
 
 export const FURNITURE_ASSETS: DecorationAsset[] = [

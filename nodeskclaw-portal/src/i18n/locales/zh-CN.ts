@@ -205,9 +205,6 @@ const zhCN = {
     floor: {
       title: '地板',
       terrazzo_diamond: '水磨石',
-      carpet_warm: '暖色地毯',
-      carpet_cool: '冷色地毯',
-      carpet_marble: '大理石',
     },
     furniture: {
       title: '家具',
@@ -251,6 +248,8 @@ const zhCN = {
     enterFocus: "聚焦模式（黑板 + 聊天）",
     exitFocus: "退出聚焦模式",
     focusMode: "聚焦模式",
+    skillLearnedToast: "{agentName} 学会了 {geneName}",
+    skillLearnedToastWithSummary: "{agentName} 学会了 {geneName}：{summary}",
   },
   workspaceSettings: {
     title: "办公室设置",

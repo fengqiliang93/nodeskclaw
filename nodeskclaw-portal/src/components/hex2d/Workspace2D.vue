@@ -393,6 +393,24 @@ const emptyHexes = computed(() => {
         />
       </g>
 
+      <!-- Per-hex furniture sprites -->
+      <g v-if="furniturePositions.length" class="furniture-layer" pointer-events="none">
+        <g
+          v-for="f in furniturePositions"
+          :key="`furniture-${f.id}`"
+          :transform="`translate(${f.px}, ${f.py})`"
+        >
+          <image
+            :href="f.url"
+            :x="-HEX_CELL_W * 0.225"
+            :y="HEX_RADIUS * 0.05"
+            :width="HEX_CELL_W * 0.45"
+            :height="HEX_CELL_H * 0.45"
+            preserveAspectRatio="xMidYMid meet"
+          />
+        </g>
+      </g>
+
       <!-- Honeycomb grid -->
       <path
         :d="honeycombGrid"
@@ -629,25 +647,6 @@ const emptyHexes = computed(() => {
             class="animate-hex-pulse"
           />
         </template>
-      </g>
-
-      <!-- Per-hex furniture sprites -->
-      <g v-if="furniturePositions.length" class="furniture-layer" pointer-events="none">
-        <g
-          v-for="f in furniturePositions"
-          :key="`furniture-${f.id}`"
-          :transform="`translate(${f.px}, ${f.py})`"
-        >
-          <image
-            :href="f.url"
-            :x="-HEX_CELL_W / 2"
-            :y="-HEX_CELL_H / 2"
-            :width="HEX_CELL_W"
-            :height="HEX_CELL_H"
-            clip-path="url(#hex-clip)"
-            preserveAspectRatio="xMidYMid meet"
-          />
-        </g>
       </g>
 
       <!-- Selected hex highlight for agents -->

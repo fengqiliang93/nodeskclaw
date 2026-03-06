@@ -9,9 +9,6 @@ hex2d/
   floors/
     terrazzo-diamond.png  水磨石原始素材（等轴测完整地砖，含侧面厚度）
     terrazzo-tile.png     水磨石通铺 tile（256x128，2:1 压缩顶面纹理）
-    carpet-warm.svg       暖色地毯（SVG 占位）
-    carpet-cool.svg       冷色地毯（SVG 占位）
-    carpet-marble.svg     大理石（SVG 占位）
   furniture/
     office-chair.png      办公椅（透明底 PNG，Figma 导出）
 ```
@@ -64,8 +61,8 @@ TILE_H = TILE_W / 2    ≈ 17.5 SVG 单位（单块瓷砖高度）
 
 ## 家具精灵
 
-- 格式：PNG 或 SVG，透明背景
-- 渲染：`<image>` + `clip-path="url(#hex-clip)"`，`preserveAspectRatio="xMidYMid meet"`
+- 格式：PNG，透明背景
+- 渲染：`<image>`，`preserveAspectRatio="xMidYMid meet"`，缩放至 hex 尺寸的 45%
 - 放置在 `furniture/` 目录下
 
 ## 素材注册

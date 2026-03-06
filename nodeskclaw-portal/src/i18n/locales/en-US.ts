@@ -205,9 +205,6 @@ const enUS = {
     floor: {
       title: 'Floor',
       terrazzo_diamond: 'Terrazzo',
-      carpet_warm: 'Warm Carpet',
-      carpet_cool: 'Cool Carpet',
-      carpet_marble: 'Marble',
     },
     furniture: {
       title: 'Furniture',
@@ -251,6 +248,8 @@ const enUS = {
     enterFocus: "Focus mode (Blackboard + Chat)",
     exitFocus: "Exit focus mode",
     focusMode: "Focus Mode",
+    skillLearnedToast: "{agentName} learned {geneName}",
+    skillLearnedToastWithSummary: "{agentName} learned {geneName}: {summary}",
   },
   workspaceSettings: {
     title: "Cyber Office Settings",
