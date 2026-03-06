@@ -426,8 +426,6 @@ const enUS = {
     fileUploading: "Uploading files...",
     fileUploadFailed: "File upload failed",
     downloadFile: "Download file",
-    previewImage: "Preview image",
-    closePreview: "Close preview",
   },
   createWorkspace: {
     title: "New Cyber Office",

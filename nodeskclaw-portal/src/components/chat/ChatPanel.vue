@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, type Ref } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
@@ -10,7 +10,7 @@ import { useWorkspaceStore, type GroupChatMessage, type AgentBrief, type FileAtt
 import FileAttachmentList from './FileAttachmentList.vue'
 import BaseTooltip from '@/components/shared/BaseTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
-import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText, Image as ImageIcon } from 'lucide-vue-next'
+import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -97,13 +97,9 @@ async function copySlug(agentId: string) {
 // ── File upload ──────────────────────────────────────
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const pendingFiles = ref<File[]>([])
-const pendingFileUrls = new Map<File, string>()
 const fileUploading = ref(false)
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024
-
-const pendingPreviewUrl = ref<string | null>(null)
-const pendingPreviewName = ref('')
 
 function triggerFileInput() {
   if (!store.fileUploadEnabled) return
@@ -124,56 +120,17 @@ function addFiles(files: File[]) {
       continue
     }
     pendingFiles.value.push(f)
-    if (f.type.startsWith('image/')) {
-      pendingFileUrls.set(f, URL.createObjectURL(f))
-    }
   }
 }
 
 function removePendingFile(idx: number) {
-  const f = pendingFiles.value[idx]
-  const url = pendingFileUrls.get(f)
-  if (url) {
-    URL.revokeObjectURL(url)
-    pendingFileUrls.delete(f)
-  }
   pendingFiles.value.splice(idx, 1)
 }
-
-function revokeAllPendingUrls() {
-  for (const url of pendingFileUrls.values()) URL.revokeObjectURL(url)
-  pendingFileUrls.clear()
-}
-
-function openPendingPreview(file: File) {
-  const url = pendingFileUrls.get(file)
-  if (!url) return
-  pendingPreviewUrl.value = url
-  pendingPreviewName.value = file.name
-}
-
-function closePendingPreview() {
-  pendingPreviewUrl.value = null
-  pendingPreviewName.value = ''
-}
-
-function onPendingPreviewKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && pendingPreviewUrl.value) closePendingPreview()
-}
-document.addEventListener('keydown', onPendingPreviewKeydown)
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onPendingPreviewKeydown)
-  revokeAllPendingUrls()
-})
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
-
-function isImageFile(file: File): boolean {
-  return file.type.startsWith('image/')
 }
 
 function handleDragOver(e: DragEvent) {
@@ -398,7 +355,6 @@ async function sendMessage() {
     fileUploading.value = true
     const filesToUpload = [...pendingFiles.value]
     pendingFiles.value = []
-    revokeAllPendingUrls()
     try {
       const uploaded: FileAttachment[] = []
       for (const f of filesToUpload) {
@@ -664,7 +620,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col flex-1 min-h-0">
     <!-- Messages -->
     <div ref="messagesEl" class="messages-scroll flex-1 px-4 py-3 space-y-3 min-h-0">
       <div
@@ -863,16 +819,8 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
             v-for="(file, idx) in pendingFiles"
             :key="idx"
             class="group relative flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border text-xs max-w-[200px]"
-            :class="{ 'cursor-pointer hover:border-primary/50': isImageFile(file) }"
-            @click="isImageFile(file) && openPendingPreview(file)"
           >
-            <img
-              v-if="isImageFile(file) && pendingFileUrls.get(file)"
-              :src="pendingFileUrls.get(file)"
-              class="w-5 h-5 rounded object-cover shrink-0"
-              :alt="file.name"
-            />
-            <FileText v-else-if="!isImageFile(file)" class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <FileText class="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
             <span class="truncate">{{ file.name }}</span>
             <span class="text-muted-foreground shrink-0">({{ formatFileSize(file.size) }})</span>
             <button
@@ -942,29 +890,6 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
     </div>
   </div>
 
-  <Teleport to="body">
-    <div
-      v-if="pendingPreviewUrl"
-      class="lightbox-overlay"
-      @click.self="closePendingPreview"
-    >
-      <button
-        class="lightbox-close"
-        :title="t('chat.closePreview')"
-        @click="closePendingPreview"
-      >
-        <X class="w-5 h-5" />
-      </button>
-      <img
-        :src="pendingPreviewUrl"
-        :alt="pendingPreviewName"
-        class="lightbox-image"
-      />
-      <div class="lightbox-caption">
-        {{ pendingPreviewName }}
-      </div>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -1139,42 +1064,4 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
   text-decoration: underline;
 }
 
-.lightbox-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.85);
-}
-.lightbox-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  padding: 8px;
-  border-radius: 8px;
-  color: white;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-.lightbox-close:hover { opacity: 1; }
-.lightbox-image {
-  max-width: 90vw;
-  max-height: 85vh;
-  object-fit: contain;
-  border-radius: 4px;
-}
-.lightbox-caption {
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: white;
-  font-size: 0.8rem;
-  padding: 6px 16px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.5);
-  white-space: nowrap;
-}
 </style>

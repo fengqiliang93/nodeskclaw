@@ -426,8 +426,6 @@ const zhCN = {
     fileUploading: "正在上传文件...",
     fileUploadFailed: "文件上传失败",
     downloadFile: "下载文件",
-    previewImage: "预览图片",
-    closePreview: "关闭预览",
   },
   createWorkspace: {
     title: "新建赛博办公室",
