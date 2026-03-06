@@ -201,6 +201,12 @@ async def publish_gene(manifest: dict) -> dict | None:
     return body.get("data") if body else None
 
 
+async def publish_genome(manifest: dict) -> dict | None:
+    """POST /api/v1/genomes — push a new genome to GeneHub."""
+    body = await _post("/api/v1/genomes", {"manifest": manifest})
+    return body.get("data") if body else None
+
+
 async def close() -> None:
     """Shutdown the shared HTTP client."""
     global _client
