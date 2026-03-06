@@ -63,7 +63,7 @@ async def handle_collaboration_message(
         resolved_target_id: str | None = None
         target_inst: Instance | None = None
         if target.startswith("agent:"):
-            target_inst = await _find_agent_by_name(db, workspace_id, target[6:])
+            target_inst = await _find_agent_by_name_or_id(db, workspace_id, target[6:])
             if target_inst:
                 resolved_target_id = target_inst.id
 
@@ -352,8 +352,8 @@ async def _get_instance(db: AsyncSession, instance_id: str) -> Instance | None:
     return result.scalar_one_or_none()
 
 
-async def _find_agent_by_name(
-    db: AsyncSession, workspace_id: str, agent_name: str,
+async def _find_agent_by_name_or_id(
+    db: AsyncSession, workspace_id: str, identifier: str,
 ) -> Instance | None:
     result = await db.execute(
         select(Instance, WorkspaceAgent).join(
@@ -366,10 +366,14 @@ async def _find_agent_by_name(
         )
     )
     rows = result.all()
-    agent_name_lower = agent_name.lower()
+    if _looks_like_uuid(identifier):
+        for inst, wa in rows:
+            if inst.id == identifier:
+                return inst
+    id_lower = identifier.lower()
     for inst, wa in rows:
         display = (wa.display_name or inst.name) if wa else (inst.agent_display_name or inst.name)
-        if display.lower() == agent_name_lower or inst.name.lower() == agent_name_lower:
+        if display.lower() == id_lower or inst.name.lower() == id_lower:
             return inst
     return None
 
