@@ -245,11 +245,12 @@ async def reset_member_password(
 
 # ── 组织级 AKR 汇总 ────────────────────────────────────
 
-@router.get("/{org_id}/akr-summary")
+@router.get("/{org_id}/akr-summary",
+            dependencies=[Depends(require_feature("akr_management"))])
 async def org_akr_summary(
     org_id: str,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _org_ctx: tuple = Depends(require_org_admin),
 ):
     """Aggregate AKR data across all workspaces in the org."""
     from app.models.workspace import Workspace

@@ -22,6 +22,7 @@ import {
   Bell,
   PanelLeftClose,
   PanelLeftOpen,
+  Target,
 
   Building2,
   CreditCard,
@@ -94,6 +95,15 @@ interface NavItem {
   icon: Component
   path: string
   minRole?: string
+  requireFeature?: string
+}
+
+function isFeatureEnabled(featureId: string): boolean {
+  const info = authStore.systemInfo
+  if (!info) return false
+  if (info.edition === 'ee') return true
+  const feat = info.features.find((f: any) => f.id === featureId)
+  return feat?.enabled ?? false
 }
 
 const mainNavItems = computed<NavItem[]>(() => [
@@ -104,7 +114,12 @@ const mainNavItems = computed<NavItem[]>(() => [
   { label: t('nav.geneOps'), icon: Dna, path: '/gene', minRole: 'admin' },
   { label: t('nav.members'), icon: Users, path: '/members', minRole: 'admin' },
   { label: t('nav.settings'), icon: Settings, path: '/settings', minRole: 'admin' },
-].filter(item => canAccessRoute(item.minRole)))
+  { label: t('nav.akrSummary'), icon: Target, path: '/akr-summary', minRole: 'admin', requireFeature: 'akr_management' },
+].filter(item => {
+  if (!canAccessRoute(item.minRole)) return false
+  if (item.requireFeature && !isFeatureEnabled(item.requireFeature)) return false
+  return true
+}))
 
 const platformNavItems = computed<NavItem[]>(() => {
   if (!isSuperAdmin.value) return []

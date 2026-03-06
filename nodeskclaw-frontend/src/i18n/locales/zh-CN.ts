@@ -11,6 +11,7 @@ const zhCN = {
     organizations: "组织管理",
     users: "运维人员",
     plans: "套餐管理",
+    akrSummary: "AKR 汇总",
     adminConsole: "管理后台",
   },
   common: {
@@ -32,6 +33,7 @@ const zhCN = {
     status: "状态",
     name: "名称",
     operationFailed: "操作失败",
+    refresh: "刷新",
   },
   dashboard: {
     loading: "加载中...",
@@ -382,6 +384,20 @@ const zhCN = {
       enabled: "启用",
       disabled: "禁用",
     },
+  },
+  akr: {
+    title: "AKR 汇总",
+    subtitle: "组织级目标 / 关键结果 / 任务全景",
+    taskCompletionRate: "任务完成率",
+    totalValueCreated: "创造总价值",
+    totalTokenCost: "Token 总消耗",
+    roiPerKTokens: "每千 Token 产出",
+    workspaceOverview: "各办公室概览",
+    noWorkspaceData: "暂无办公室数据",
+    noObjectives: "暂无目标",
+    noData: "暂无数据",
+    completionRateShort: "完成率",
+    valueShort: "价值",
   },
   validation: {
     instance: {

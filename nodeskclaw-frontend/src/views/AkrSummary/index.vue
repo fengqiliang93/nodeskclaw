@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { BarChart3, Target, TrendingUp, Zap, RefreshCw, Loader2 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 const loading = ref(false)
 const data = ref<{ workspaces: WorkspaceSummary[] } | null>(null)
@@ -55,7 +57,7 @@ const totals = computed(() => {
 })
 
 function fmt(n: number, d = 2): string {
-  return n.toLocaleString('zh-CN', { maximumFractionDigits: d })
+  return n.toLocaleString(undefined, { maximumFractionDigits: d })
 }
 
 function pct(n: number): string {
@@ -69,8 +71,8 @@ onMounted(loadSummary)
   <div class="max-w-6xl mx-auto px-6 py-8 space-y-8">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-bold">AKR 汇总</h1>
-        <p class="text-sm text-muted-foreground mt-1">组织级目标 / 关键结果 / 任务全景</p>
+        <h1 class="text-xl font-bold">{{ t('akr.title') }}</h1>
+        <p class="text-sm text-muted-foreground mt-1">{{ t('akr.subtitle') }}</p>
       </div>
       <button
         class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
@@ -79,7 +81,7 @@ onMounted(loadSummary)
       >
         <Loader2 v-if="loading" class="w-4 h-4 animate-spin" />
         <RefreshCw v-else class="w-4 h-4" />
-        刷新
+        {{ t('common.refresh') }}
       </button>
     </div>
 
@@ -92,7 +94,7 @@ onMounted(loadSummary)
         <div class="p-4 rounded-xl bg-card border border-border space-y-1">
           <div class="flex items-center gap-1.5 text-muted-foreground text-xs">
             <Target class="w-3.5 h-3.5" />
-            任务完成率
+            {{ t('akr.taskCompletionRate') }}
           </div>
           <div class="text-2xl font-bold">{{ pct(totals.rate) }}</div>
           <div class="text-xs text-muted-foreground">{{ totals.done }} / {{ totals.tasks }}</div>
@@ -101,7 +103,7 @@ onMounted(loadSummary)
         <div class="p-4 rounded-xl bg-card border border-border space-y-1">
           <div class="flex items-center gap-1.5 text-muted-foreground text-xs">
             <TrendingUp class="w-3.5 h-3.5" />
-            创造总价值
+            {{ t('akr.totalValueCreated') }}
           </div>
           <div class="text-2xl font-bold">{{ fmt(totals.value) }}</div>
         </div>
@@ -109,7 +111,7 @@ onMounted(loadSummary)
         <div class="p-4 rounded-xl bg-card border border-border space-y-1">
           <div class="flex items-center gap-1.5 text-muted-foreground text-xs">
             <Zap class="w-3.5 h-3.5" />
-            Token 总消耗
+            {{ t('akr.totalTokenCost') }}
           </div>
           <div class="text-2xl font-bold">{{ fmt(totals.tokens, 0) }}</div>
         </div>
@@ -117,17 +119,17 @@ onMounted(loadSummary)
         <div class="p-4 rounded-xl bg-card border border-border space-y-1">
           <div class="flex items-center gap-1.5 text-muted-foreground text-xs">
             <BarChart3 class="w-3.5 h-3.5" />
-            每千 Token 产出
+            {{ t('akr.roiPerKTokens') }}
           </div>
           <div class="text-2xl font-bold">{{ fmt(totals.roi) }}</div>
         </div>
       </div>
 
       <div class="space-y-4">
-        <h2 class="text-lg font-semibold">各办公室概览</h2>
+        <h2 class="text-lg font-semibold">{{ t('akr.workspaceOverview') }}</h2>
 
         <div v-if="data.workspaces.length === 0" class="text-sm text-muted-foreground py-8 text-center">
-          暂无办公室数据
+          {{ t('akr.noWorkspaceData') }}
         </div>
 
         <div
@@ -138,8 +140,8 @@ onMounted(loadSummary)
           <div class="flex items-center justify-between">
             <h3 class="font-medium text-base">{{ ws.workspace_name }}</h3>
             <div class="flex items-center gap-4 text-xs text-muted-foreground">
-              <span>完成率 {{ pct(ws.completion_rate) }}</span>
-              <span>价值 {{ fmt(ws.total_value) }}</span>
+              <span>{{ t('akr.completionRateShort') }} {{ pct(ws.completion_rate) }}</span>
+              <span>{{ t('akr.valueShort') }} {{ fmt(ws.total_value) }}</span>
               <span>Token {{ fmt(ws.total_tokens, 0) }}</span>
               <span>ROI {{ fmt(ws.roi_per_1k_tokens) }}/k</span>
             </div>
@@ -165,13 +167,13 @@ onMounted(loadSummary)
             </div>
           </div>
 
-          <div v-else class="text-xs text-muted-foreground">暂无目标</div>
+          <div v-else class="text-xs text-muted-foreground">{{ t('akr.noObjectives') }}</div>
         </div>
       </div>
     </template>
 
     <div v-else class="text-center text-muted-foreground py-16">
-      暂无数据
+      {{ t('akr.noData') }}
     </div>
   </div>
 </template>

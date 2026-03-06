@@ -11,6 +11,7 @@ const enUS = {
     organizations: "Organizations",
     users: "Operators",
     plans: "Plans",
+    akrSummary: "AKR Summary",
     adminConsole: "Admin Console",
   },
   common: {
@@ -32,6 +33,7 @@ const enUS = {
     status: "Status",
     name: "Name",
     operationFailed: "Operation failed",
+    refresh: "Refresh",
   },
   dashboard: {
     loading: "Loading...",
@@ -382,6 +384,20 @@ const enUS = {
       enabled: "Enabled",
       disabled: "Disabled",
     },
+  },
+  akr: {
+    title: "AKR Summary",
+    subtitle: "Organization-level Objectives / Key Results / Tasks overview",
+    taskCompletionRate: "Task Completion Rate",
+    totalValueCreated: "Total Value Created",
+    totalTokenCost: "Total Token Cost",
+    roiPerKTokens: "ROI per 1k Tokens",
+    workspaceOverview: "Workspace Overview",
+    noWorkspaceData: "No workspace data",
+    noObjectives: "No objectives",
+    noData: "No data",
+    completionRateShort: "Completion",
+    valueShort: "Value",
   },
   validation: {
     instance: {

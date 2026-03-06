@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { X, Save, Loader2, Pencil, Eye, Wifi, WifiOff, Circle } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useFeature } from '@/composables/useFeature'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import TaskKanban from './TaskKanban.vue'
@@ -19,6 +20,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const { t } = useI18n()
 const store = useWorkspaceStore()
+const { isEnabled: isPerformanceEnabled } = useFeature('performance_analytics')
 
 type TabKey = 'objectives-tasks' | 'status' | 'notes-perf' | 'topology'
 const activeTab = ref<TabKey>('objectives-tasks')
@@ -142,7 +144,7 @@ function nodeTypeLabel(type: string): string {
             <div class="space-y-6">
               <ObjectivePanel ref="objectivePanelRef" :workspace-id="workspaceId" />
               <TaskKanban ref="taskKanbanRef" :workspace-id="workspaceId" />
-              <RoiDashboard ref="roiDashboardRef" :workspace-id="workspaceId" />
+              <RoiDashboard v-if="isPerformanceEnabled" ref="roiDashboardRef" :workspace-id="workspaceId" />
             </div>
           </template>
 
