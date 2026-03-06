@@ -19,6 +19,7 @@ gene_templates/
 ├── meta_gene_culture.json           # 团队文化元基因
 ├── meta_gene_self_improve.json      # 自我改进元基因
 ├── meta_gene_innovation.json        # 创新探索元基因
+├── meta_gene_akr_decomposer.json   # AKR 分解元基因（O -> KR -> Task）
 ├── genome_self_management.json      # 自管理基因组（捆绑 5 个 MCP 工具基因）
 ├── workflow_genome_example.json     # 内容创作流水线基因组（含拓扑推荐）
 └── workflow_step_template.json      # 工作流步骤基因的 manifest 模板（不入库）
@@ -38,6 +39,7 @@ gene_templates/
 | 元基因 | meta_gene_culture.json | team-culture-concise | 团队文化塑造 |
 | 元基因 | meta_gene_self_improve.json | self-improvement | 自我改进循环 |
 | 元基因 | meta_gene_innovation.json | innovation-scout | 创新探索能力 |
+| 元基因 | meta_gene_akr_decomposer.json | akr-decomposer | AKR 分解（O -> KR -> Task） |
 | 基因组 | genome_self_management.json | nodeskclaw-self-management | 捆绑全部 5 个 MCP 工具基因 |
 | 基因组 | workflow_genome_example.json | content-creation-pipeline | 线性内容创作流水线 |
 | 模板 | workflow_step_template.json | — | 工作流步骤 manifest 模板（不入库） |
