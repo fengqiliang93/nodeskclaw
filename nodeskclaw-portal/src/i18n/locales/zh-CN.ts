@@ -362,6 +362,7 @@ const zhCN = {
     topoCorridorNode: "过道",
     topoHumanNode: "人类工位",
     topoBlackboardNode: "黑板",
+    topoAgentNode: "AI 员工",
     topoAutoCreated: "自动创建",
     topoManual: "手动创建",
     tasks: "任务",

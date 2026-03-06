@@ -8,6 +8,7 @@ import { marked } from 'marked'
 import TaskKanban from './TaskKanban.vue'
 import ObjectivePanel from './ObjectivePanel.vue'
 import RoiDashboard from './RoiDashboard.vue'
+import TopologyGraph from './TopologyGraph.vue'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -81,10 +82,6 @@ async function save() {
 
 const canEditTab = computed(() => activeTab.value === 'notes-perf')
 
-function nodeTypeLabel(type: string): string {
-  const map: Record<string, string> = { agent: 'AI 员工', corridor: t('blackboard.topoCorridorNode'), human: t('blackboard.topoHumanNode'), blackboard: t('blackboard.topoBlackboardNode') }
-  return map[type] || type
-}
 </script>
 
 <template>
@@ -138,7 +135,7 @@ function nodeTypeLabel(type: string): string {
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto px-5 py-4">
+        <div :class="['flex-1 min-h-0', activeTab === 'topology' ? 'overflow-hidden' : 'overflow-y-auto px-5 py-4']">
 
           <template v-if="activeTab === 'objectives-tasks'">
             <div class="space-y-6">
@@ -202,40 +199,10 @@ function nodeTypeLabel(type: string): string {
           </template>
 
           <template v-if="activeTab === 'topology'">
-            <div v-if="topoNodes.length === 0" class="text-muted-foreground text-sm">
+            <div v-if="topoNodes.length === 0" class="px-5 py-4 text-muted-foreground text-sm">
               {{ t('blackboard.noTopology') }}
             </div>
-            <div v-else class="space-y-4">
-              <div>
-                <h3 class="text-sm font-medium mb-2 text-muted-foreground">{{ t('blackboard.topoNodes') }} ({{ topoNodes.length }})</h3>
-                <div class="space-y-1.5">
-                  <div
-                    v-for="(node, i) in topoNodes"
-                    :key="i"
-                    class="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50"
-                  >
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs px-1.5 py-0.5 rounded bg-muted font-mono">{{ nodeTypeLabel(node.node_type) }}</span>
-                      <span class="text-sm">{{ node.display_name || node.entity_id || '-' }}</span>
-                    </div>
-                    <span class="text-xs text-muted-foreground font-mono">({{ node.hex_q }}, {{ node.hex_r }})</span>
-                  </div>
-                </div>
-              </div>
-              <div v-if="topoEdges.length > 0">
-                <h3 class="text-sm font-medium mb-2 text-muted-foreground">{{ t('blackboard.topoEdges') }} ({{ topoEdges.length }})</h3>
-                <div class="space-y-1.5">
-                  <div
-                    v-for="(edge, i) in topoEdges"
-                    :key="i"
-                    class="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50 text-sm"
-                  >
-                    <span class="font-mono text-xs">({{ edge.a_q }},{{ edge.a_r }}) &mdash; ({{ edge.b_q }},{{ edge.b_r }})</span>
-                    <span class="text-xs text-muted-foreground">{{ edge.auto_created ? t('blackboard.topoAutoCreated') : t('blackboard.topoManual') }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <TopologyGraph v-else :nodes="topoNodes" :edges="topoEdges" />
           </template>
 
         </div>

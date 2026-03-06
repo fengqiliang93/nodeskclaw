@@ -362,6 +362,7 @@ const enUS = {
     topoCorridorNode: "Corridor",
     topoHumanNode: "Human Seat",
     topoBlackboardNode: "Blackboard",
+    topoAgentNode: "AI Employee",
     topoAutoCreated: "Auto Created",
     topoManual: "Manual",
     tasks: "Tasks",
