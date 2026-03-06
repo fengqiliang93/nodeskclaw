@@ -1049,6 +1049,8 @@ async def lifespan(app: FastAPI):
                 )
                 db.add(owner)
 
+            from app.models.workspace_agent import WorkspaceAgent as MigWA  # noqa: N814
+
             orphans = await db.execute(
                 select(Instance).where(
                     Instance.org_id == org.id,
@@ -1060,7 +1062,6 @@ async def lifespan(app: FastAPI):
             directions = [(0, -1), (-1, 0), (-1, 1), (0, 1), (1, 0), (1, -1)]
             for inst in orphans.scalars().all():
                 inst.workspace_id = ws.id
-                # spiral position
                 positions: list[tuple[int, int]] = []
                 q, r, ring = 1, 0, 1
                 while len(positions) <= idx:
@@ -1071,8 +1072,24 @@ async def lifespan(app: FastAPI):
                             positions.append((q, r))
                             q += dq; r += dr
                     ring += 1; q += 1
-                inst.hex_position_q, inst.hex_position_r = positions[idx]
+                hq, hr = positions[idx]
+                inst.hex_position_q, inst.hex_position_r = hq, hr
                 inst.agent_display_name = inst.name
+
+                wa_exists = await db.execute(
+                    select(MigWA).where(
+                        MigWA.workspace_id == ws.id,
+                        MigWA.instance_id == inst.id,
+                        MigWA.deleted_at.is_(None),
+                    ).limit(1)
+                )
+                if wa_exists.scalar_one_or_none() is None:
+                    db.add(MigWA(
+                        workspace_id=ws.id,
+                        instance_id=inst.id,
+                        hex_q=hq, hex_r=hr,
+                        display_name=inst.name,
+                    ))
                 idx += 1
 
             await db.commit()
@@ -1344,6 +1361,42 @@ async def lifespan(app: FastAPI):
             ))
             logger.info("自动迁移 34：workspace_objectives 增加 obj_type + parent_id 字段")
 
+    # ── 迁移 35: 创建 workspace_agents 关联表（多工作区员工支持） ──
+    async with async_session_factory() as db:
+        from app.models.workspace_agent import WorkspaceAgent  # noqa: F811
+
+        from sqlalchemy import func as sa_func
+
+        wa_count = await db.execute(
+            select(sa_func.count()).select_from(WorkspaceAgent).where(
+                WorkspaceAgent.deleted_at.is_(None)
+            )
+        )
+        if wa_count.scalar() == 0:
+            from app.models.instance import Instance as _Inst
+
+            rows = await db.execute(
+                select(_Inst).where(
+                    _Inst.workspace_id.isnot(None),
+                    _Inst.deleted_at.is_(None),
+                )
+            )
+            migrated = 0
+            for inst in rows.scalars().all():
+                db.add(WorkspaceAgent(
+                    workspace_id=inst.workspace_id,
+                    instance_id=inst.id,
+                    hex_q=inst.hex_position_q,
+                    hex_r=inst.hex_position_r,
+                    display_name=inst.agent_display_name,
+                    label=inst.agent_label,
+                    theme_color=inst.agent_theme_color,
+                ))
+                migrated += 1
+            if migrated:
+                await db.commit()
+                logger.info("自动迁移 35：已将 %d 条 Instance.workspace_id 数据迁移到 workspace_agents", migrated)
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。
@@ -1440,13 +1493,13 @@ async def lifespan(app: FastAPI):
         logger.info("已启动 %d 个飞书 WebSocket 长链接", len(feishu_ws_clients))
 
     # ── 恢复工作区 SSE 连接 ──
+    from app.models.workspace_agent import WorkspaceAgent
     from app.services.sse_listener import sse_listener_manager
 
     async with async_session_factory() as db:
         from app.models.instance import Instance
         ws_agents = await db.execute(
             select(Instance).where(
-                Instance.workspace_id.isnot(None),
                 Instance.status.in_(["running", "restarting", "learning"]),
                 Instance.ingress_domain.isnot(None),
                 Instance.deleted_at.is_(None),
@@ -1461,12 +1514,28 @@ async def lifespan(app: FastAPI):
         if instances:
             await db.commit()
 
-        for inst in instances:
-            await sse_listener_manager.connect(
-                inst.id, inst.ingress_domain,
-                workspace_id=inst.workspace_id,
-                delay=10,
+        wa_result = await db.execute(
+            select(WorkspaceAgent).where(
+                WorkspaceAgent.instance_id.in_([i.id for i in instances]),
+                WorkspaceAgent.deleted_at.is_(None),
             )
+        )
+        inst_to_workspaces: dict[str, list[str]] = {}
+        for wa in wa_result.scalars().all():
+            inst_to_workspaces.setdefault(wa.instance_id, []).append(wa.workspace_id)
+
+        for inst in instances:
+            workspace_ids = inst_to_workspaces.get(inst.id)
+            if not workspace_ids and inst.workspace_id:
+                workspace_ids = [inst.workspace_id]
+            if not workspace_ids:
+                continue
+            for i, ws_id in enumerate(workspace_ids):
+                await sse_listener_manager.connect(
+                    inst.id, inst.ingress_domain,
+                    workspace_id=ws_id,
+                    delay=10 if i == 0 else 0,
+                )
     logger.info(
         "已恢复 %d 个工作区 SSE 连接",
         len(sse_listener_manager.connected_instances),

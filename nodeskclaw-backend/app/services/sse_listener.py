@@ -27,7 +27,7 @@ class SSEListenerManager:
         self._tasks: dict[str, asyncio.Task] = {}
         self._stop_events: dict[str, asyncio.Event] = {}
         self._healthy: set[str] = set()
-        self._workspace_map: dict[str, str] = {}
+        self._workspace_map: dict[str, set[str]] = {}
 
     @property
     def connected_instances(self) -> list[str]:
@@ -46,12 +46,14 @@ class SSEListenerManager:
         workspace_id: str = "",
     ) -> None:
         """Start an SSE listener for the given instance."""
+        if workspace_id:
+            if instance_id not in self._workspace_map:
+                self._workspace_map[instance_id] = set()
+            self._workspace_map[instance_id].add(workspace_id)
+
         if instance_id in self._tasks and not self._tasks[instance_id].done():
             logger.debug("SSE listener already running for %s, skipping", instance_id)
             return
-
-        if workspace_id:
-            self._workspace_map[instance_id] = workspace_id
 
         stop_event = asyncio.Event()
         self._stop_events[instance_id] = stop_event
@@ -84,6 +86,14 @@ class SSEListenerManager:
         else:
             logger.info("SSE listener stopped for %s", instance_id)
 
+    def remove_workspace(self, instance_id: str, workspace_id: str) -> None:
+        """Remove a workspace from the instance's set; disconnect if no workspaces left."""
+        ws_set = self._workspace_map.get(instance_id)
+        if ws_set:
+            ws_set.discard(workspace_id)
+            if not ws_set:
+                asyncio.create_task(self.disconnect(instance_id))
+
     async def disconnect_all(self) -> None:
         """Stop all SSE listeners (called on shutdown)."""
         ids = list(self._tasks.keys())
@@ -101,8 +111,8 @@ class SSEListenerManager:
         else:
             self._healthy.discard(instance_id)
 
-        ws_id = self._workspace_map.get(instance_id)
-        if ws_id:
+        ws_ids = self._workspace_map.get(instance_id, set())
+        for ws_id in ws_ids:
             try:
                 from app.api.workspaces import broadcast_event
                 event = "agent:sse_connected" if healthy else "agent:sse_disconnected"

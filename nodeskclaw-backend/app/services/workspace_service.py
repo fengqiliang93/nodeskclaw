@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.blackboard import Blackboard
 from app.models.instance import Instance
 from app.models.workspace import Workspace
+from app.models.workspace_agent import WorkspaceAgent
 from app.models.workspace_member import WorkspaceMember, WorkspaceRole
 from app.models.workspace_objective import WorkspaceObjective
 from app.models.workspace_schedule import WorkspaceSchedule
@@ -46,19 +47,28 @@ def _fire_task(coro: Coroutine) -> asyncio.Task:
     return task
 
 
-def _agent_brief(inst: Instance) -> AgentBrief:
+def _agent_for_broadcast(inst: Instance, wa: WorkspaceAgent):
+    """Object with agent_display_name for broadcast helpers that expect inst."""
+    return type("_AgentDisplay", (), {
+        "id": inst.id,
+        "name": inst.name,
+        "agent_display_name": wa.display_name,
+    })()
+
+
+def _agent_brief(inst: Instance, wa: WorkspaceAgent) -> AgentBrief:
     from app.services.sse_listener import sse_listener_manager
     return AgentBrief(
         instance_id=inst.id,
         name=inst.name,
-        display_name=inst.agent_display_name,
-        label=inst.agent_label,
+        display_name=wa.display_name,
+        label=wa.label,
         slug=inst.slug,
         status=inst.status,
-        hex_q=inst.hex_position_q,
-        hex_r=inst.hex_position_r,
+        hex_q=wa.hex_q,
+        hex_r=wa.hex_r,
         sse_connected=inst.id in sse_listener_manager.healthy_instances,
-        theme_color=inst.agent_theme_color,
+        theme_color=wa.theme_color,
     )
 
 
@@ -201,17 +211,20 @@ async def list_workspaces(
     items = []
     for ws in workspaces:
         agents_result = await db.execute(
-            select(Instance).where(
-                Instance.workspace_id == ws.id,
+            select(Instance, WorkspaceAgent).join(
+                WorkspaceAgent,
+                (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+            ).where(
+                WorkspaceAgent.workspace_id == ws.id,
                 Instance.deleted_at.is_(None),
             )
         )
-        agents = agents_result.scalars().all()
+        agents = agents_result.all()
         items.append(WorkspaceListItem(
             id=ws.id, name=ws.name, description=ws.description,
             color=ws.color, icon=ws.icon,
             agent_count=len(agents),
-            agents=[_agent_brief(a) for a in agents],
+            agents=[_agent_brief(inst, wa) for inst, wa in agents],
             created_at=ws.created_at,
         ))
     return items
@@ -226,18 +239,21 @@ async def get_workspace(db: AsyncSession, workspace_id: str) -> WorkspaceInfo | 
         return None
 
     agents_result = await db.execute(
-        select(Instance).where(
-            Instance.workspace_id == workspace_id,
+        select(Instance, WorkspaceAgent).join(
+            WorkspaceAgent,
+            (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.workspace_id == workspace_id,
             Instance.deleted_at.is_(None),
         )
     )
-    agents = agents_result.scalars().all()
+    agents = agents_result.all()
 
     return WorkspaceInfo(
         id=ws.id, org_id=ws.org_id, name=ws.name, description=ws.description,
         color=ws.color, icon=ws.icon, created_by=ws.created_by,
         agent_count=len(agents),
-        agents=[_agent_brief(a) for a in agents],
+        agents=[_agent_brief(inst, wa) for inst, wa in agents],
         created_at=ws.created_at, updated_at=ws.updated_at,
     )
 
@@ -265,12 +281,12 @@ async def delete_workspace(db: AsyncSession, workspace_id: str) -> bool:
         return False
 
     agents_count = await db.execute(
-        select(func.count()).select_from(Instance).where(
-            Instance.workspace_id == workspace_id,
-            Instance.deleted_at.is_(None),
+        select(func.count()).select_from(WorkspaceAgent).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
     )
-    if agents_count.scalar() > 0:
+    if (agents_count.scalar() or 0) > 0:
         raise ValueError("请先移除办公室内的所有 AI 员工")
 
     ws.soft_delete()
@@ -288,30 +304,45 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
     if inst is None:
         raise ValueError("实例不存在")
 
+    existing_wa = await db.execute(
+        select(WorkspaceAgent).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.instance_id == data.instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    if existing_wa.scalar_one_or_none():
+        raise ValueError("该员工已在此办公室中")
+
     if data.hex_q is not None:
-        inst.hex_position_q = data.hex_q
-        inst.hex_position_r = data.hex_r or 0
+        hex_q, hex_r = data.hex_q, data.hex_r or 0
     else:
-        existing = await db.execute(
-            select(func.count()).select_from(Instance).where(
-                Instance.workspace_id == workspace_id,
-                Instance.deleted_at.is_(None),
+        existing_count = await db.execute(
+            select(func.count()).select_from(WorkspaceAgent).where(
+                WorkspaceAgent.workspace_id == workspace_id,
+                WorkspaceAgent.deleted_at.is_(None),
             )
         )
-        count = existing.scalar() or 0
-        pos = _spiral_next(count)
-        inst.hex_position_q = pos[0]
-        inst.hex_position_r = pos[1]
+        count = existing_count.scalar() or 0
+        hex_q, hex_r = _spiral_next(count)
 
-    inst.workspace_id = workspace_id
-    inst.agent_display_name = data.display_name
+    wa = WorkspaceAgent(
+        workspace_id=workspace_id,
+        instance_id=inst.id,
+        hex_q=hex_q,
+        hex_r=hex_r,
+        display_name=data.display_name,
+    )
+    db.add(wa)
+    await db.flush()
 
     from app.services import corridor_router
     connected = await corridor_router.auto_connect_hex(
-        workspace_id, inst.hex_position_q, inst.hex_position_r, user_id, db,
+        workspace_id, wa.hex_q, wa.hex_r, user_id, db,
     )
 
     await db.commit()
+    await db.refresh(wa)
     await db.refresh(inst)
 
     if data.install_gene_slugs:
@@ -321,9 +352,7 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
                 await install_gene_prerestart(inst.id, slug)
             except Exception as e:
                 logger.error("基因安装失败，回滚工作区加入: instance=%s gene=%s error=%s", inst.name, slug, e)
-                inst.workspace_id = None
-                inst.hex_position_q = 0
-                inst.hex_position_r = 0
+                wa.soft_delete()
                 await db.commit()
                 raise ValueError(f"基因 {slug} 安装失败: {e}") from e
 
@@ -331,12 +360,12 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
 
     has_topo = await corridor_router.has_any_connections(workspace_id, db)
     if has_topo:
-        await _notify_topology_status(workspace_id, inst, connected)
+        await _notify_topology_status(workspace_id, _agent_for_broadcast(inst, wa), connected)
 
-    await _broadcast_join_message(workspace_id, inst)
+    await _broadcast_join_message(workspace_id, _agent_for_broadcast(inst, wa))
     _fire_task(_send_welcome_message(workspace_id, inst))
 
-    return _agent_brief(inst)
+    return _agent_brief(inst, wa)
 
 
 def _spiral_next(index: int) -> tuple[int, int]:
@@ -361,25 +390,38 @@ def _spiral_next(index: int) -> tuple[int, int]:
 
 async def remove_agent(db: AsyncSession, workspace_id: str, instance_id: str) -> bool:
     result = await db.execute(
-        select(Instance).where(
-            Instance.id == instance_id,
-            Instance.workspace_id == workspace_id,
-            Instance.deleted_at.is_(None),
+        select(WorkspaceAgent, Instance).join(
+            Instance,
+            (Instance.id == WorkspaceAgent.instance_id) & (Instance.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
     )
-    inst = result.scalar_one_or_none()
-    if inst is None:
+    row = result.one_or_none()
+    if row is None:
         return False
+    wa, inst = row
 
-    await _broadcast_leave_message(workspace_id, inst)
-    await _remove_channel_plugin(inst, db)
+    await _broadcast_leave_message(workspace_id, _agent_for_broadcast(inst, wa))
 
-    inst.workspace_id = None
-    inst.hex_position_q = 0
-    inst.hex_position_r = 0
-    inst.agent_display_name = None
-    inst.agent_label = None
+    from app.models.corridor import HexConnection
+    from app.models.base import not_deleted
+    hex_q, hex_r = wa.hex_q, wa.hex_r
+    conn_result = await db.execute(
+        select(HexConnection).where(
+            HexConnection.workspace_id == workspace_id,
+            not_deleted(HexConnection),
+            ((HexConnection.hex_a_q == hex_q) & (HexConnection.hex_a_r == hex_r))
+            | ((HexConnection.hex_b_q == hex_q) & (HexConnection.hex_b_r == hex_r)),
+        )
+    )
+    for conn in conn_result.scalars().all():
+        conn.soft_delete()
 
+    await _remove_channel_plugin(inst, db, workspace_id)
+    wa.soft_delete()
     await db.commit()
     return True
 
@@ -388,35 +430,39 @@ async def update_agent(
     db: AsyncSession, workspace_id: str, instance_id: str, data: UpdateAgentRequest,
 ) -> AgentBrief | None:
     result = await db.execute(
-        select(Instance).where(
-            Instance.id == instance_id,
-            Instance.workspace_id == workspace_id,
-            Instance.deleted_at.is_(None),
+        select(WorkspaceAgent, Instance).join(
+            Instance,
+            (Instance.id == WorkspaceAgent.instance_id) & (Instance.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
     )
-    inst = result.scalar_one_or_none()
-    if inst is None:
+    row = result.one_or_none()
+    if row is None:
         return None
+    wa, inst = row
 
     if data.display_name is not None:
-        inst.agent_display_name = data.display_name or None
+        wa.display_name = data.display_name or None
     if data.label is not None:
-        inst.agent_label = data.label or None
+        wa.label = data.label or None
     if data.theme_color is not None:
-        inst.agent_theme_color = data.theme_color
+        wa.theme_color = data.theme_color
 
     position_changed = False
-    old_q, old_r = inst.hex_position_q, inst.hex_position_r
+    old_q, old_r = wa.hex_q, wa.hex_r
     if data.hex_q is not None and data.hex_r is not None:
         new_q, new_r = data.hex_q, data.hex_r
         if (new_q, new_r) != (old_q, old_r):
-            inst.hex_position_q = new_q
-            inst.hex_position_r = new_r
+            wa.hex_q = new_q
+            wa.hex_r = new_r
             position_changed = True
     elif data.hex_q is not None:
-        inst.hex_position_q = data.hex_q
+        wa.hex_q = data.hex_q
     elif data.hex_r is not None:
-        inst.hex_position_r = data.hex_r
+        wa.hex_r = data.hex_r
 
     await db.commit()
 
@@ -424,12 +470,13 @@ async def update_agent(
         from app.services import corridor_router
         await corridor_router.cascade_delete_connections(workspace_id, old_q, old_r, db)
         await corridor_router.auto_connect_hex(
-            workspace_id, inst.hex_position_q, inst.hex_position_r, inst.created_by, db,
+            workspace_id, wa.hex_q, wa.hex_r, inst.created_by, db,
         )
         await db.commit()
 
+    await db.refresh(wa)
     await db.refresh(inst)
-    return _agent_brief(inst)
+    return _agent_brief(inst, wa)
 
 
 # ── Channel Plugin Deploy ────────────────────────────
@@ -466,16 +513,36 @@ async def _deploy_channel_plugin(inst: Instance, db: AsyncSession, workspace_id:
         )
 
 
-async def _remove_channel_plugin(inst: Instance, db: AsyncSession) -> None:
-    """Disconnect SSE + remove nodeskclaw channel plugin config."""
+async def _remove_channel_plugin(inst: Instance, db: AsyncSession, workspace_id: str) -> None:
+    """Disconnect SSE + remove channel plugin config for this workspace (or full cleanup if last)."""
     from app.services.sse_listener import sse_listener_manager
-    await sse_listener_manager.disconnect(inst.id)
 
-    try:
-        from app.services.llm_config_service import remove_nodeskclaw_channel_plugin
-        await remove_nodeskclaw_channel_plugin(inst, db)
-    except Exception as e:
-        logger.error("移除 channel plugin 失败（非致命）: instance=%s error=%s", inst.name, e)
+    remaining = await db.execute(
+        select(func.count()).select_from(WorkspaceAgent).where(
+            WorkspaceAgent.instance_id == inst.id,
+            WorkspaceAgent.workspace_id != workspace_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    remaining_count = remaining.scalar() or 0
+
+    if remaining_count == 0:
+        await sse_listener_manager.disconnect(inst.id)
+        try:
+            from app.services.llm_config_service import remove_nodeskclaw_channel_plugin
+            await remove_nodeskclaw_channel_plugin(inst, db)
+        except Exception as e:
+            logger.error("移除 channel plugin 失败（非致命）: instance=%s error=%s", inst.name, e)
+    else:
+        sse_listener_manager.remove_workspace(inst.id, workspace_id)
+        try:
+            from app.services.llm_config_service import remove_workspace_channel_account
+            await remove_workspace_channel_account(inst, db, workspace_id)
+        except Exception as e:
+            logger.error(
+                "移除工作区 channel 账户失败（非致命）: instance=%s workspace=%s error=%s",
+                inst.name, workspace_id, e,
+            )
 
 
 _NODE_TYPE_LABELS = {

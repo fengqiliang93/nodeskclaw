@@ -359,6 +359,7 @@ async def _invoke_target_agent(
         current_instance_id=instance_id,
         members=members,
         recent_messages=recent_messages,
+        workspace_id=workspace_id,
     )
 
     messages_payload = [

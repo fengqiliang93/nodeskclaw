@@ -584,27 +584,33 @@ async def _deploy_plugin_files(fs: PodFS, plugin_source: Path) -> None:
             )
 
 
+def _make_account_entry(instance: Instance, workspace_id: str) -> dict:
+    """Build a single nodeskclaw account entry for a workspace."""
+    return {
+        "enabled": True,
+        "apiUrl": settings.AGENT_API_BASE_URL,
+        "workspaceId": workspace_id,
+        "instanceId": instance.id,
+        "apiToken": json.loads(instance.env_vars or "{}").get(
+            "OPENCLAW_GATEWAY_TOKEN", ""
+        ),
+    }
+
+
 def _inject_channel_config(
     config: dict,
     instance: Instance,
     workspace_id: str,
 ) -> None:
-    """Inject nodeskclaw channel config and plugin load path into openclaw.json."""
+    """Inject nodeskclaw channel config and plugin load path into openclaw.json.
+
+    Preserves existing accounts; adds or updates the given workspace_id account.
+    """
     if "channels" not in config:
         config["channels"] = {}
-    config["channels"]["nodeskclaw"] = {
-        "accounts": {
-            "default": {
-                "enabled": True,
-                "apiUrl": settings.AGENT_API_BASE_URL,
-                "workspaceId": workspace_id,
-                "instanceId": instance.id,
-                "apiToken": json.loads(instance.env_vars or "{}").get(
-                    "OPENCLAW_GATEWAY_TOKEN", ""
-                ),
-            }
-        }
-    }
+    ch = config["channels"].setdefault("nodeskclaw", {})
+    accounts = ch.setdefault("accounts", {})
+    accounts[workspace_id] = _make_account_entry(instance, workspace_id)
 
     plugins = config.setdefault("plugins", {})
     load = plugins.setdefault("load", {})
@@ -660,6 +666,67 @@ async def deploy_nodeskclaw_channel_plugin(
         "已部署 nodeskclaw channel plugin: instance=%s workspace=%s",
         instance.name, workspace_id,
     )
+
+
+async def add_workspace_channel_account(
+    instance: Instance, db: AsyncSession, workspace_id: str,
+) -> None:
+    """Add a workspace's account to nodeskclaw channel config without overwriting existing."""
+    async with remote_fs(instance, db) as fs:
+        try:
+            existing = await _read_config_file(fs)
+        except ValueError as e:
+            logger.error("add_workspace_channel_account: openclaw.json 解析失败: %s", e)
+            raise
+        if existing is None:
+            existing = {}
+
+        ch = existing.setdefault("channels", {}).setdefault("nodeskclaw", {})
+        accounts = ch.setdefault("accounts", {})
+        accounts[workspace_id] = _make_account_entry(instance, workspace_id)
+
+        _ensure_gateway_config(existing, instance)
+        await _write_config_file(fs, existing)
+
+    logger.info(
+        "已添加 workspace channel account: instance=%s workspace=%s",
+        instance.name, workspace_id,
+    )
+
+
+async def remove_workspace_channel_account(
+    instance: Instance, db: AsyncSession, workspace_id: str,
+) -> None:
+    """Remove a workspace's account from nodeskclaw channel config."""
+    try:
+        async with remote_fs(instance, db) as fs:
+            try:
+                existing = await _read_config_file(fs)
+            except ValueError:
+                return
+            if existing is None:
+                return
+
+            channels = existing.get("channels", {})
+            ch = channels.get("nodeskclaw", {})
+            accounts = ch.get("accounts", {})
+            if workspace_id in accounts:
+                del accounts[workspace_id]
+            if not accounts:
+                channels.pop("nodeskclaw", None)
+                paths = existing.get("plugins", {}).get("load", {}).get("paths", [])
+                plugin_path = f".openclaw/extensions/{CHANNEL_PLUGIN_DIR}"
+                if plugin_path in paths:
+                    paths.remove(plugin_path)
+                existing.get("plugins", {}).get("entries", {}).pop("nodeskclaw", None)
+
+            await _write_config_file(fs, existing)
+        logger.info(
+            "已移除 workspace channel account: instance=%s workspace=%s",
+            instance.name, workspace_id,
+        )
+    except Exception as e:
+        logger.warning("移除 workspace channel account 失败（非致命）: %s", e)
 
 
 async def remove_nodeskclaw_channel_plugin(

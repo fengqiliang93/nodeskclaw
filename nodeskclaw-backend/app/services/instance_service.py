@@ -4,20 +4,20 @@ import asyncio
 import json
 import logging
 import re as _re
+import secrets
 from datetime import datetime, timezone
 from typing import Coroutine
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.cluster import Cluster
 from app.models.workspace import Workspace
+from app.models.workspace_agent import WorkspaceAgent
 from app.models.deploy_record import DeployAction, DeployRecord, DeployStatus
 from app.models.instance import Instance, InstanceStatus
 from app.schemas.deploy import DeployRecordInfo
-from app.schemas.instance import InstanceDetail, InstanceInfo, UpdateConfigRequest
+from app.schemas.instance import InstanceDetail, InstanceInfo, UpdateConfigRequest, WorkspaceBrief
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
 from app.services.k8s.resource_builder import build_configmap, build_labels
@@ -25,6 +25,17 @@ from app.services.k8s.resource_builder import build_configmap, build_labels
 logger = logging.getLogger(__name__)
 
 _background_tasks: set[asyncio.Task] = set()
+
+
+async def _get_instance_workspace_ids(db: AsyncSession, instance_id: str) -> list[str]:
+    """Get all workspace IDs associated with an instance via WorkspaceAgent."""
+    result = await db.execute(
+        select(WorkspaceAgent.workspace_id).where(
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    return [row[0] for row in result.all()]
 
 
 def _fire_task(coro: Coroutine) -> asyncio.Task:
@@ -65,6 +76,31 @@ def _k8s_name(instance: Instance) -> str:
     return instance.slug or instance.name
 
 
+def _normalize_gateway_env_vars(env_vars: dict[str, str], token: str) -> dict[str, str]:
+    """统一实例访问令牌相关环境变量。"""
+    normalized = dict(env_vars)
+    normalized["OPENCLAW_GATEWAY_TOKEN"] = token
+    normalized["NODESKCLAW_TOKEN"] = token
+    return normalized
+
+
+async def _replace_instance_configmap(
+    instance: Instance, env_vars: dict[str, str], k8s: K8sClient,
+) -> None:
+    """用新的环境变量替换实例 ConfigMap。"""
+    k_name = _k8s_name(instance)
+    labels = build_labels(k_name, instance.id, instance.image_version)
+    cm = build_configmap(f"{k_name}-config", instance.namespace, env_vars, labels)
+    try:
+        await k8s.core.replace_namespaced_config_map(
+            f"{k_name}-config", instance.namespace, cm,
+        )
+    except Exception:
+        await k8s.create_or_skip(
+            k8s.core.create_namespaced_config_map, instance.namespace, cm,
+        )
+
+
 async def check_slug_conflict(
     slug: str, org_id: str, db: AsyncSession
 ) -> dict:
@@ -89,7 +125,6 @@ async def list_instances(
 ) -> list[InstanceInfo]:
     query = (
         select(Instance)
-        .options(selectinload(Instance.workspace))
         .where(Instance.deleted_at.is_(None))
         .order_by(Instance.created_at.desc())
     )
@@ -100,9 +135,21 @@ async def list_instances(
     result = await db.execute(query)
     items: list[InstanceInfo] = []
     for i in result.scalars().all():
+        wa_result = await db.execute(
+            select(WorkspaceAgent, Workspace).join(
+                Workspace,
+                (Workspace.id == WorkspaceAgent.workspace_id) & (Workspace.deleted_at.is_(None)),
+            ).where(
+                WorkspaceAgent.instance_id == i.id,
+                WorkspaceAgent.deleted_at.is_(None),
+            )
+        )
+        workspaces = [
+            WorkspaceBrief(id=wa.workspace_id, name=ws.name)
+            for wa, ws in wa_result.all()
+        ]
         info = InstanceInfo.model_validate(i)
-        if i.workspace and i.workspace.deleted_at is None:
-            info.workspace_name = i.workspace.name
+        info.workspaces = workspaces
         items.append(info)
     return items
 
@@ -121,15 +168,19 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
     """Get instance info enriched with live K8s pod data."""
     instance = await get_instance(instance_id, db)
 
-    ws_name: str | None = None
-    if instance.workspace_id:
-        ws_row = await db.execute(
-            select(Workspace.name).where(
-                Workspace.id == instance.workspace_id,
-                Workspace.deleted_at.is_(None),
-            )
+    wa_result = await db.execute(
+        select(WorkspaceAgent, Workspace).join(
+            Workspace,
+            (Workspace.id == WorkspaceAgent.workspace_id) & (Workspace.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
-        ws_name = ws_row.scalar_one_or_none()
+    )
+    workspaces = [
+        WorkspaceBrief(id=wa.workspace_id, name=ws.name)
+        for wa, ws in wa_result.all()
+    ]
 
     # Get cluster for k8s connection
     cluster_result = await db.execute(
@@ -145,8 +196,7 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
         mem_limit=instance.mem_limit,
         env_vars=json.loads(instance.env_vars) if instance.env_vars else {},
     )
-    if ws_name:
-        detail.workspace_name = ws_name
+    detail.workspaces = workspaces
 
     if cluster and cluster.kubeconfig_encrypted:
         try:
@@ -197,22 +247,20 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
     """逻辑删除实例：标记 deleted_at，从 K8s 删除整个命名空间（级联删除所有资源）。"""
     instance = await get_instance(instance_id, db)
 
-    if instance.workspace_id:
-        ws_row = await db.execute(
-            select(Workspace.name).where(
-                Workspace.id == instance.workspace_id,
-                Workspace.deleted_at.is_(None),
-            )
+    wa_count_result = await db.execute(
+        select(func.count()).select_from(WorkspaceAgent).where(
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
-        ws_name = ws_row.scalar_one_or_none()
-        if ws_name:
-            raise ConflictError(
-                message=f"实例「{instance.name}」仍在办公室「{ws_name}」中，请先将其从办公室移除",
-                message_key="errors.instance.still_in_workspace",
-                message_params={"workspace_name": ws_name},
-            )
+    )
+    if wa_count_result.scalar() > 0:
+        raise ConflictError(
+            message="该实例已加入办公室，请先从办公室中移除",
+            message_key="errors.instance.still_in_workspace",
+        )
 
-    if instance.workspace_id:
+    ws_ids = await _get_instance_workspace_ids(db, instance_id)
+    if ws_ids:
         from app.services.sse_listener import sse_listener_manager
         await sse_listener_manager.disconnect(instance_id)
 
@@ -312,15 +360,12 @@ _RESTART_POLL_INTERVAL = 5
 _RESTART_TIMEOUT = 120
 
 
-def _broadcast_agent_status(workspace_id: str | None, instance_id: str, status: str) -> None:
-    if not workspace_id:
-        return
+def _broadcast_agent_status(workspace_ids: list[str], instance_id: str, status: str) -> None:
+    payload = {"instance_id": instance_id, "status": status}
     try:
         from app.api.workspaces import broadcast_event
-        broadcast_event(workspace_id, "agent:status", {
-            "instance_id": instance_id,
-            "status": status,
-        })
+        for ws_id in workspace_ids:
+            broadcast_event(ws_id, "agent:status", payload)
     except Exception:
         logger.debug("广播 agent:status 失败: instance=%s", instance_id)
 
@@ -352,7 +397,8 @@ async def _monitor_restart(
                         inst.status = InstanceStatus.running
                         await db.commit()
                         logger.info("实例 %s 重启完成，状态已恢复为 running", inst.name)
-                        _broadcast_agent_status(inst.workspace_id, instance_id, "running")
+                        ws_ids = await _get_instance_workspace_ids(db, instance_id)
+                        _broadcast_agent_status(ws_ids, instance_id, "running")
                 return
         except Exception as e:
             logger.debug("重启监控轮询异常: instance=%s error=%s", instance_id, e)
@@ -368,7 +414,8 @@ async def _monitor_restart(
             if inst and inst.status == InstanceStatus.restarting:
                 inst.status = InstanceStatus.running
                 await db.commit()
-                _broadcast_agent_status(inst.workspace_id, instance_id, "running")
+                ws_ids = await _get_instance_workspace_ids(db, instance_id)
+                _broadcast_agent_status(ws_ids, instance_id, "running")
     except Exception:
         logger.exception("重启超时后恢复状态失败: instance=%s", instance_id)
 
@@ -609,10 +656,17 @@ async def sync_gateway_token(instance_id: str, db: AsyncSession) -> str:
     """从运行中的 Pod 读取 OPENCLAW_GATEWAY_TOKEN 并回填到 DB 和 ConfigMap。"""
     instance = await get_instance(instance_id, db)
 
-    # 如果 DB 中已有 Token，直接返回
+    # 如果 DB 中已有 Token，补齐关联字段后直接返回
     env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
-    if env_vars.get("OPENCLAW_GATEWAY_TOKEN"):
-        return env_vars["OPENCLAW_GATEWAY_TOKEN"]
+    existing_token = env_vars.get("OPENCLAW_GATEWAY_TOKEN")
+    if existing_token:
+        normalized_env_vars = _normalize_gateway_env_vars(env_vars, existing_token)
+        changed = normalized_env_vars != env_vars or instance.proxy_token != existing_token
+        if changed:
+            instance.env_vars = json.dumps(normalized_env_vars)
+            instance.proxy_token = existing_token
+            await db.commit()
+        return existing_token
 
     # 获取集群连接
     cluster_result = await db.execute(
@@ -656,26 +710,73 @@ async def sync_gateway_token(instance_id: str, db: AsyncSession) -> str:
     token = match.group(1)
 
     # 回填到 DB
-    env_vars["OPENCLAW_GATEWAY_TOKEN"] = token
-    instance.env_vars = json.dumps(env_vars)
+    normalized_env_vars = _normalize_gateway_env_vars(env_vars, token)
+    instance.env_vars = json.dumps(normalized_env_vars)
+    instance.proxy_token = token
 
     # 回填到 ConfigMap
     try:
-        labels = build_labels(k_name, instance.id, instance.image_version)
-        cm = build_configmap(f"{k_name}-config", instance.namespace, env_vars, labels)
-        try:
-            await k8s.core.replace_namespaced_config_map(
-                f"{k_name}-config", instance.namespace, cm
-            )
-        except Exception:
-            await k8s.create_or_skip(
-                k8s.core.create_namespaced_config_map, instance.namespace, cm
-            )
+        await _replace_instance_configmap(instance, normalized_env_vars, k8s)
     except Exception as e:
         logger.warning("回填 ConfigMap 失败: %s", e)
 
     await db.commit()
     return token
+
+
+async def regenerate_gateway_token(instance_id: str, db: AsyncSession) -> str:
+    """生成新的访问令牌，更新配置并触发实例重启。"""
+    instance = await get_instance(instance_id, db)
+    old_env_vars_json = instance.env_vars
+    old_env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
+    old_proxy_token = instance.proxy_token
+
+    cluster_result = await db.execute(
+        select(Cluster).where(Cluster.id == instance.cluster_id, Cluster.deleted_at.is_(None))
+    )
+    cluster = cluster_result.scalar_one_or_none()
+    if not cluster:
+        raise NotFoundError("集群不存在")
+
+    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+    k8s = K8sClient(api_client)
+
+    new_token = secrets.token_hex(24)
+    while new_token == old_env_vars.get("OPENCLAW_GATEWAY_TOKEN"):
+        new_token = secrets.token_hex(24)
+    new_env_vars = _normalize_gateway_env_vars(old_env_vars, new_token)
+
+    try:
+        await _replace_instance_configmap(instance, new_env_vars, k8s)
+        instance.env_vars = json.dumps(new_env_vars)
+        instance.proxy_token = new_token
+        await db.commit()
+    except Exception as exc:
+        logger.exception("更新实例访问令牌失败: instance=%s", instance_id)
+        await db.rollback()
+        try:
+            fresh_instance = await get_instance(instance_id, db)
+            await _replace_instance_configmap(fresh_instance, old_env_vars, k8s)
+        except Exception:
+            logger.exception("恢复旧访问令牌 ConfigMap 失败: instance=%s", instance_id)
+        raise ConflictError("重设访问令牌失败，请稍后重试") from exc
+
+    try:
+        await restart_instance(instance_id, db)
+    except Exception as exc:
+        logger.exception("访问令牌更新后触发重启失败: instance=%s", instance_id)
+        try:
+            rollback_instance = await get_instance(instance_id, db)
+            rollback_instance.env_vars = old_env_vars_json
+            rollback_instance.proxy_token = old_proxy_token
+            await _replace_instance_configmap(rollback_instance, old_env_vars, k8s)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("重设访问令牌失败后回滚旧令牌失败: instance=%s", instance_id)
+        raise ConflictError("重设访问令牌后触发重启失败，已回滚旧令牌") from exc
+
+    return new_token
 
 
 async def rollback_instance(

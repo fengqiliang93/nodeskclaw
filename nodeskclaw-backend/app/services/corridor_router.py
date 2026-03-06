@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.base import not_deleted
 from app.models.corridor import CorridorHex, HexConnection, HumanHex, ordered_pair
 from app.models.instance import Instance
+from app.models.workspace_agent import WorkspaceAgent
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_message import WorkspaceMessage
 
@@ -60,17 +61,20 @@ async def _build_hex_map(workspace_id: str, db: AsyncSession) -> dict[tuple[int,
     hex_map[(0, 0)] = TopologyNode(0, 0, "blackboard")
 
     agents_q = await db.execute(
-        select(Instance).where(
-            Instance.workspace_id == workspace_id,
+        select(Instance, WorkspaceAgent).join(
+            WorkspaceAgent,
+            (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.workspace_id == workspace_id,
             not_deleted(Instance),
         )
     )
-    for agent in agents_q.scalars().all():
-        q, r = agent.hex_position_q, agent.hex_position_r
+    for agent, wa in agents_q.all():
+        q, r = wa.hex_q, wa.hex_r
         if q is not None and r is not None:
             hex_map[(q, r)] = TopologyNode(
                 q, r, "agent", entity_id=agent.id,
-                display_name=agent.agent_display_name or agent.name,
+                display_name=wa.display_name or agent.name,
             )
 
     human_hexes_q = await db.execute(
@@ -376,13 +380,16 @@ async def get_message_flow_stats(
     Only includes pairs where both sender and receiver have hex positions in this workspace.
     """
     agents_q = await db.execute(
-        select(Instance.id, Instance.hex_position_q, Instance.hex_position_r).where(
-            Instance.workspace_id == workspace_id,
+        select(Instance.id, WorkspaceAgent.hex_q, WorkspaceAgent.hex_r).join(
+            WorkspaceAgent,
+            (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+        ).where(
+            WorkspaceAgent.workspace_id == workspace_id,
             not_deleted(Instance),
         )
     )
     agent_hex: dict[str, tuple[int, int]] = {
-        row.id: (row.hex_position_q, row.hex_position_r)
+        row.id: (row.hex_q, row.hex_r)
         for row in agents_q.all()
     }
 

@@ -15,6 +15,7 @@ from app.models.base import not_deleted
 from app.models.blackboard import Blackboard
 from app.models.corridor import CorridorHex, HexConnection, ordered_pair
 from app.models.instance import Instance
+from app.models.workspace_agent import WorkspaceAgent
 from app.models.workspace_template import WorkspaceTemplate
 from app.services import corridor_router
 from app.services import workspace_service
@@ -179,11 +180,12 @@ async def _get_workspace_gene_assignments(db: AsyncSession, workspace_id: str) -
     from app.models.gene import InstanceGeneStatus
 
     result = await db.execute(
-        select(Instance, InstanceGene, Gene)
+        select(Instance, WorkspaceAgent, InstanceGene, Gene)
+        .join(WorkspaceAgent, (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)))
         .join(InstanceGene, Instance.id == InstanceGene.instance_id)
         .join(Gene, InstanceGene.gene_id == Gene.id)
         .where(
-            Instance.workspace_id == workspace_id,
+            WorkspaceAgent.workspace_id == workspace_id,
             Instance.deleted_at.is_(None),
             InstanceGene.status == InstanceGeneStatus.installed,
             InstanceGene.deleted_at.is_(None),
@@ -192,12 +194,12 @@ async def _get_workspace_gene_assignments(db: AsyncSession, workspace_id: str) -
     rows = result.all()
     return [
         {
-            "hex_q": inst.hex_position_q or 0,
-            "hex_r": inst.hex_position_r or 0,
+            "hex_q": wa.hex_q or 0,
+            "hex_r": wa.hex_r or 0,
             "display_name": inst.agent_display_name or inst.name,
             "gene_slug": gene.slug,
         }
-        for inst, ig, gene in rows
+        for inst, wa, ig, gene in rows
     ]
 
 
@@ -287,20 +289,26 @@ async def apply_template(
     corridor_nodes = [n for n in nodes if n.get("node_type") == "corridor"]
 
     ws_agents_result = await db.execute(
-        select(Instance).where(
-            Instance.workspace_id == ws_id,
+        select(Instance, WorkspaceAgent)
+        .join(
+            WorkspaceAgent,
+            (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+        )
+        .where(
+            WorkspaceAgent.workspace_id == ws_id,
             Instance.deleted_at.is_(None),
-        ).order_by(Instance.created_at.asc())
+        )
+        .order_by(Instance.created_at.asc())
     )
-    ws_agents = list(ws_agents_result.scalars().all())
+    ws_agents = list(ws_agents_result.all())
 
     for i, node in enumerate(agent_nodes):
         hex_q = node.get("hex_q", 0)
         hex_r = node.get("hex_r", 0)
         if i < len(ws_agents):
-            inst = ws_agents[i]
-            inst.hex_position_q = hex_q
-            inst.hex_position_r = hex_r
+            inst, wa = ws_agents[i]
+            wa.hex_q = hex_q
+            wa.hex_r = hex_r
             inst.agent_display_name = node.get("display_name") or inst.agent_display_name
 
     conn_result = await db.execute(
@@ -367,8 +375,8 @@ async def apply_template(
         gene_slug = ga.get("gene_slug")
         if hex_q is None or hex_r is None or not gene_slug:
             continue
-        for inst in ws_agents:
-            if inst.hex_position_q == hex_q and inst.hex_position_r == hex_r:
+        for inst, wa in ws_agents:
+            if wa.hex_q == hex_q and wa.hex_r == hex_r:
                 try:
                     from app.services import gene_service
                     await gene_service.install_gene(db, inst.id, gene_slug)

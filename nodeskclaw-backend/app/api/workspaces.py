@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import async_session_factory, get_current_org, get_db
 from app.models.instance import Instance
+from app.models.workspace_agent import WorkspaceAgent
 from app.schemas.workspace import (
     AddAgentRequest,
     BlackboardSectionPatch,
@@ -314,13 +315,19 @@ async def _notify_agents_task_done(workspace_id: str, task_title: str):
                 agent_ids = [ep.entity_id for ep in audience if ep.endpoint_type == "agent"]
             else:
                 agents_q = await db.execute(
-                    sa_select(Instance).where(
-                        Instance.workspace_id == workspace_id,
+                    sa_select(Instance.id)
+                    .join(
+                        WorkspaceAgent,
+                        (WorkspaceAgent.instance_id == Instance.id)
+                        & (WorkspaceAgent.deleted_at.is_(None)),
+                    )
+                    .where(
+                        WorkspaceAgent.workspace_id == workspace_id,
                         Instance.status == "running",
-                        not_deleted(Instance),
+                        Instance.deleted_at.is_(None),
                     )
                 )
-                agent_ids = [a.id for a in agents_q.scalars().all()]
+                agent_ids = [r[0] for r in agents_q.all()]
 
             if agent_ids:
                 message = f"任务「{task_title}」已完成，请检查黑板是否有新的待办任务。"
@@ -844,19 +851,19 @@ async def workspace_chat(
         audience = await corridor_router.get_blackboard_audience(workspace_id, db)
         reachable_ids = {ep.entity_id for ep in audience if ep.endpoint_type == "agent"}
         human_endpoints = [ep for ep in audience if ep.endpoint_type == "human"]
-        target_agents = [a for a in running_agents if a.id in reachable_ids]
-        excluded = [a for a in running_agents if a.id not in reachable_ids]
+        target_agents = [a for a in running_agents if a[0].id in reachable_ids]
+        excluded = [a for a in running_agents if a[0].id not in reachable_ids]
         if excluded:
             repaired = False
-            for agent in excluded:
-                if agent.hex_position_q is not None:
+            for inst, wa in excluded:
+                if wa.hex_q is not None or wa.hex_r is not None:
                     connected = await corridor_router.auto_connect_hex(
-                        workspace_id, agent.hex_position_q, agent.hex_position_r or 0, user.id, db,
+                        workspace_id, wa.hex_q, wa.hex_r or 0, user.id, db,
                     )
                     if connected:
                         logger.info(
                             "workspace_chat: 自动补连 Agent %s 到 %d 个邻居",
-                            agent.agent_display_name or agent.name, len(connected),
+                            inst.agent_display_name or inst.name, len(connected),
                         )
                         repaired = True
             if repaired:
@@ -864,10 +871,10 @@ async def workspace_chat(
                 audience = await corridor_router.get_blackboard_audience(workspace_id, db)
                 reachable_ids = {ep.entity_id for ep in audience if ep.endpoint_type == "agent"}
                 human_endpoints = [ep for ep in audience if ep.endpoint_type == "human"]
-                target_agents = [a for a in running_agents if a.id in reachable_ids]
-                excluded = [a for a in running_agents if a.id not in reachable_ids]
+                target_agents = [a for a in running_agents if a[0].id in reachable_ids]
+                excluded = [a for a in running_agents if a[0].id not in reachable_ids]
             if excluded:
-                excluded_names = [a.agent_display_name or a.name for a in excluded]
+                excluded_names = [a[0].agent_display_name or a[0].name for a in excluded]
                 logger.warning(
                     "workspace_chat: workspace=%s 拓扑过滤排除了 %d 个 Agent: %s",
                     workspace_id, len(excluded), excluded_names,
@@ -886,7 +893,7 @@ async def workspace_chat(
     members = _build_members_list(ws_info, user)
     recent_messages = await msg_service.get_recent_messages(db, workspace_id)
 
-    for inst in target_agents:
+    for inst, _ in target_agents:
         _fire_task(
             _stream_agent_response(
                 workspace_id=workspace_id,
@@ -1046,14 +1053,16 @@ async def agent_chat(
 ):
     """Single-agent chat (deprecated, use workspace_chat instead)."""
     await wm_service.check_workspace_access(workspace_id, user, "send_chat", db)
-    result = await db.execute(
-        sa_select(Instance).where(
-            Instance.id == instance_id,
-            Instance.workspace_id == workspace_id,
-            Instance.deleted_at.is_(None),
+    wa_check = await db.execute(
+        sa_select(WorkspaceAgent).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
     )
-    inst = result.scalar_one_or_none()
+    if wa_check.scalar_one_or_none() is None:
+        raise _error(404, 40432, "errors.workspace.agent_not_in_workspace", "AI 员工不在该办公室中")
+    inst = (await db.execute(sa_select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None)))).scalar_one_or_none()
     if inst is None:
         raise _error(404, 40432, "errors.workspace.agent_not_in_workspace", "AI 员工不在该办公室中")
 
@@ -1068,6 +1077,7 @@ async def agent_chat(
         current_instance_id=instance_id,
         members=members,
         recent_messages=recent_messages,
+        workspace_id=workspace_id,
     )
 
     messages = [
@@ -1188,12 +1198,12 @@ async def _build_agent_status_snapshot(workspace_id: str, db: AsyncSession) -> d
     from app.services.sse_listener import sse_listener_manager
 
     result = await db.execute(
-        sa_select(Instance.id).where(
-            Instance.workspace_id == workspace_id,
-            Instance.deleted_at.is_(None),
+        sa_select(WorkspaceAgent.instance_id).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.deleted_at.is_(None),
         )
     )
-    instance_ids = result.scalars().all()
+    instance_ids = [r[0] for r in result.all()]
     if not instance_ids:
         return None
 
@@ -1223,15 +1233,20 @@ async def create_sse_token(
 
 # ── Private helpers ──────────────────────────────────
 
-async def _get_running_agents(db: AsyncSession, workspace_id: str) -> list[Instance]:
+async def _get_running_agents(db: AsyncSession, workspace_id: str) -> list[tuple[Instance, WorkspaceAgent]]:
     result = await db.execute(
-        sa_select(Instance).where(
-            Instance.workspace_id == workspace_id,
+        sa_select(Instance, WorkspaceAgent)
+        .join(
+            WorkspaceAgent,
+            (WorkspaceAgent.instance_id == Instance.id) & (WorkspaceAgent.deleted_at.is_(None)),
+        )
+        .where(
+            WorkspaceAgent.workspace_id == workspace_id,
             Instance.status == "running",
             Instance.deleted_at.is_(None),
         )
     )
-    return list(result.scalars().all())
+    return list(result.all())
 
 
 def _get_instance_connection(inst: Instance) -> tuple[str, str]:
@@ -1283,6 +1298,7 @@ async def _stream_agent_response(
         current_instance_id=instance_id,
         members=members,
         recent_messages=recent_messages,
+        workspace_id=workspace_id,
     )
 
     if mentions and len(mentions) > 0:

@@ -5,6 +5,11 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class WorkspaceBrief(BaseModel):
+    id: str
+    name: str
+
+
 class InstanceInfo(BaseModel):
     id: str
     name: str
@@ -21,13 +26,12 @@ class InstanceInfo(BaseModel):
     storage_class: str = "nas-subpath"
     storage_size: str = "80Gi"
     advanced_config: str | None = None
-    pending_config: str | None = None  # 待应用的配置（两步操作）
+    pending_config: str | None = None
     created_by: str
     created_at: datetime
     updated_at: datetime
     my_role: str | None = None
-    workspace_id: str | None = None
-    workspace_name: str | None = None
+    workspaces: list[WorkspaceBrief] = []
 
     model_config = {"from_attributes": True}
 
