@@ -848,6 +848,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
 
 .messages-scroll {
   overflow-y: scroll;
+  overflow-x: hidden;
 }
 
 .chat-markdown :deep(p) { margin: 0.25em 0; }
