@@ -193,11 +193,8 @@ watch(activeTab, () => { error.value = '' })
               :key="tm.key"
               class="flex items-start gap-4 p-4 rounded-xl bg-card/30 backdrop-blur-sm border border-border/40 transition-all hover:border-primary/30 hover:bg-card/50 group"
             >
-              <div class="relative shrink-0">
-                <div class="absolute inset-0 -m-0.5 rounded-full border-l-2 border-primary/60 group-hover:border-primary transition-colors" />
-                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
-                  <component :is="tm.icon" class="w-5 h-5 text-primary" />
-                </div>
+              <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                <component :is="tm.icon" class="w-[18px] h-[18px] text-primary" :stroke-width="1.5" />
               </div>
               <div class="min-w-0">
                 <div class="text-sm font-semibold mb-0.5">{{ t(`auth.landing.themes.${tm.key}.title`) }}</div>
