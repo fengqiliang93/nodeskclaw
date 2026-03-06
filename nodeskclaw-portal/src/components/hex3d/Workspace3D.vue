@@ -15,6 +15,13 @@ const { t } = useI18n()
 
 type HexType = 'empty' | 'agent' | 'blackboard' | 'human' | 'corridor'
 
+interface PerfSummary {
+  totalTasks: number
+  completedTasks: number
+  totalTokenCost: number
+  totalValueCreated: number
+}
+
 const props = defineProps<{
   agents: AgentBrief[]
   blackboardContent: string
@@ -25,7 +32,14 @@ const props = defineProps<{
   messageFlowStats?: MessageFlowPair[]
   isMovingHex?: boolean
   movingHexSource?: { q: number, r: number } | null
+  perfSummary?: PerfSummary | null
 }>()
+
+function formatK(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(Math.round(n))
+}
 
 const emit = defineEmits<{
   (e: 'hex-click', payload: { q: number, r: number, type: HexType, agentId?: string, entityId?: string }): void
@@ -228,24 +242,64 @@ function createBlackboardMesh(): THREE.Group {
   return group
 }
 
-function createBBLabelSprite(): THREE.Sprite {
-  const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 40
+let bbLabelSprite: THREE.Sprite | null = null
+
+function drawBBLabelCanvas(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = 'transparent'
-  ctx.fillRect(0, 0, 256, 40)
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
   ctx.font = 'bold 20px sans-serif'
   ctx.fillStyle = '#a78bfa'
   ctx.textAlign = 'center'
-  ctx.fillText(t('workspaceView.bbTitle'), 128, 28)
+  ctx.fillText(t('workspaceView.bbTitle'), 128, 22)
+
+  const ps = props.perfSummary
+  if (ps) {
+    ctx.font = '14px sans-serif'
+    ctx.fillStyle = '#9ca3af'
+    ctx.fillText(
+      t('workspaceView.bbInputLine', { tasks: ps.totalTasks, tokens: formatK(ps.totalTokenCost) }),
+      128, 44,
+    )
+    ctx.font = '12px sans-serif'
+    ctx.fillStyle = '#6b7280'
+    ctx.fillText(
+      t('workspaceView.bbOutputLine', { done: ps.completedTasks, value: formatK(ps.totalValueCreated) }),
+      128, 62,
+    )
+  } else if (props.blackboardContent) {
+    ctx.font = '14px sans-serif'
+    ctx.fillStyle = '#9ca3af'
+    const text = props.blackboardContent.length > 20
+      ? props.blackboardContent.slice(0, 20) + '...'
+      : props.blackboardContent
+    ctx.fillText(text, 128, 44)
+  }
+}
+
+function createBBLabelSprite(): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 80
+  drawBBLabelCanvas(canvas)
   const texture = new THREE.CanvasTexture(canvas)
   const mat = new THREE.SpriteMaterial({ map: texture, transparent: true })
   const sprite = new THREE.Sprite(mat)
-  sprite.scale.set(1.2, 0.2, 1)
-  sprite.userData.baseScale = { x: 1.2, y: 0.2 }
+  sprite.scale.set(1.2, 0.4, 1)
+  sprite.userData.baseScale = { x: 1.2, y: 0.4 }
+  sprite.userData.canvas = canvas
+  bbLabelSprite = sprite
   return sprite
 }
+
+watch(() => props.perfSummary, () => {
+  if (!bbLabelSprite) return
+  const canvas = bbLabelSprite.userData.canvas as HTMLCanvasElement
+  if (!canvas) return
+  drawBBLabelCanvas(canvas)
+  const tex = bbLabelSprite.material.map
+  if (tex) tex.needsUpdate = true
+}, { deep: true })
 
 const HUMAN_HEX_GEO = new THREE.CylinderGeometry(HEX_SIZE * 0.7, HEX_SIZE * 0.7, 0.5, 6)
 

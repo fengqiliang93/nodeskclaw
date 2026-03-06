@@ -256,6 +256,30 @@ const svgRef = ref<HTMLElement | null>(null)
 const workspace3dRef = ref<InstanceType<typeof Workspace3D> | null>(null)
 const workspace2dRef = ref<InstanceType<typeof Workspace2D> | null>(null)
 
+interface PerfSummary {
+  totalTasks: number
+  completedTasks: number
+  totalTokenCost: number
+  totalValueCreated: number
+}
+const perfSummary = ref<PerfSummary | null>(null)
+
+async function loadPerfSummary(wsId: string) {
+  try {
+    const data = await store.fetchPerformance(wsId)
+    if (data) {
+      perfSummary.value = {
+        totalTasks: Number(data.total_tasks) || 0,
+        completedTasks: Number(data.completed_tasks) || 0,
+        totalTokenCost: Number(data.total_token_cost) || 0,
+        totalValueCreated: Number(data.total_value_created) || 0,
+      }
+    }
+  } catch {
+    perfSummary.value = null
+  }
+}
+
 function handleZoomIn() {
   if (activeMode.value === '3d') workspace3dRef.value?.zoomIn()
   else workspace2dRef.value?.zoomIn()
@@ -280,6 +304,7 @@ onMounted(async () => {
   await store.fetchTopology(workspaceId.value)
   await store.fetchMembers(workspaceId.value)
   await store.fetchDecoration(workspaceId.value)
+  loadPerfSummary(workspaceId.value)
 
   store.connectSSE(workspaceId.value, onSSEEvent)
   window.addEventListener('keydown', handleKeydown)
@@ -311,6 +336,7 @@ watch(workspaceId, async (newId, oldId) => {
     await store.fetchBlackboard(newId)
     await store.fetchTopology(newId)
     await store.fetchDecoration(newId)
+    loadPerfSummary(newId)
     store.connectSSE(newId, onSSEEvent)
   }
 })
@@ -333,6 +359,11 @@ function onSSEEvent(event: string, data: Record<string, unknown>) {
         ? t('workspaceView.skillLearnedToastWithSummary', { agentName, geneName, summary })
         : t('workspaceView.skillLearnedToast', { agentName, geneName }),
     )
+    return
+  }
+
+  if (['task:created', 'task:updated', 'task:archived', 'task:status_changed'].includes(event)) {
+    loadPerfSummary(workspaceId.value)
     return
   }
 
@@ -1002,6 +1033,7 @@ function handleKeydown(e: KeyboardEvent) {
             :message-flow-stats="store.messageFlowStats"
             :is-moving-hex="highlightEmptyHexes"
             :moving-hex-source="movingHexSource"
+            :perf-summary="perfSummary"
             @hex-click="onHexClick"
             @agent-dblclick="onAgentDblClick"
           />
@@ -1029,6 +1061,7 @@ function handleKeydown(e: KeyboardEvent) {
             :hex-decorations="computedHexDecorations"
             :decorating-hex-key="decoratingHexKey"
             :is-decoration-mode="decorationMode"
+            :perf-summary="perfSummary"
             @hex-click="onHexClick"
             @agent-dblclick="onAgentDblClick"
             @decoration-hex-click="onDecorationHexClick"

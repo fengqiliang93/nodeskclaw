@@ -24,6 +24,13 @@ export interface HexDecorationDisplay {
   furnitureUrls?: string[]
 }
 
+interface PerfSummary {
+  totalTasks: number
+  completedTasks: number
+  totalTokenCost: number
+  totalValueCreated: number
+}
+
 const props = withDefaults(defineProps<{
   agents: AgentBrief[]
   blackboardContent: string
@@ -37,9 +44,16 @@ const props = withDefaults(defineProps<{
   hexDecorations?: Record<string, HexDecorationDisplay>
   decoratingHexKey?: string | null
   isDecorationMode?: boolean
+  perfSummary?: PerfSummary | null
 }>(), {
   isDecorationMode: false,
 })
+
+function formatK(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(Math.round(n))
+}
 
 const emit = defineEmits<{
   (e: 'hex-click', payload: { q: number, r: number, type: 'empty' | 'agent' | 'blackboard' | 'corridor' | 'human', agentId?: string, entityId?: string }): void
@@ -488,10 +502,16 @@ const emptyHexes = computed(() => {
         <text x="0" y="-20" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">
           {{ t('workspaceView.bbTitle') }}
         </text>
-        <text x="0" y="-2" text-anchor="middle" fill="#9ca3af" font-size="9">
+        <text v-if="perfSummary" x="0" y="-2" text-anchor="middle" fill="#9ca3af" font-size="9">
+          {{ t('workspaceView.bbInputLine', { tasks: perfSummary.totalTasks, tokens: formatK(perfSummary.totalTokenCost) }) }}
+        </text>
+        <text v-else x="0" y="-2" text-anchor="middle" fill="#9ca3af" font-size="9">
           {{ blackboardContent?.slice(0, 24) || t('workspaceView.bbNoSummary') }}{{ (blackboardContent?.length ?? 0) > 24 ? '...' : '' }}
         </text>
-        <text x="0" y="16" text-anchor="middle" fill="#6b7280" font-size="8">
+        <text v-if="perfSummary" x="0" y="16" text-anchor="middle" fill="#6b7280" font-size="8">
+          {{ t('workspaceView.bbOutputLine', { done: perfSummary.completedTasks, value: formatK(perfSummary.totalValueCreated) }) }}
+        </text>
+        <text v-else x="0" y="16" text-anchor="middle" fill="#6b7280" font-size="8">
           {{ blackboardContent?.slice(24, 54) || '' }}{{ (blackboardContent?.length ?? 0) > 54 ? '...' : '' }}
         </text>
       </g>

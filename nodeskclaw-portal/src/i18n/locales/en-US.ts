@@ -239,6 +239,8 @@ const enUS = {
     quickOpenChat: "Quick open chat",
     bbTitle: "Blackboard",
     bbNoSummary: "No summary",
+    bbInputLine: "In {tasks} tasks · {tokens}tk",
+    bbOutputLine: "Out {done} done · {value}",
     bbEditNotes: "Click to edit notes",
     bbTasks: "Tasks",
     bbBlocked: "Blocked",

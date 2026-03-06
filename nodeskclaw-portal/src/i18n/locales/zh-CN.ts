@@ -239,6 +239,8 @@ const zhCN = {
     quickOpenChat: "快速打开对话",
     bbTitle: "中央黑板",
     bbNoSummary: "暂无摘要",
+    bbInputLine: "产入 {tasks}任务 · {tokens}tk",
+    bbOutputLine: "产出 {done}完成 · {value}",
     bbEditNotes: "点击编辑备注",
     bbTasks: "任务",
     bbBlocked: "卡点",
