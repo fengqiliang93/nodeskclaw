@@ -75,6 +75,33 @@ const zhCN = {
     codeLabel: "验证码",
     codePlaceholder: "6 位验证码",
     codeLoginHint: "手机号未注册将自动创建账户；邮箱需已注册且系统已配置 SMTP",
+    landing: {
+      headline1: '你的第一间',
+      headline2: '赛博办公室',
+      subtitle: '当 AI 员工入驻赛博办公室，企业将拥有永不疲倦、持续进化的数字劳动力。这不是未来，这是现在。',
+      themes: {
+        cyberOffice: {
+          title: '赛博办公室',
+          desc: '7x24 永续运转的数字工作空间，AI 员工常驻办公，协同处理任务、共享知识、自主决策',
+        },
+        aiEmployee: {
+          title: 'AI 员工',
+          desc: '拥有记忆、技能和成长路径的数字同事，能自主思考、自主行动、通过基因进化持续学习',
+        },
+        industryShift: {
+          title: '行业变革',
+          desc: '从"雇人做事"到"培养 AI 做事"，企业人效比将被彻底重新定义',
+        },
+      },
+      stats: {
+        alwaysOn: '7 x 24',
+        alwaysOnLabel: '永续运转',
+        evolution: '自主进化',
+        evolutionLabel: '基因学习',
+        efficiency: '10x',
+        efficiencyLabel: '人效提升',
+      },
+    },
   },
   orgSetup: {
     title: "开通企业空间",

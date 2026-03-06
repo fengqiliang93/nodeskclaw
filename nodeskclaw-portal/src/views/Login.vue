@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useConfirm } from '@/composables/useConfirm'
-import { Loader2, Zap, Shield, Globe, Sparkles, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
+import { Loader2, Building2, BrainCircuit, Rocket, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 
 const router = useRouter()
@@ -27,11 +27,10 @@ const codeCountdown = ref(0)
 let codeTimer: ReturnType<typeof setInterval> | null = null
 const locale = ref(getCurrentLocale())
 
-const features = [
-  { icon: Zap, title: '一键部署', desc: '零配置启动你的 AI 员工' },
-  { icon: Shield, title: '企业级安全', desc: '多租户隔离，数据独占' },
-  { icon: Globe, title: '即开即用', desc: '自动域名，HTTPS 就绪' },
-  { icon: Sparkles, title: '弹性扩展', desc: '按需选择规格，灵活升降配' },
+const themes = [
+  { icon: Building2, key: 'cyberOffice' },
+  { icon: BrainCircuit, key: 'aiEmployee' },
+  { icon: Rocket, key: 'industryShift' },
 ]
 
 const canSubmitAccount = computed(() => {
@@ -149,41 +148,79 @@ watch(activeTab, () => { error.value = '' })
   <div class="min-h-screen flex">
     <!-- 左侧品牌区 -->
     <div class="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-linear-to-br from-primary/20 via-background to-background">
+      <!-- 背景装饰层 -->
       <div class="absolute inset-0">
-        <div class="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-primary/5 blur-3xl" />
-        <div class="absolute bottom-1/4 right-1/4 w-64 h-64 rounded-full bg-primary/8 blur-3xl" />
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full border border-primary/5" />
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full border border-primary/8" />
+        <!-- 网格线 -->
+        <div class="absolute inset-0 brand-grid opacity-[0.04]" />
+        <!-- 浮动光晕 -->
+        <div class="absolute top-[15%] left-[20%] w-[500px] h-[500px] rounded-full bg-primary/6 blur-[100px] brand-float" />
+        <div class="absolute bottom-[10%] right-[15%] w-[400px] h-[400px] rounded-full bg-primary/8 blur-[80px] brand-float-reverse" />
+        <!-- 脉冲光点 -->
+        <div class="absolute top-[20%] right-[30%] w-1.5 h-1.5 rounded-full bg-primary/60 brand-pulse-dot" />
+        <div class="absolute top-[55%] left-[12%] w-1 h-1 rounded-full bg-primary/40 brand-pulse-dot" style="animation-delay: 1.5s" />
+        <div class="absolute bottom-[25%] right-[20%] w-1 h-1 rounded-full bg-primary/50 brand-pulse-dot" style="animation-delay: 3s" />
+        <div class="absolute top-[40%] left-[45%] w-0.5 h-0.5 rounded-full bg-primary/30 brand-pulse-dot" style="animation-delay: 4.5s" />
+        <!-- 扫光 -->
+        <div class="absolute inset-0 overflow-hidden">
+          <div class="absolute top-0 left-0 w-[200%] h-px bg-linear-to-r from-transparent via-primary/20 to-transparent brand-sweep" />
+        </div>
       </div>
 
-      <div class="relative z-10 flex flex-col justify-center px-16 xl:px-24">
-        <div class="flex items-center gap-3 mb-6">
+      <!-- 内容区 -->
+      <div class="relative z-10 flex flex-col justify-between px-12 xl:px-20 py-12">
+        <!-- Logo -->
+        <div class="flex items-center gap-3">
           <img src="/logo.png" alt="DeskClaw" class="w-10 h-10" />
           <span class="text-xl font-bold tracking-tight">DeskClaw</span>
           <span class="px-1.5 py-0.5 text-[10px] font-semibold leading-none rounded bg-primary/15 text-primary">Beta</span>
         </div>
 
-        <h1 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">
-          你的 AI 员工<br />
-          <span class="text-primary">云端部署平台</span>
-        </h1>
-        <p class="text-base text-muted-foreground max-w-md mb-12">
-          基于 DeskClaw 的 SaaS 部署平台，让每个人都能拥有自己的 AI 员工。无需运维经验，一键创建，即刻使用。
-        </p>
+        <!-- 主体 -->
+        <div>
+          <h1 class="text-4xl xl:text-5xl font-bold leading-tight mb-5">
+            {{ t('auth.landing.headline1') }}<br />
+            <span class="text-primary">{{ t('auth.landing.headline2') }}</span>
+          </h1>
+          <p class="text-base text-muted-foreground max-w-lg mb-10 leading-relaxed">
+            {{ t('auth.landing.subtitle') }}
+          </p>
 
-        <div class="grid grid-cols-2 gap-4 max-w-md">
-          <div
-            v-for="f in features"
-            :key="f.title"
-            class="flex items-start gap-3 p-3 rounded-xl bg-card/40 backdrop-blur-sm border border-border/50"
-          >
-            <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-              <component :is="f.icon" class="w-4 h-4 text-primary" />
+          <!-- 主题卡片 -->
+          <div class="space-y-3 max-w-lg">
+            <div
+              v-for="tm in themes"
+              :key="tm.key"
+              class="flex items-start gap-4 p-4 rounded-xl bg-card/30 backdrop-blur-sm border border-border/40 transition-all hover:border-primary/30 hover:bg-card/50 group"
+            >
+              <div class="relative shrink-0">
+                <div class="absolute inset-0 -m-0.5 rounded-full border-l-2 border-primary/60 group-hover:border-primary transition-colors" />
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                  <component :is="tm.icon" class="w-5 h-5 text-primary" />
+                </div>
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold mb-0.5">{{ t(`auth.landing.themes.${tm.key}.title`) }}</div>
+                <div class="text-xs text-muted-foreground leading-relaxed">{{ t(`auth.landing.themes.${tm.key}.desc`) }}</div>
+              </div>
             </div>
-            <div>
-              <div class="text-sm font-medium">{{ f.title }}</div>
-              <div class="text-xs text-muted-foreground mt-0.5">{{ f.desc }}</div>
-            </div>
+          </div>
+        </div>
+
+        <!-- Stats 行 -->
+        <div class="flex items-center justify-center max-w-lg">
+          <div class="flex-1 text-center">
+            <div class="text-2xl font-bold text-primary">{{ t('auth.landing.stats.alwaysOn') }}</div>
+            <div class="text-xs text-muted-foreground mt-1">{{ t('auth.landing.stats.alwaysOnLabel') }}</div>
+          </div>
+          <div class="w-px h-8 bg-border/60" />
+          <div class="flex-1 text-center">
+            <div class="text-2xl font-bold text-primary">{{ t('auth.landing.stats.evolution') }}</div>
+            <div class="text-xs text-muted-foreground mt-1">{{ t('auth.landing.stats.evolutionLabel') }}</div>
+          </div>
+          <div class="w-px h-8 bg-border/60" />
+          <div class="flex-1 text-center">
+            <div class="text-2xl font-bold text-primary">{{ t('auth.landing.stats.efficiency') }}</div>
+            <div class="text-xs text-muted-foreground mt-1">{{ t('auth.landing.stats.efficiencyLabel') }}</div>
           </div>
         </div>
       </div>
@@ -364,3 +401,43 @@ watch(activeTab, () => { error.value = '' })
     </div>
   </div>
 </template>
+
+<style scoped>
+.brand-grid {
+  background-image:
+    linear-gradient(to right, currentColor 1px, transparent 1px),
+    linear-gradient(to bottom, currentColor 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.brand-float {
+  animation: brand-float 12s ease-in-out infinite;
+}
+
+.brand-float-reverse {
+  animation: brand-float 15s ease-in-out infinite reverse;
+}
+
+.brand-pulse-dot {
+  animation: brand-pulse-dot 4s ease-in-out infinite;
+}
+
+.brand-sweep {
+  animation: brand-sweep 10s linear infinite;
+}
+
+@keyframes brand-float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(10px, -15px); }
+}
+
+@keyframes brand-pulse-dot {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.5); }
+}
+
+@keyframes brand-sweep {
+  0% { transform: translateX(-100%) rotate(-45deg); }
+  100% { transform: translateX(200%) rotate(-45deg); }
+}
+</style>

@@ -75,6 +75,33 @@ const enUS = {
     codeLabel: "Verification code",
     codePlaceholder: "6-digit code",
     codeLoginHint: "Unregistered phone numbers will auto-create an account; email requires registration and system SMTP configuration",
+    landing: {
+      headline1: 'Your First',
+      headline2: 'Cyber Office',
+      subtitle: 'When AI employees move into the Cyber Office, your company gains a tireless, ever-evolving digital workforce. This is not the future -- this is now.',
+      themes: {
+        cyberOffice: {
+          title: 'Cyber Office',
+          desc: 'A 24/7 digital workspace where AI employees work around the clock -- collaborating, sharing knowledge, making autonomous decisions',
+        },
+        aiEmployee: {
+          title: 'AI Employees',
+          desc: 'Digital colleagues with memory, skills, and growth paths -- thinking, acting, and evolving through genetic learning',
+        },
+        industryShift: {
+          title: 'Industry Shift',
+          desc: 'From "hiring people" to "cultivating AI" -- redefining workforce productivity from the ground up',
+        },
+      },
+      stats: {
+        alwaysOn: '7 x 24',
+        alwaysOnLabel: 'Always On',
+        evolution: 'Self-Evolving',
+        evolutionLabel: 'Gene Learning',
+        efficiency: '10x',
+        efficiencyLabel: 'Productivity',
+      },
+    },
   },
   orgSetup: {
     title: "Set up your organization",
