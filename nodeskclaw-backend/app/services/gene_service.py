@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException, BadRequestError, ConflictError, NotFoundError
 from app.models.base import not_deleted
+from app.models.corridor import HumanHex
 from app.models.gene import (
     EffectMetricType,
     EvolutionEvent,
@@ -28,6 +29,7 @@ from app.models.gene import (
     InstanceGeneStatus,
 )
 from app.models.instance import Instance, InstanceStatus
+from app.models.workspace_agent import WorkspaceAgent
 from app.schemas.gene import (
     CoInstallPair,
     GeneCreateRequest,
@@ -56,6 +58,17 @@ OPENCLAW_CONFIG_REL = ".openclaw/openclaw.json"
 SKILLS_DIR_REL = ".openclaw/skills"
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_instance_workspace_ids(db: AsyncSession, instance_id: str) -> list[str]:
+    """Get all workspace IDs for an instance."""
+    result = await db.execute(
+        select(WorkspaceAgent.workspace_id).where(
+            WorkspaceAgent.instance_id == instance_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    return [row[0] for row in result.all()]
 
 
 # ═══════════════════════════════════════════════════
@@ -158,6 +171,139 @@ def _json_dumps(obj) -> str | None:
     if obj is None:
         return None
     return json.dumps(obj, ensure_ascii=False)
+
+
+def _truncate_text(text: str, limit: int = 120) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip() + "..."
+
+
+def _build_skill_summary(gene_obj: Gene) -> str:
+    raw = (gene_obj.short_description or gene_obj.description or "").strip()
+    if not raw:
+        return ""
+    return _truncate_text(raw)
+
+
+async def _notify_skill_learned_in_workspace(
+    db: AsyncSession,
+    *,
+    instance: Instance,
+    gene_obj: Gene,
+    workspace_id: str | None,
+) -> None:
+    if not workspace_id:
+        return
+
+    try:
+        from app.api.workspaces import broadcast_event
+        from app.services.collaboration_service import (
+            deliver_to_human,
+            send_system_message_to_agents,
+        )
+        from app.services.corridor_router import get_reachable_endpoints
+
+        reachable = await get_reachable_endpoints(
+            workspace_id,
+            instance.hex_position_q,
+            instance.hex_position_r,
+            db,
+        )
+        if not reachable:
+            return
+
+        agent_ids: list[str] = []
+        human_hex_ids: list[str] = []
+        for endpoint in reachable:
+            if endpoint.endpoint_type == "agent":
+                if endpoint.entity_id and endpoint.entity_id != instance.id and endpoint.entity_id not in agent_ids:
+                    agent_ids.append(endpoint.entity_id)
+            elif endpoint.endpoint_type == "human":
+                if endpoint.entity_id and endpoint.entity_id not in human_hex_ids:
+                    human_hex_ids.append(endpoint.entity_id)
+
+        audience_user_ids: list[str] = []
+        if human_hex_ids:
+            human_q = await db.execute(
+                select(HumanHex.id, HumanHex.user_id).where(
+                    HumanHex.id.in_(human_hex_ids),
+                    not_deleted(HumanHex),
+                )
+            )
+            user_id_by_hex = {row.id: row.user_id for row in human_q.all()}
+            audience_user_ids = [
+                user_id_by_hex[human_hex_id]
+                for human_hex_id in human_hex_ids
+                if user_id_by_hex.get(human_hex_id)
+            ]
+
+        if not agent_ids and not human_hex_ids:
+            return
+
+        agent_name = instance.agent_display_name or instance.name
+        summary = _build_skill_summary(gene_obj)
+        skill_label = f"{gene_obj.name}（{gene_obj.slug}）"
+        human_message = f"我刚学会了 {skill_label}。"
+        if summary:
+            human_message += f" 主要用于：{summary}"
+
+        agent_message = f"系统通知：{agent_name} 刚学会了 {skill_label}。"
+        if summary:
+            agent_message += f" 主要用于：{summary}。"
+        agent_message += " 仅同步技能变化，无需回复；如无补充请回复 NO_REPLY。"
+
+        for human_hex_id in human_hex_ids:
+            try:
+                await deliver_to_human(
+                    workspace_id=workspace_id,
+                    human_hex_id=human_hex_id,
+                    source_name=agent_name,
+                    message=human_message,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "技能学习通知 human 失败 workspace=%s instance=%s human_hex=%s err=%s",
+                    workspace_id,
+                    instance.id,
+                    human_hex_id,
+                    exc,
+                )
+
+        if agent_ids:
+            try:
+                await send_system_message_to_agents(
+                    workspace_id,
+                    agent_ids,
+                    agent_message,
+                    db,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "技能学习通知 agents 失败 workspace=%s instance=%s err=%s",
+                    workspace_id,
+                    instance.id,
+                    exc,
+                )
+
+        if audience_user_ids:
+            broadcast_event(workspace_id, "agent:skill_learned", {
+                "instance_id": instance.id,
+                "agent_name": agent_name,
+                "gene_name": gene_obj.name,
+                "gene_slug": gene_obj.slug,
+                "summary": summary,
+                "audience_user_ids": audience_user_ids,
+            })
+    except Exception as exc:
+        logger.warning(
+            "技能学习工作区通知失败 workspace=%s instance=%s gene=%s err=%s",
+            workspace_id,
+            instance.id,
+            gene_obj.slug,
+            exc,
+        )
 
 
 async def _record_evolution(
@@ -961,7 +1107,8 @@ async def _finish_learning_if_done(
 
     instance = await db.get(Instance, instance_id)
     if instance and instance.status == InstanceStatus.learning:
-        _broadcast_agent_status(instance.workspace_id, instance_id, "restarting")
+        ws_ids = await _get_instance_workspace_ids(db, instance_id)
+        _broadcast_agent_status(ws_ids, instance_id, "restarting")
     return True
 
 
@@ -1021,15 +1168,15 @@ async def install_gene(
     await db.commit()
     await db.refresh(ig)
 
-    workspace_id = instance.workspace_id
+    ws_ids = await _get_instance_workspace_ids(db, instance.id)
 
     if has_learning:
         from app.services.instance_service import _broadcast_agent_status
         instance.status = InstanceStatus.learning
         await db.commit()
-        _broadcast_agent_status(workspace_id, instance_id, "learning")
-        if workspace_id:
-            broadcast_event(workspace_id, "gene:learn_start", {
+        _broadcast_agent_status(ws_ids, instance_id, "learning")
+        for ws_id in ws_ids:
+            broadcast_event(ws_id, "gene:learn_start", {
                 "instance_id": instance_id,
                 "gene_slug": gene_slug,
             })
@@ -1037,13 +1184,13 @@ async def install_gene(
             _send_learning_task(instance.id, gene.id, ig.id)
         )
     else:
-        if workspace_id:
-            broadcast_event(workspace_id, "gene:install_start", {
+        for ws_id in ws_ids:
+            broadcast_event(ws_id, "gene:install_start", {
                 "instance_id": instance_id,
                 "gene_slug": gene_slug,
             })
         _fire_task(
-            _direct_install(instance.id, gene.id, ig.id, workspace_id)
+            _direct_install(instance.id, gene.id, ig.id)
         )
 
     return {
@@ -1138,10 +1285,16 @@ async def install_gene_prerestart(instance_id: str, gene_slug: str) -> None:
 
                 await genehub_client.report_install(gene.slug)
 
-                workspace_id = instance.workspace_id
-                if workspace_id:
+                ws_ids = await _get_instance_workspace_ids(db, instance.id)
+                for ws_id in ws_ids:
+                    await _notify_skill_learned_in_workspace(
+                        db,
+                        instance=instance,
+                        gene_obj=gene,
+                        workspace_id=ws_id,
+                    )
                     from app.api.workspaces import broadcast_event
-                    broadcast_event(workspace_id, "gene:installed", {
+                    broadcast_event(ws_id, "gene:installed", {
                         "instance_id": instance.id,
                         "gene_slug": gene.slug,
                         "method": "direct",
@@ -1204,7 +1357,6 @@ async def _direct_install(
     instance_id: str,
     gene_id: str,
     ig_id: str,
-    workspace_id: str | None,
 ) -> None:
     from app.api.workspaces import broadcast_event
     from app.core.deps import async_session_factory
@@ -1251,8 +1403,15 @@ async def _direct_install(
                 if should_restart:
                     await restart_instance(instance.id, db)
 
-                if workspace_id:
-                    broadcast_event(workspace_id, "gene:installed", {
+                ws_ids = await _get_instance_workspace_ids(db, instance.id)
+                for ws_id in ws_ids:
+                    await _notify_skill_learned_in_workspace(
+                        db,
+                        instance=instance,
+                        gene_obj=gene,
+                        workspace_id=ws_id,
+                    )
+                    broadcast_event(ws_id, "gene:installed", {
                         "instance_id": instance.id,
                         "gene_slug": gene.slug,
                         "method": "direct",
@@ -1317,7 +1476,7 @@ async def _send_learning_task(
         plugin_url = _get_learning_plugin_url(instance)
         if not plugin_url:
             logger.warning("No learning plugin URL for instance %s, falling back to direct install", instance.id)
-            await _direct_install(instance.id, gene.id, ig.id, instance.workspace_id)
+            await _direct_install(instance.id, gene.id, ig.id)
             return
 
         try:
@@ -1330,7 +1489,7 @@ async def _send_learning_task(
             logger.info("Learning task sent for gene %s on %s", gene.slug, instance.id)
         except Exception as e:
             logger.error("Failed to send learning task: %s, falling back to direct install", e)
-            await _direct_install(instance.id, gene.id, ig.id, instance.workspace_id)
+            await _direct_install(instance.id, gene.id, ig.id)
 
 
 def _get_learning_plugin_url(instance: Instance) -> str | None:
@@ -1443,10 +1602,9 @@ async def handle_learning_callback(
     if not gene_obj:
         raise NotFoundError("基因不存在")
 
-    workspace_id = instance.workspace_id
-
-    if workspace_id:
-        broadcast_event(workspace_id, "gene:learn_decided", {
+    ws_ids = await _get_instance_workspace_ids(db, instance.id)
+    for ws_id in ws_ids:
+        broadcast_event(ws_id, "gene:learn_decided", {
             "instance_id": instance.id,
             "gene_slug": gene_obj.slug,
             "decision": payload.decision,
@@ -1498,8 +1656,8 @@ async def handle_learning_callback(
             gene_slug=gene_obj.slug, gene_id=gene_obj.id,
             details={"reason": payload.reason},
         )
-        if workspace_id:
-            broadcast_event(workspace_id, "gene:learn_failed", {
+        for ws_id in ws_ids:
+            broadcast_event(ws_id, "gene:learn_failed", {
                 "instance_id": instance.id,
                 "gene_slug": gene_obj.slug,
                 "reason": payload.reason,
@@ -1528,8 +1686,14 @@ async def handle_learning_callback(
 
     await genehub_client.report_install(gene_obj.slug)
 
-    if workspace_id:
-        broadcast_event(workspace_id, "gene:installed", {
+    for ws_id in ws_ids:
+        await _notify_skill_learned_in_workspace(
+            db,
+            instance=instance,
+            gene_obj=gene_obj,
+            workspace_id=ws_id,
+        )
+        broadcast_event(ws_id, "gene:installed", {
             "instance_id": instance.id,
             "gene_slug": gene_obj.slug,
             "method": payload.decision,
@@ -1696,9 +1860,9 @@ async def log_effectiveness(
     instance_result = await db.execute(select(Instance).where(Instance.id == instance_id))
     instance = instance_result.scalar_one_or_none()
     if instance and gene:
-        workspace_id = instance.workspace_id
-        if workspace_id:
-            broadcast_event(workspace_id, "gene:effect_logged", {
+        ws_ids = await _get_instance_workspace_ids(db, instance_id)
+        for ws_id in ws_ids:
+            broadcast_event(ws_id, "gene:effect_logged", {
                 "instance_id": instance_id,
                 "gene_slug": gene.slug,
                 "metric_type": metric_type,
@@ -1873,9 +2037,9 @@ async def publish_variant(
     await db.commit()
     await db.refresh(variant)
 
-    workspace_id = instance.workspace_id if instance else None
-    if workspace_id:
-        broadcast_event(workspace_id, "gene:variant_published", {
+    ws_ids = await _get_instance_workspace_ids(db, instance_id) if instance else []
+    for ws_id in ws_ids:
+        broadcast_event(ws_id, "gene:variant_published", {
             "instance_id": instance_id,
             "gene_slug": parent.slug,
             "variant_slug": slug,
@@ -1968,9 +2132,9 @@ async def handle_creation_callback(
     await db.commit()
     await db.refresh(gene)
 
-    workspace_id = instance.workspace_id if instance else None
-    if workspace_id:
-        broadcast_event(workspace_id, "gene:created", {
+    ws_ids = await _get_instance_workspace_ids(db, payload.instance_id) if instance else []
+    for ws_id in ws_ids:
+        broadcast_event(ws_id, "gene:created", {
             "instance_id": payload.instance_id,
             "gene_slug": gene.slug,
             "gene_name": gene.name,
@@ -2177,7 +2341,7 @@ async def handle_forgetting_callback(
     gene_result = await db.execute(select(Gene).where(Gene.id == ig.gene_id))
     gene = gene_result.scalar_one_or_none()
 
-    workspace_id = instance.workspace_id
+    ws_ids = await _get_instance_workspace_ids(db, instance.id)
 
     gene_name = gene.name if gene else "unknown"
     gene_slug = gene.slug if gene else None
@@ -2190,8 +2354,8 @@ async def handle_forgetting_callback(
             details={"reason": payload.reason},
         )
         await db.commit()
-        if workspace_id:
-            await broadcast_event(workspace_id, "gene:forget_failed", {
+        for ws_id in ws_ids:
+            await broadcast_event(ws_id, "gene:forget_failed", {
                 "instance_id": ig.instance_id,
                 "gene_id": ig.gene_id,
                 "reason": payload.reason,
@@ -2224,8 +2388,8 @@ async def handle_forgetting_callback(
         if should_restart:
             await restart_instance(instance.id, db)
 
-        if workspace_id:
-            await broadcast_event(workspace_id, "gene:simplified", {
+        for ws_id in ws_ids:
+            await broadcast_event(ws_id, "gene:simplified", {
                 "instance_id": ig.instance_id,
                 "gene_id": ig.gene_id,
                 "gene_name": gene_name,
@@ -2263,8 +2427,8 @@ async def handle_forgetting_callback(
     if should_restart:
         await restart_instance(instance.id, db)
 
-    if workspace_id:
-        await broadcast_event(workspace_id, "gene:forgotten", {
+    for ws_id in ws_ids:
+        await broadcast_event(ws_id, "gene:forgotten", {
             "instance_id": ig.instance_id,
             "gene_id": ig.gene_id,
             "gene_name": gene_name,
