@@ -107,6 +107,12 @@ const ceRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/Gene/index.vue'),
     meta: { minRole: 'admin' },
   },
+  {
+    path: '/akr-summary',
+    name: 'AkrSummary',
+    component: () => import('@/views/AkrSummary/index.vue'),
+    meta: { minRole: 'admin' },
+  },
 ]
 
 const routes: RouteRecordRaw[] = [...ceRoutes, ...eeAdminRoutes]

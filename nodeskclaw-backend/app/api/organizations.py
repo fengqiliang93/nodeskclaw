@@ -241,3 +241,77 @@ async def reset_member_password(
 
     plain = await auth_service.admin_reset_password(user_id, db)
     return ApiResponse(data=ResetPasswordResponse(password=plain))
+
+
+# ── 组织级 AKR 汇总 ────────────────────────────────────
+
+@router.get("/{org_id}/akr-summary")
+async def org_akr_summary(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Aggregate AKR data across all workspaces in the org."""
+    from app.models.workspace import Workspace
+    from app.models.workspace_objective import WorkspaceObjective
+    from app.models.workspace_task import WorkspaceTask
+
+    ws_rows = (await db.execute(
+        select(Workspace.id, Workspace.name).where(
+            Workspace.org_id == org_id,
+            Workspace.deleted_at.is_(None),
+        )
+    )).all()
+
+    ws_ids = [r[0] for r in ws_rows]
+    ws_names = {r[0]: r[1] for r in ws_rows}
+
+    if not ws_ids:
+        return ApiResponse(data={"workspaces": []})
+
+    objectives = (await db.execute(
+        select(WorkspaceObjective).where(
+            WorkspaceObjective.workspace_id.in_(ws_ids),
+            WorkspaceObjective.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    tasks = (await db.execute(
+        select(WorkspaceTask).where(
+            WorkspaceTask.workspace_id.in_(ws_ids),
+            WorkspaceTask.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    workspaces = []
+    for ws_id in ws_ids:
+        ws_objs = [o for o in objectives if o.workspace_id == ws_id]
+        ws_tasks = [t for t in tasks if t.workspace_id == ws_id]
+        total_t = len(ws_tasks)
+        done_t = sum(1 for t in ws_tasks if t.status in ("done", "archived"))
+        total_value = sum(t.actual_value or 0 for t in ws_tasks if t.status in ("done", "archived"))
+        total_tokens = sum(t.token_cost or 0 for t in ws_tasks)
+        roi = total_value / total_tokens * 1000 if total_tokens > 0 else 0.0
+
+        obj_summaries = []
+        for o in ws_objs:
+            if o.obj_type == "objective":
+                kr_count = sum(1 for x in ws_objs if x.parent_id == o.id)
+                obj_summaries.append({
+                    "id": o.id, "title": o.title, "progress": o.progress,
+                    "kr_count": kr_count,
+                })
+
+        workspaces.append({
+            "workspace_id": ws_id,
+            "workspace_name": ws_names.get(ws_id, ""),
+            "objectives": obj_summaries,
+            "total_tasks": total_t,
+            "completed_tasks": done_t,
+            "completion_rate": round(done_t / total_t, 4) if total_t > 0 else 0.0,
+            "total_value": round(total_value, 2),
+            "total_tokens": total_tokens,
+            "roi_per_1k_tokens": round(roi, 4),
+        })
+
+    return ApiResponse(data={"workspaces": workspaces})
