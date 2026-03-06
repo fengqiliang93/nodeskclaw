@@ -1352,6 +1352,83 @@ async def lifespan(app: FastAPI):
         await db.commit()
         logger.info("自动迁移 32：已为 %d 个工作区检查/补建任务巡检定时器", len(all_ws))
 
+    # ── 迁移 33: 批量 seed 全部基因/基因组模板 ──
+    async with async_session_factory() as db:
+        import pathlib, json as _json
+        from app.models.gene import Gene, Genome
+        from app.models.base import not_deleted
+
+        tpl_dir = pathlib.Path(__file__).parent / "data" / "gene_templates"
+
+        gene_templates = [
+            "mcp_blackboard_tools.json",
+            "mcp_proposals.json",
+            "mcp_gene_discovery.json",
+            "mcp_performance_reader.json",
+            "meta_gene_ai_hc.json",
+            "meta_gene_reorg.json",
+            "meta_gene_culture.json",
+            "meta_gene_self_improve.json",
+            "meta_gene_innovation.json",
+            "mcp_topology_awareness.json",
+        ]
+        genome_templates = [
+            "genome_self_management.json",
+            "workflow_genome_example.json",
+        ]
+
+        seeded_genes = 0
+        for fname in gene_templates:
+            tpl_path = tpl_dir / fname
+            if not tpl_path.exists():
+                continue
+            tpl = _json.loads(tpl_path.read_text())
+            slug = tpl["slug"]
+            existing = (await db.execute(
+                select(Gene).where(Gene.slug == slug, not_deleted(Gene))
+            )).scalar_one_or_none()
+            if existing is None:
+                db.add(Gene(
+                    name=tpl["name"], slug=slug,
+                    description=tpl.get("description"),
+                    category=tpl.get("category"),
+                    tags=_json.dumps(tpl.get("tags", []), ensure_ascii=False),
+                    source="official", version="1.0.0",
+                    manifest=_json.dumps(tpl.get("manifest", {}), ensure_ascii=False),
+                    is_published=True, review_status="approved",
+                ))
+                seeded_genes += 1
+            else:
+                existing.manifest = _json.dumps(tpl.get("manifest", {}), ensure_ascii=False)
+                existing.description = tpl.get("description")
+                existing.tags = _json.dumps(tpl.get("tags", []), ensure_ascii=False)
+
+        seeded_genomes = 0
+        for fname in genome_templates:
+            tpl_path = tpl_dir / fname
+            if not tpl_path.exists():
+                continue
+            tpl = _json.loads(tpl_path.read_text())
+            slug = tpl["slug"]
+            existing = (await db.execute(
+                select(Genome).where(Genome.slug == slug, not_deleted(Genome))
+            )).scalar_one_or_none()
+            if existing is None:
+                db.add(Genome(
+                    name=tpl["name"], slug=slug,
+                    description=tpl.get("description"),
+                    gene_slugs=_json.dumps(tpl.get("gene_slugs", []), ensure_ascii=False),
+                    config_override=_json.dumps(tpl.get("config_override", {}), ensure_ascii=False),
+                    is_published=True,
+                ))
+                seeded_genomes += 1
+            else:
+                existing.gene_slugs = _json.dumps(tpl.get("gene_slugs", []), ensure_ascii=False)
+                existing.description = tpl.get("description")
+
+        await db.commit()
+        logger.info("自动迁移 33：批量 seed 基因模板 — 新增 %d gene + %d genome，已有的更新 manifest", seeded_genes, seeded_genomes)
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。
