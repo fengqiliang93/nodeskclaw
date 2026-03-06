@@ -301,7 +301,9 @@ function handleResetView() {
     store.fetchBlackboard(wsId),
     store.fetchDecoration(wsId),
     loadPerfSummary(wsId),
-  ])
+  ]).then(() => {
+    if (activeMode.value === '2d') workspace2dRef.value?.flashRefresh()
+  })
 }
 
 onMounted(async () => {

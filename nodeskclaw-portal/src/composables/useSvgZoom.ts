@@ -84,7 +84,7 @@ export function useSvgZoom(
   function resetView() {
     const svg = svgRef.value
     if (!svg || !zoomBehavior) return
-  select(svg).call(zoomBehavior.transform, zoomIdentity)
+    select(svg).transition().duration(600).call(zoomBehavior.transform, zoomIdentity)
   }
 
   function panBy(dx: number, dy: number) {

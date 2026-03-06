@@ -121,7 +121,18 @@ function triggerMessageFlow(sourceInstanceId: string, target: string) {
 
 onUnmounted(() => animState.dispose())
 
-defineExpose({ zoomIn, zoomOut, resetView, panBy, focusOnHex, triggerMessageFlow })
+function flashRefresh() {
+  const svg = svgRef.value
+  if (!svg) return
+  svg.style.transition = 'opacity 0.2s ease'
+  svg.style.opacity = '0.4'
+  setTimeout(() => {
+    svg.style.opacity = '1'
+    setTimeout(() => { svg.style.transition = '' }, 200)
+  }, 200)
+}
+
+defineExpose({ zoomIn, zoomOut, resetView, panBy, focusOnHex, triggerMessageFlow, flashRefresh })
 
 const hoveredId = ref<string | null>(null)
 
