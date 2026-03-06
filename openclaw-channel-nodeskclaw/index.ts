@@ -1,4 +1,4 @@
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 import { nodeskclawPlugin } from "./src/channel.js";
 import { setNoDeskClawRuntime } from "./src/runtime.js";
@@ -16,7 +16,7 @@ const plugin = {
     setNoDeskClawRuntime(api.runtime);
     api.registerChannel({ plugin: nodeskclawPlugin });
     startSSEServer();
-    api.registerTool((ctx: OpenClawPluginToolContext) => {
+    api.registerTool((ctx: { sessionKey?: string }) => {
       const wsId = ctx.sessionKey?.startsWith(WORKSPACE_SESSION_PREFIX)
         ? ctx.sessionKey.slice(WORKSPACE_SESSION_PREFIX.length)
         : undefined;

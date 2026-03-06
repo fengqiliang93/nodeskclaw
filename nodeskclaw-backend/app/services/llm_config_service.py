@@ -714,9 +714,17 @@ async def remove_workspace_channel_account(
             channels = existing.get("channels", {})
             ch = channels.get("nodeskclaw", {})
             accounts = ch.get("accounts", {})
-            if workspace_id in accounts:
-                del accounts[workspace_id]
-            if not accounts:
+            accounts.pop(workspace_id, None)
+            default_acct = accounts.get("default")
+            if isinstance(default_acct, dict) and default_acct.get("workspaceId") == workspace_id:
+                remaining = [v for k, v in accounts.items()
+                             if k != "default" and isinstance(v, dict)]
+                if remaining:
+                    accounts["default"] = dict(remaining[0])
+                else:
+                    accounts.pop("default", None)
+            ws_accounts = [k for k in accounts if k != "default"]
+            if not ws_accounts:
                 channels.pop("nodeskclaw", None)
                 paths = existing.get("plugins", {}).get("load", {}).get("paths", [])
                 plugin_path = f".openclaw/extensions/{CHANNEL_PLUGIN_DIR}"
