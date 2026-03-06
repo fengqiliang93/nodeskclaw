@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_org, get_db
+from app.core.deps import get_current_org, get_current_org_or_agent, get_db
 from app.models.base import not_deleted
 from app.models.decision_record import DecisionRecord
 from app.models.trust_policy import TrustPolicy
@@ -90,7 +90,7 @@ async def check_trust(
     workspace_id: str,
     agent_instance_id: str,
     action_type: str,
-    org: dict = Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org: dict = Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     """Check if an agent has an 'always' trust policy for a given action."""
     result = await db.execute(
@@ -109,7 +109,7 @@ async def check_trust(
 @router.post("/approval-requests")
 async def submit_approval_request(
     body: ApprovalRequest,
-    org: dict = Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org: dict = Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     """Submit an approval request that routes to Human Hex via channel adapter."""
     from app.models.corridor import HumanHex
@@ -243,7 +243,7 @@ async def list_decision_records(
     workspace_id: str,
     agent_id: str | None = None,
     decision_type: str | None = None,
-    org: dict = Depends(get_current_org),
+    org: dict = Depends(get_current_org_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(DecisionRecord).where(

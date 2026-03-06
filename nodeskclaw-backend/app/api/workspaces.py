@@ -454,7 +454,7 @@ async def get_performance(
     workspace_id: str,
     instance_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     """Agent/team performance aggregated from workspace_tasks."""
     await wm_service.check_workspace_member(workspace_id, user, db)
@@ -492,7 +492,7 @@ async def get_performance(
 async def collect_performance(
     workspace_id: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     """Aggregate per-agent performance stats from workspace_tasks."""
     await wm_service.check_workspace_member(workspace_id, user, db)
@@ -726,7 +726,7 @@ async def delete_schedule(
 async def list_members(
     workspace_id: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     await wm_service.check_workspace_member(workspace_id, user, db)
     members = await workspace_service.list_workspace_members(db, workspace_id)
@@ -1435,3 +1435,22 @@ async def _stream_agent_response(
             "instance_id": instance_id,
             "agent_name": agent_name,
         })
+
+
+# ── Maintenance ──────────────────────────────────────
+
+@router.post("/maintenance/repair-channel-accounts")
+async def repair_channel_accounts(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Repair channel account apiUrl and ensure 'default' account for all workspace instances."""
+    if not user.is_super_admin:
+        raise HTTPException(status_code=403, detail={
+            "error_code": 40310,
+            "message_key": "errors.org.super_admin_required",
+            "message": "仅限平台管理员操作",
+        })
+    from app.services import llm_config_service
+    result = await llm_config_service.repair_channel_account_urls(db)
+    return _ok(result)

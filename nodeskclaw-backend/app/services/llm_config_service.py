@@ -610,7 +610,10 @@ def _inject_channel_config(
         config["channels"] = {}
     ch = config["channels"].setdefault("nodeskclaw", {})
     accounts = ch.setdefault("accounts", {})
-    accounts[workspace_id] = _make_account_entry(instance, workspace_id)
+    entry = _make_account_entry(instance, workspace_id)
+    accounts[workspace_id] = entry
+    if "default" not in accounts:
+        accounts["default"] = entry
 
     plugins = config.setdefault("plugins", {})
     load = plugins.setdefault("load", {})
@@ -902,3 +905,72 @@ async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
                     return {"status": "ok", "message": "重启完成"}
 
     return {"status": "timeout", "message": "重启超时（60s），请检查实例状态"}
+
+
+async def repair_channel_account_urls(db: AsyncSession) -> dict:
+    """One-time repair: update apiUrl in all channel accounts and ensure 'default' exists.
+
+    Scans all active instances that belong to a workspace, reads their
+    openclaw.json, patches every nodeskclaw account's apiUrl to the
+    current AGENT_API_BASE_URL, adds a 'default' account if missing,
+    and writes back.
+    """
+    result = await db.execute(
+        select(Instance).where(
+            Instance.workspace_id.isnot(None),
+            Instance.deleted_at.is_(None),
+        )
+    )
+    instances = list(result.scalars().all())
+
+    new_api_url = settings.AGENT_API_BASE_URL
+    repaired = []
+    skipped = []
+    failed = []
+
+    for inst in instances:
+        try:
+            async with remote_fs(inst, db) as fs:
+                try:
+                    config = await _read_config_file(fs)
+                except ValueError as e:
+                    failed.append({"id": inst.id, "name": inst.name, "error": f"parse: {e}"})
+                    continue
+                if config is None:
+                    skipped.append({"id": inst.id, "name": inst.name, "reason": "no config"})
+                    continue
+
+                accounts = (
+                    config.get("channels", {})
+                    .get("nodeskclaw", {})
+                    .get("accounts", {})
+                )
+                if not accounts:
+                    skipped.append({"id": inst.id, "name": inst.name, "reason": "no accounts"})
+                    continue
+
+                changed = False
+                for key, acct in accounts.items():
+                    if isinstance(acct, dict) and acct.get("apiUrl") != new_api_url:
+                        acct["apiUrl"] = new_api_url
+                        changed = True
+
+                if "default" not in accounts:
+                    first = next(iter(accounts.values()), None)
+                    if isinstance(first, dict):
+                        accounts["default"] = dict(first)
+                        changed = True
+
+                if changed:
+                    await _write_config_file(fs, config)
+                    repaired.append({"id": inst.id, "name": inst.name})
+                else:
+                    skipped.append({"id": inst.id, "name": inst.name, "reason": "already correct"})
+        except Exception as e:
+            failed.append({"id": inst.id, "name": inst.name, "error": str(e)})
+
+    logger.info(
+        "repair_channel_account_urls: repaired=%d skipped=%d failed=%d",
+        len(repaired), len(skipped), len(failed),
+    )
+    return {"repaired": repaired, "skipped": skipped, "failed": failed}

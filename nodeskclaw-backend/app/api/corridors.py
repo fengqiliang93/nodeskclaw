@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.workspaces import broadcast_event
 from app.core import hooks
-from app.core.deps import get_current_org, get_db
+from app.core.deps import get_current_org, get_current_org_or_agent, get_db
 from app.models.base import not_deleted
 from app.models.corridor import CorridorHex, HexConnection, HumanHex, is_adjacent, ordered_pair
 from app.models.instance import Instance
@@ -543,7 +543,7 @@ async def delete_human_hex(
 @router.get("/{workspace_id}/topology")
 async def get_topology(
     workspace_id: str,
-    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org_ctx=Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     user, org = org_ctx
     await _check_workspace(workspace_id, org, db)
@@ -571,7 +571,7 @@ async def get_topology(
 async def get_reachable_from_instance(
     workspace_id: str,
     instance_id: str = Query(...),
-    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org_ctx=Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     """Return agents/humans reachable from the given instance via corridor traversal."""
     user, org = org_ctx
@@ -596,7 +596,7 @@ async def get_reachable_from_instance(
 @router.get("/{workspace_id}/topology/health")
 async def get_topology_health(
     workspace_id: str,
-    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org_ctx=Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     """Return topology health: islands, single points of failure, message flow stats."""
     user, org = org_ctx
@@ -618,7 +618,7 @@ async def get_topology_health(
 @router.get("/{workspace_id}/topology/message-flow")
 async def get_topology_message_flow(
     workspace_id: str,
-    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+    org_ctx=Depends(get_current_org_or_agent), db: AsyncSession = Depends(get_db),
 ):
     """Return message count per sender-receiver hex pair from workspace_messages."""
     user, org = org_ctx

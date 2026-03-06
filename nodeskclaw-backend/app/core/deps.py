@@ -32,6 +32,12 @@ def _get_current_user_dep():
     return get_current_user
 
 
+def _get_current_user_or_agent_dep():
+    """延迟导入 get_current_user_or_agent 以避免循环依赖。"""
+    from app.core.security import get_current_user_or_agent
+    return get_current_user_or_agent
+
+
 async def get_current_org(
     db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_dep()),
@@ -41,6 +47,28 @@ async def get_current_org(
     CE: 通过 SingleOrgProvider 自动解析默认组织
     EE: 通过 MultiOrgProvider 使用 user.current_org_id
     """
+    from app.services.org.factory import get_org_provider
+
+    provider = get_org_provider()
+    org = await provider.resolve_org_for_user(user, db)
+
+    if org is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": 40010,
+                "message_key": "errors.org.user_has_no_org",
+                "message": "用户未加入任何组织",
+            },
+        )
+    return user, org
+
+
+async def get_current_org_or_agent(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_or_agent_dep()),
+):
+    """与 get_current_org 相同逻辑，但同时接受 JWT 和 proxy_token（AI 员工）认证。"""
     from app.services.org.factory import get_org_provider
 
     provider = get_org_provider()

@@ -13,7 +13,7 @@ function resolveToolConfig(config: OpenClawConfig): ToolConfig {
     "nodeskclaw"
   ] as Record<string, unknown> | undefined;
   const accounts = (section?.accounts ?? {}) as Record<string, Record<string, string>>;
-  const account = accounts["default"] ?? {};
+  const account = accounts["default"] ?? Object.values(accounts)[0] ?? {};
 
   return {
     apiUrl: account.apiUrl || process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1",
