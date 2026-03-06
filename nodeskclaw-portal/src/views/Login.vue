@@ -40,16 +40,6 @@ const canSubmitCode = computed(() => {
   return codeForm.value.account.length >= 5 && codeForm.value.code.length >= 4
 })
 
-function handleOAuthLogin(provider: string) {
-  sessionStorage.setItem('oauth_provider', provider)
-  if (provider === 'feishu') {
-    const clientId = import.meta.env.VITE_FEISHU_APP_ID || ''
-    const redirectUri = encodeURIComponent(window.location.origin + `/login/callback/${provider}`)
-    const state = Math.random().toString(36).substring(2)
-    window.location.href = `https://passport.feishu.cn/suite/passport/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${state}&scope=contact:user.email:readonly`
-  }
-}
-
 async function handleAccountSubmit() {
   if (!canSubmitAccount.value || loading.value) return
   loading.value = true
@@ -301,25 +291,6 @@ watch(activeTab, () => { error.value = '' })
               {{ error }}
             </p>
           </Transition>
-
-          <!-- 第三方登录分割线 -->
-          <div class="relative my-2">
-            <div class="absolute inset-0 flex items-center">
-              <div class="w-full border-t border-border" />
-            </div>
-            <div class="relative flex justify-center text-xs">
-              <span class="bg-background px-2 text-muted-foreground">{{ t('auth.orContinueWith') }}</span>
-            </div>
-          </div>
-
-          <!-- 飞书登录 -->
-          <button
-            class="w-full h-10 rounded-lg border border-input bg-background text-sm font-medium hover:bg-accent transition-colors flex items-center justify-center gap-2"
-            @click="handleOAuthLogin('feishu')"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none"><path d="M3.536 7.382L13.539 4l1.636 5.676-11.64 3.03V7.383z" fill="#00D6B9"/><path d="M20.464 10.03L13.54 4l-3.073 5.676L20.464 17V10.03z" fill="#133C9A"/><path d="M5.172 12.706L10.465 9.676 20.464 17l-8.925 3.03-6.367-7.324z" fill="#3370FF"/><path d="M5.172 12.706L3.536 7.382l6.929 2.294-5.293 3.03z" fill="#00B2A6"/></svg>
-            {{ t('auth.feishuLogin') }}
-          </button>
 
         <!-- 底部 -->
         <div class="pt-4 text-center">

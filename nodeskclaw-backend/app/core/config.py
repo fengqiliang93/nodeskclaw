@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
 
+    # ── 登录安全 ─────────────────────────────────────────
+    LOGIN_EMAIL_WHITELIST: str = ""  # 逗号分隔的域名列表，为空则不限制
+
     # ── Encryption (AES-256-GCM for KubeConfig) ─────────
     ENCRYPTION_KEY: str = "change-me-32-bytes-base64-key__="
 

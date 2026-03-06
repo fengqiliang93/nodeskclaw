@@ -13,6 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginResponse, TokenResponse, UserInfo
@@ -240,10 +241,32 @@ async def _issue_tokens(user: User, db: AsyncSession) -> LoginResponse:
     )
 
 
+# ── 邮箱域名白名单 ────────────────────────────────────────
+
+def _check_email_domain_allowed(email: str) -> None:
+    raw = settings.LOGIN_EMAIL_WHITELIST.strip()
+    if not raw:
+        return
+    allowed = [d.strip().lower() for d in raw.split(",") if d.strip()]
+    if not allowed:
+        return
+    domain = email.rsplit("@", 1)[-1].lower()
+    if domain not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error_code": 40330,
+                "message_key": "errors.auth.email_domain_not_allowed",
+                "message": "当前邮箱域名不在允许范围内",
+            },
+        )
+
+
 # ── 邮箱密码登录 ──────────────────────────────────────────
 
 async def login_with_email(email: str, password: str, db: AsyncSession) -> LoginResponse:
     """邮箱密码登录。"""
+    _check_email_domain_allowed(email)
     result = await db.execute(
         select(User).options(selectinload(User.oauth_connections)).where(User.email == email, User.deleted_at.is_(None))
     )
@@ -488,6 +511,8 @@ async def send_verification_code(account: str, db: AsyncSession) -> dict:
     if account_type == "phone":
         return await send_sms_code(account)
 
+    _check_email_domain_allowed(account)
+
     from app.services.email_service import get_smtp_config_for_email, send_verification_email
 
     smtp_config = await get_smtp_config_for_email(db, account)
@@ -542,6 +567,8 @@ async def login_with_verification_code(
 
     if account_type == "phone":
         return await login_with_phone(account, code, db)
+
+    _check_email_domain_allowed(account)
 
     stored = _verification_codes.get(account)
     if stored is None:

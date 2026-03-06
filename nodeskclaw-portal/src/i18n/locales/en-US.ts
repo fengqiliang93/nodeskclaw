@@ -891,6 +891,7 @@ const enUS = {
       sms_code_invalid: "Invalid SMS code",
       old_password_required: "Current password is required",
       wrong_password: "Incorrect current password",
+      email_domain_not_allowed: "Email domain is not in the allowed list",
     },
     org: {
       user_has_no_org: "User has not joined any organization",

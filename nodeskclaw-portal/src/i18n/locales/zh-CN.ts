@@ -891,6 +891,7 @@ const zhCN = {
       sms_code_invalid: "验证码错误",
       old_password_required: "请输入当前密码",
       wrong_password: "当前密码错误",
+      email_domain_not_allowed: "当前邮箱域名不在允许范围内",
     },
     org: {
       user_has_no_org: "用户未加入任何组织",
