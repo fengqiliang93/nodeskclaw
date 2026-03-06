@@ -51,6 +51,12 @@ const zhCN = {
     sendCode: "获取验证码",
     loginFailed: "登录失败",
     sendFailed: "发送失败",
+    waitlist: {
+      title: '加入等候名单',
+      description: '当前仅限受邀用户使用。请填写表单加入等候名单，我们会尽快与你联系。',
+      joinButton: '填写表单',
+      cancelButton: '返回',
+    },
     feishuLogin: "飞书登录",
     orContinueWith: "或通过以下方式继续",
     callbackMissingParams: "回调参数缺失，请重新登录",

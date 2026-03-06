@@ -5,12 +5,14 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
 import { resolveApiErrorMessage } from '@/i18n/error'
+import { useConfirm } from '@/composables/useConfirm'
 import { Loader2, Zap, Shield, Globe, Sparkles, KeyRound, MessageSquareCode, Eye, EyeOff } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { t } = useI18n()
+const { confirm } = useConfirm()
 
 const loading = ref(false)
 const error = ref('')
@@ -42,12 +44,21 @@ const canSubmitCode = computed(() => {
 
 async function handleAccountSubmit() {
   if (!canSubmitAccount.value || loading.value) return
+  if (isNonWhitelistedEmail(accountForm.value.account)) {
+    await showWaitlistDialog()
+    return
+  }
   loading.value = true
   try {
     await authStore.accountLogin(accountForm.value.account, accountForm.value.password)
     error.value = ''
     router.replace('/')
   } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+      await showWaitlistDialog()
+      return
+    }
     error.value = resolveApiErrorMessage(e, t('auth.loginFailed'))
   } finally {
     loading.value = false
@@ -56,6 +67,10 @@ async function handleAccountSubmit() {
 
 async function handleSendCode() {
   if (!codeForm.value.account || codeSending.value || codeCountdown.value > 0) return
+  if (isNonWhitelistedEmail(codeForm.value.account)) {
+    await showWaitlistDialog()
+    return
+  }
   codeSending.value = true
   try {
     await authStore.sendVerificationCode(codeForm.value.account)
@@ -68,6 +83,11 @@ async function handleSendCode() {
       }
     }, 1000)
   } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+      await showWaitlistDialog()
+      return
+    }
     error.value = resolveApiErrorMessage(e, t('auth.sendFailed'))
   } finally {
     codeSending.value = false
@@ -76,15 +96,44 @@ async function handleSendCode() {
 
 async function handleCodeSubmit() {
   if (!canSubmitCode.value || loading.value) return
+  if (isNonWhitelistedEmail(codeForm.value.account)) {
+    await showWaitlistDialog()
+    return
+  }
   loading.value = true
   try {
     await authStore.verificationCodeLogin(codeForm.value.account, codeForm.value.code)
     error.value = ''
     router.replace('/')
   } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+      await showWaitlistDialog()
+      return
+    }
     error.value = resolveApiErrorMessage(e, t('auth.loginFailed'))
   } finally {
     loading.value = false
+  }
+}
+
+const WAITLIST_URL = 'https://nodeskai.feishu.cn/share/base/form/shrcnKfwXbiUOenm73jlpElu1hg'
+
+function isNonWhitelistedEmail(input: string): boolean {
+  if (!input.includes('@')) return false
+  const domain = input.split('@').pop()?.toLowerCase()
+  return domain !== 'nodeskai.com'
+}
+
+async function showWaitlistDialog() {
+  const confirmed = await confirm({
+    title: t('auth.waitlist.title'),
+    description: t('auth.waitlist.description'),
+    confirmText: t('auth.waitlist.joinButton'),
+    cancelText: t('auth.waitlist.cancelButton'),
+  })
+  if (confirmed) {
+    window.open(WAITLIST_URL, '_blank')
   }
 }
 
