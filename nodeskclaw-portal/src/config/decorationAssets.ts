@@ -38,25 +38,7 @@ export const FURNITURE_ASSETS: DecorationAsset[] = [
     id: 'office-chair',
     nameKey: 'decoration.furniture.office_chair',
     category: 'furniture',
-    url: '/assets/hex2d/furniture/office-chair.svg',
-  },
-  {
-    id: 'office-desk',
-    nameKey: 'decoration.furniture.office_desk',
-    category: 'furniture',
-    url: '/assets/hex2d/furniture/office-desk.svg',
-  },
-  {
-    id: 'desk-lamp',
-    nameKey: 'decoration.furniture.desk_lamp',
-    category: 'furniture',
-    url: '/assets/hex2d/furniture/desk-lamp.svg',
-  },
-  {
-    id: 'stool',
-    nameKey: 'decoration.furniture.stool',
-    category: 'furniture',
-    url: '/assets/hex2d/furniture/stool.svg',
+    url: '/assets/hex2d/furniture/office-chair.png',
   },
 ]
 

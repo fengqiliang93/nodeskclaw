@@ -13,13 +13,10 @@ hex2d/
     carpet-cool.svg       冷色地毯（SVG 占位）
     carpet-marble.svg     大理石（SVG 占位）
   furniture/
-    office-chair.svg      办公椅（SVG 占位）
-    office-desk.svg       办公桌（SVG 占位）
-    desk-lamp.svg         台灯（SVG 占位）
-    stool.svg             凳子（SVG 占位）
+    office-chair.png      办公椅（透明底 PNG，Figma 导出）
 ```
 
-SVG 占位素材后续可替换为 Figma 导出的 PNG，需同步更新 `src/config/decorationAssets.ts` 中的 URL。
+新增家具素材时，将透明底 PNG 放入 `furniture/` 目录，并在 `src/config/decorationAssets.ts` 的 `FURNITURE_ASSETS` 中注册。
 
 ## Hex Cell 尺寸
 
