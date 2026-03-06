@@ -503,13 +503,13 @@ const emptyHexes = computed(() => {
           {{ t('workspaceView.bbTitle') }}
         </text>
         <text v-if="perfSummary" x="0" y="-2" text-anchor="middle" fill="#9ca3af" font-size="9">
-          {{ t('workspaceView.bbInputLine', { tasks: perfSummary.totalTasks, tokens: formatK(perfSummary.totalTokenCost) }) }}
+          {{ t('workspaceView.bbInputLine', { done: perfSummary.completedTasks, tasks: perfSummary.totalTasks }) }}
         </text>
         <text v-else x="0" y="-2" text-anchor="middle" fill="#9ca3af" font-size="9">
           {{ blackboardContent?.slice(0, 24) || t('workspaceView.bbNoSummary') }}{{ (blackboardContent?.length ?? 0) > 24 ? '...' : '' }}
         </text>
         <text v-if="perfSummary" x="0" y="16" text-anchor="middle" fill="#6b7280" font-size="8">
-          {{ t('workspaceView.bbOutputLine', { done: perfSummary.completedTasks, value: formatK(perfSummary.totalValueCreated) }) }}
+          {{ t('workspaceView.bbOutputLine', { value: formatK(perfSummary.totalValueCreated) }) }}
         </text>
         <text v-else x="0" y="16" text-anchor="middle" fill="#6b7280" font-size="8">
           {{ blackboardContent?.slice(24, 54) || '' }}{{ (blackboardContent?.length ?? 0) > 54 ? '...' : '' }}

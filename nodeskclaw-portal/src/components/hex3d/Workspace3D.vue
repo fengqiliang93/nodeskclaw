@@ -258,13 +258,13 @@ function drawBBLabelCanvas(canvas: HTMLCanvasElement) {
     ctx.font = '14px sans-serif'
     ctx.fillStyle = '#9ca3af'
     ctx.fillText(
-      t('workspaceView.bbInputLine', { tasks: ps.totalTasks, tokens: formatK(ps.totalTokenCost) }),
+      t('workspaceView.bbInputLine', { done: ps.completedTasks, tasks: ps.totalTasks }),
       128, 44,
     )
     ctx.font = '12px sans-serif'
     ctx.fillStyle = '#6b7280'
     ctx.fillText(
-      t('workspaceView.bbOutputLine', { done: ps.completedTasks, value: formatK(ps.totalValueCreated) }),
+      t('workspaceView.bbOutputLine', { value: formatK(ps.totalValueCreated) }),
       128, 62,
     )
   } else if (props.blackboardContent) {
