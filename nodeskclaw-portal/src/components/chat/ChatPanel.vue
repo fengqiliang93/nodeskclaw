@@ -1079,6 +1079,11 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
 .chat-markdown {
   overflow: hidden;
   max-width: 100%;
+  word-break: break-word;
+}
+.chat-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 
 .chat-markdown :deep(p) { margin: 0.25em 0; }
