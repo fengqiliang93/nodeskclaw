@@ -253,12 +253,12 @@ function goBack() {
           :key="inst.id"
           class="flex items-center justify-between px-4 py-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors"
         >
-          <div class="flex items-center gap-3">
-            <Bot class="w-5 h-5 text-primary" />
-            <div>
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <Bot class="w-5 h-5 text-primary shrink-0" />
+            <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <p class="text-sm font-medium">{{ inst.name }}</p>
-                <span v-if="inst.slug" class="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
+                <p class="text-sm font-medium truncate">{{ inst.name }}</p>
+                <span v-if="inst.slug" class="shrink-0 max-w-[100px] truncate inline-block px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
               </div>
               <p class="text-xs text-muted-foreground">{{ inst.status }}</p>
             </div>
@@ -291,7 +291,7 @@ function goBack() {
           </div>
           <button
             v-else
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+            class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
             :disabled="!!adding || geneChecking"
             @click="addToWorkspace(inst.id)"
           >
@@ -309,17 +309,17 @@ function goBack() {
             :key="inst.id"
             class="flex items-center justify-between px-4 py-3 rounded-lg bg-card border border-border opacity-60"
           >
-            <div class="flex items-center gap-3">
-              <Bot class="w-5 h-5 text-muted-foreground" />
-              <div>
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+              <Bot class="w-5 h-5 text-muted-foreground shrink-0" />
+              <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-muted-foreground">{{ inst.name }}</p>
-                  <span v-if="inst.slug" class="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
+                  <p class="text-sm font-medium text-muted-foreground truncate">{{ inst.name }}</p>
+                  <span v-if="inst.slug" class="shrink-0 max-w-[100px] truncate inline-block px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
                 </div>
                 <p class="text-xs text-muted-foreground">{{ inst.status }}</p>
               </div>
             </div>
-            <span class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs">
+            <span class="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs">
               <Check class="w-3 h-3" />
               {{ t('addAgentView.added') }}
             </span>
@@ -335,17 +335,17 @@ function goBack() {
             :key="inst.id"
             class="flex items-center justify-between px-4 py-3 rounded-lg bg-card border border-border cursor-not-allowed"
           >
-            <div class="flex items-center gap-3">
-              <Bot class="w-5 h-5 text-muted-foreground" />
-              <div>
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+              <Bot class="w-5 h-5 text-muted-foreground shrink-0" />
+              <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-muted-foreground">{{ inst.name }}</p>
-                  <span v-if="inst.slug" class="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
+                  <p class="text-sm font-medium text-muted-foreground truncate">{{ inst.name }}</p>
+                  <span v-if="inst.slug" class="shrink-0 max-w-[100px] truncate inline-block px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground leading-none">{{ inst.slug }}</span>
                 </div>
                 <p class="text-xs text-muted-foreground">{{ inst.status }}</p>
               </div>
             </div>
-            <span class="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs">
+            <span class="shrink-0 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs">
               {{ t('addAgentView.unavailable') }}
             </span>
           </div>
