@@ -851,6 +851,10 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
   overflow-x: hidden;
 }
 
+.chat-markdown {
+  overflow: hidden;
+}
+
 .chat-markdown :deep(p) { margin: 0.25em 0; }
 .chat-markdown :deep(p:first-child) { margin-top: 0; }
 .chat-markdown :deep(p:last-child) { margin-bottom: 0; }
