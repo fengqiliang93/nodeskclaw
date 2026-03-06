@@ -194,22 +194,19 @@ function createPerformanceTool(cfg: ToolConfig): AnyAgentTool {
     execute: async (_toolCallId, args) => {
       const p = args as Record<string, unknown>;
       const ws = cfg.workspaceId;
+      const instanceId = (p.my_instance_id as string) || cfg.instanceId;
       switch (p.action) {
-        case "get_my_performance": {
-          const bb = (await apiFetch(cfg, `/workspaces/${ws}/blackboard`)) as Record<string, unknown>;
-          const perf = ((bb.data as Record<string, unknown>)?.performance ?? []) as Record<string, unknown>[];
+        case "get_my_performance":
           return jsonResult(
-            perf.find((item) => item.member_id === (p.my_instance_id || cfg.instanceId)) ??
-              { error: "No performance data found" },
+            await apiFetch(cfg, `/workspaces/${ws}/performance?instance_id=${instanceId}`),
           );
-        }
-        case "get_team_performance": {
-          const bb = (await apiFetch(cfg, `/workspaces/${ws}/blackboard`)) as Record<string, unknown>;
-          return jsonResult((bb.data as Record<string, unknown>)?.performance ?? []);
-        }
+        case "get_team_performance":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/performance/collect`, "POST"),
+          );
         case "collect_performance":
           return jsonResult(
-            await apiFetch(cfg, `/workspaces/${ws}/blackboard/performance/collect`, "POST"),
+            await apiFetch(cfg, `/workspaces/${ws}/performance/collect`, "POST"),
           );
         default:
           return jsonResult({ error: `Unknown action: ${p.action}` });

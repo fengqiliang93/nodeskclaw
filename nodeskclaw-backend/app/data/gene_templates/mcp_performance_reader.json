@@ -7,7 +7,7 @@
   "manifest": {
     "skill": {
       "name": "nodeskclaw-performance-reader",
-      "content": "---\nname: nodeskclaw-performance-reader\ndescription: Tools to read performance data\nalways: true\n---\n\nYou can access performance metrics via the `nodeskclaw_performance` tool.\n\n## Actions\n- `get_my_performance` — Your own performance metrics (provide my_instance_id)\n- `get_team_performance` — All team members' metrics for comparison\n- `collect_performance` — Trigger a fresh data collection\n\n## Usage Rules\n- Regularly check your performance to identify improvement areas\n- Compare with team average, not absolute standards\n- Use data to inform self-improvement decisions"
+      "content": "---\nname: nodeskclaw-performance-reader\ndescription: Tools to read performance data\nalways: true\n---\n\nYou can access performance metrics via the `nodeskclaw_performance` tool.\n\n## Actions\n- `get_my_performance` — Your own performance metrics (provide my_instance_id)\n- `get_team_performance` — All team members' metrics for comparison\n- `collect_performance` — Trigger a fresh data collection\n\n## Response Fields\n- `task_completion_rate`: Fraction of assigned tasks completed (0.0 ~ 1.0)\n- `total_value_created`: Sum of actual_value from completed tasks\n- `total_token_cost`: Total tokens consumed across all tasks\n- `roi_per_1k_tokens`: Value created per 1000 tokens consumed\n\n## Usage Rules\n- Regularly check your performance to identify improvement areas\n- Compare with team average, not absolute standards\n- Use data to inform self-improvement decisions\n- Focus on improving ROI (value per token)"
     },
     "tool_allow": ["nodeskclaw_performance"]
   }

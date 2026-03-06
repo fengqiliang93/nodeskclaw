@@ -434,6 +434,92 @@ async def update_objective(
     return _ok(obj.model_dump(mode="json"))
 
 
+# ── Performance ──────────────────────────────────────
+
+@router.get("/{workspace_id}/performance")
+async def get_performance(
+    workspace_id: str,
+    instance_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Agent/team performance aggregated from workspace_tasks."""
+    await wm_service.check_workspace_member(workspace_id, user, db)
+    from app.models.workspace_task import WorkspaceTask
+
+    base_q = sa_select(WorkspaceTask).where(
+        WorkspaceTask.workspace_id == workspace_id,
+        WorkspaceTask.deleted_at.is_(None),
+    )
+
+    if instance_id:
+        base_q = base_q.where(WorkspaceTask.assignee_instance_id == instance_id)
+
+    rows = (await db.execute(base_q)).scalars().all()
+
+    total = len(rows)
+    done = sum(1 for t in rows if t.status in ("done", "archived"))
+    completion_rate = done / total if total > 0 else 0.0
+    total_value = sum(t.actual_value or 0 for t in rows if t.status in ("done", "archived"))
+    total_tokens = sum(t.token_cost or 0 for t in rows)
+    roi = total_value / total_tokens * 1000 if total_tokens > 0 else 0.0
+
+    return _ok({
+        "instance_id": instance_id,
+        "total_tasks": total,
+        "completed_tasks": done,
+        "task_completion_rate": round(completion_rate, 4),
+        "total_value_created": round(total_value, 2),
+        "total_token_cost": total_tokens,
+        "roi_per_1k_tokens": round(roi, 4),
+    })
+
+
+@router.post("/{workspace_id}/performance/collect")
+async def collect_performance(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Aggregate per-agent performance stats from workspace_tasks."""
+    await wm_service.check_workspace_member(workspace_id, user, db)
+    from app.models.workspace_task import WorkspaceTask
+
+    rows = (await db.execute(
+        sa_select(WorkspaceTask).where(
+            WorkspaceTask.workspace_id == workspace_id,
+            WorkspaceTask.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    agent_stats: dict[str, dict] = {}
+    for t in rows:
+        aid = t.assignee_instance_id or "unassigned"
+        if aid not in agent_stats:
+            agent_stats[aid] = {"total": 0, "done": 0, "value": 0.0, "tokens": 0}
+        agent_stats[aid]["total"] += 1
+        if t.status in ("done", "archived"):
+            agent_stats[aid]["done"] += 1
+            agent_stats[aid]["value"] += t.actual_value or 0
+        agent_stats[aid]["tokens"] += t.token_cost or 0
+
+    result = []
+    for aid, s in agent_stats.items():
+        rate = s["done"] / s["total"] if s["total"] > 0 else 0.0
+        roi = s["value"] / s["tokens"] * 1000 if s["tokens"] > 0 else 0.0
+        result.append({
+            "instance_id": aid,
+            "total_tasks": s["total"],
+            "completed_tasks": s["done"],
+            "task_completion_rate": round(rate, 4),
+            "total_value_created": round(s["value"], 2),
+            "total_token_cost": s["tokens"],
+            "roi_per_1k_tokens": round(roi, 4),
+        })
+
+    return _ok(result)
+
+
 # ── Decoration ───────────────────────────────────────
 
 @router.get("/{workspace_id}/decoration")
