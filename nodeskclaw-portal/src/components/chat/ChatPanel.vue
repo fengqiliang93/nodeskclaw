@@ -8,6 +8,7 @@ import { Extension } from '@tiptap/core'
 import { PluginKey } from '@tiptap/pm/state'
 import { useWorkspaceStore, type GroupChatMessage, type AgentBrief, type FileAttachment } from '@/stores/workspace'
 import FileAttachmentList from './FileAttachmentList.vue'
+import BaseTooltip from '@/components/shared/BaseTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
 import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText, Image as ImageIcon } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
@@ -854,7 +855,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
               class="hidden"
               @change="handleFileSelect"
             />
-            <span class="relative group/clip">
+            <BaseTooltip :text="!store.fileUploadEnabled ? t('chat.fileUploadDisabled') : ''">
               <button
                 class="p-1.5 rounded-md transition-colors"
                 :class="store.fileUploadEnabled
@@ -865,11 +866,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
               >
                 <Paperclip class="w-3.5 h-3.5" />
               </button>
-              <span
-                v-if="!store.fileUploadEnabled"
-                class="clip-tooltip"
-              >{{ t('chat.fileUploadDisabled') }}</span>
-            </span>
+            </BaseTooltip>
             <button
               class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               :title="t('chat.mentionAgent')"
@@ -1007,26 +1004,6 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
   overflow-y: scroll;
   overflow-x: hidden;
 }
-
-.clip-tooltip {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  color: hsl(var(--popover-foreground));
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  pointer-events: none;
-  z-index: 50;
-}
-.group\/clip:hover .clip-tooltip { display: block; }
 
 .chat-markdown {
   overflow: hidden;
