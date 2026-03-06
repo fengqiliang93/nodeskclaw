@@ -76,10 +76,23 @@ defineExpose({ refresh: loadTasks })
   <div class="space-y-3">
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-medium text-muted-foreground">{{ t('blackboard.tasks') }}</h3>
-      <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <input type="checkbox" v-model="showArchived" class="rounded border-border" />
-        {{ t('blackboard.showArchived') }}
-      </label>
+      <button
+        role="switch"
+        :aria-checked="showArchived"
+        class="flex items-center gap-2 text-xs text-muted-foreground"
+        @click="showArchived = !showArchived"
+      >
+        <span>{{ t('blackboard.showArchived') }}</span>
+        <span
+          class="relative inline-flex h-4 w-7 shrink-0 rounded-full border border-border transition-colors"
+          :class="showArchived ? 'bg-primary border-primary' : 'bg-muted'"
+        >
+          <span
+            class="pointer-events-none block h-3 w-3 rounded-full bg-background shadow-sm transition-transform"
+            :class="showArchived ? 'translate-x-3' : 'translate-x-0'"
+          />
+        </span>
+      </button>
     </div>
 
     <div v-if="loading" class="flex justify-center py-8">
