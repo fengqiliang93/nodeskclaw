@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useConfirm } from '@/composables/useConfirm'
-import { Loader2, Zap, Shield, Globe, Sparkles, KeyRound, MessageSquareCode, Eye, EyeOff } from 'lucide-vue-next'
+import { Loader2, Zap, Shield, Globe, Sparkles, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 
 const router = useRouter()
@@ -340,6 +340,19 @@ watch(activeTab, () => { error.value = '' })
               {{ error }}
             </p>
           </Transition>
+
+        <!-- Waitlist 入口 -->
+        <a
+          :href="WAITLIST_URL"
+          target="_blank"
+          class="block rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-center transition-all hover:bg-primary/10 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 group"
+        >
+          <p class="text-sm font-medium text-foreground">{{ t('auth.waitlist.bannerTitle') }}</p>
+          <p class="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+            {{ t('auth.waitlist.bannerAction') }}
+            <ExternalLink class="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </p>
+        </a>
 
         <!-- 底部 -->
         <div class="pt-4 text-center">

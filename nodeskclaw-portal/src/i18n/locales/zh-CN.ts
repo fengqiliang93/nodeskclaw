@@ -56,6 +56,8 @@ const zhCN = {
       description: '当前仅限受邀用户使用。请填写表单加入等候名单，我们会尽快与你联系。',
       joinButton: '填写表单',
       cancelButton: '返回',
+      bannerTitle: '还没有账号？加入等候名单',
+      bannerAction: '填写表单，抢先体验',
     },
     feishuLogin: "飞书登录",
     orContinueWith: "或通过以下方式继续",

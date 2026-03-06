@@ -56,6 +56,8 @@ const enUS = {
       description: 'Currently available by invitation only. Please fill out the form to join the waitlist and we will get back to you soon.',
       joinButton: 'Fill Form',
       cancelButton: 'Go Back',
+      bannerTitle: "Don't have an account? Join the waitlist",
+      bannerAction: 'Fill the form for early access',
     },
     feishuLogin: "Sign in with Feishu",
     orContinueWith: "or continue with",
