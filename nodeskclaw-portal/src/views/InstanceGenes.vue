@@ -312,22 +312,20 @@ onUnmounted(stopPolling)
         <!-- Hub gene card -->
         <div v-if="item.type === 'hub'" class="flex items-start justify-between gap-4">
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-medium">{{ item.gene?.name ?? item.name }}</span>
-              <span class="text-xs text-muted-foreground">{{ item.gene?.slug ?? item.skill_name }}</span>
-              <span v-if="item.instance_gene?.installed_version || item.gene?.version" class="text-xs text-muted-foreground">
-                v{{ item.instance_gene?.installed_version ?? item.gene?.version ?? '-' }}
-              </span>
-              <span
-                v-if="item.instance_gene"
-                class="px-2 py-0.5 rounded text-xs font-medium"
-                :class="getStatusClass(item.instance_gene.status)"
-              >
-                {{ getStatusLabel(item.instance_gene.status) }}
-              </span>
-              <span v-else class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-500">
-                {{ t('instanceGenes.statusInstalled') }}
-              </span>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="min-w-0 flex-1 truncate font-medium">{{ item.gene?.name ?? item.name }}</span>
+                <span
+                  v-if="item.instance_gene?.installed_version || item.gene?.version"
+                  class="shrink-0 text-xs text-muted-foreground"
+                >
+                  v{{ item.instance_gene?.installed_version ?? item.gene?.version ?? '-' }}
+                </span>
+                <span v-else class="shrink-0 px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-500">
+                  {{ t('instanceGenes.statusInstalled') }}
+                </span>
+              </div>
+              <span class="mt-1 block truncate text-xs text-muted-foreground">{{ item.gene?.slug ?? item.skill_name }}</span>
             </div>
             <div v-if="item.gene?.tags?.length" class="flex flex-wrap gap-1 mt-2">
               <span
@@ -373,6 +371,12 @@ onUnmounted(stopPolling)
               <RefreshCw class="w-3.5 h-3.5" />
               {{ t('instanceGenes.relearn') }}
             </button>
+            <span
+              class="px-2 py-0.5 rounded text-xs font-medium shrink-0"
+              :class="getStatusClass(item.instance_gene.status)"
+            >
+              {{ getStatusLabel(item.instance_gene.status) }}
+            </span>
             <button
               v-if="!busyStatuses.has(item.instance_gene.status)"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-destructive border border-destructive/30 hover:bg-destructive/10 transition-colors"

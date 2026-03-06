@@ -434,8 +434,7 @@ onUnmounted(() => {
       @click.self="close"
     >
       <div
-        class="w-full max-w-4xl mx-4 rounded-xl border border-border bg-card shadow-xl flex flex-col"
-        style="max-height: 85vh"
+        class="w-full max-w-4xl mx-4 rounded-xl border border-border bg-card shadow-xl flex flex-col h-[85vh]"
         @click.stop
       >
         <!-- Header -->
@@ -460,343 +459,348 @@ onUnmounted(() => {
         </div>
 
         <!-- Content -->
-        <div class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+        <div class="flex-1 min-h-0 px-6 py-4">
 
           <!-- ═══ LIST VIEW ═══ -->
           <template v-if="viewState === 'list'">
-            <!-- Tabs -->
-            <div class="flex items-center gap-2 mb-4">
-              <button
-                :class="['px-4 py-2 rounded-lg text-sm font-medium transition-colors', viewMode === 'genes' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted']"
-                @click="viewMode = 'genes'"
-              >
-                {{ t('geneMarket.tabGenes') }}
-              </button>
-              <button
-                :class="['px-4 py-2 rounded-lg text-sm font-medium transition-colors', viewMode === 'genomes' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted']"
-                @click="viewMode = 'genomes'"
-              >
-                {{ t('geneMarket.tabGenomes') }}
-              </button>
-            </div>
-
-            <!-- Filters -->
-            <div class="flex flex-wrap gap-3 mb-4">
-              <div class="relative flex-1 min-w-[180px]">
-                <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  v-model="keyword"
-                  type="text"
-                  :placeholder="t('geneMarket.searchPlaceholder')"
-                  class="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                />
-              </div>
-              <CustomSelect
-                v-if="viewMode === 'genes'"
-                v-model="selectedCategory"
-                :options="categorySelectOptions"
-              />
-              <CustomSelect v-model="sortBy" :options="sortSelectOptions" />
-            </div>
-
-            <!-- Tags -->
-            <div v-if="viewMode === 'genes' && tagStats.length" class="flex flex-wrap gap-1.5 mb-4">
-              <button
-                v-for="ts in tagStats"
-                :key="ts.tag"
-                :class="['px-2.5 py-1 rounded-lg text-xs font-medium transition-colors', selectedTag === ts.tag ? 'bg-primary/10 text-primary' : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted']"
-                @click="selectedTag = selectedTag === ts.tag ? null : ts.tag"
-              >
-                {{ localizeGeneMeta(ts.tag) }}
-              </button>
-            </div>
-
-            <!-- Loading -->
-            <div v-if="dialogLoading" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-
-            <!-- Gene cards -->
-            <template v-else-if="viewMode === 'genes'">
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div
-                  v-for="gene in genes"
-                  :key="gene.id"
-                  class="p-4 rounded-xl border border-border bg-background hover:border-primary/30 transition cursor-pointer relative overflow-hidden"
-                  @click="openGeneDetail(gene.id)"
-                >
-                  <div
-                    v-if="isInstalled(gene.slug)"
-                    class="absolute top-0 right-0 w-6 h-6 bg-green-600 rounded-bl-lg flex items-center justify-center"
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="flex-1 min-h-0 overflow-y-auto">
+                <!-- Tabs -->
+                <div class="flex items-center gap-2 mb-4">
+                  <button
+                    :class="['px-4 py-2 rounded-lg text-sm font-medium transition-colors', viewMode === 'genes' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted']"
+                    @click="viewMode = 'genes'"
                   >
-                    <Check class="w-3 h-3 text-white" />
+                    {{ t('geneMarket.tabGenes') }}
+                  </button>
+                  <button
+                    :class="['px-4 py-2 rounded-lg text-sm font-medium transition-colors', viewMode === 'genomes' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted']"
+                    @click="viewMode = 'genomes'"
+                  >
+                    {{ t('geneMarket.tabGenomes') }}
+                  </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="flex flex-wrap gap-3 mb-4">
+                  <div class="relative flex-1 min-w-[180px]">
+                    <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      v-model="keyword"
+                      type="text"
+                      :placeholder="t('geneMarket.searchPlaceholder')"
+                      class="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                    />
                   </div>
-                  <div class="flex items-start gap-3 mb-2">
-                    <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <component :is="resolveIcon(gene.icon)" class="w-4 h-4 text-primary" />
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-medium text-sm truncate">{{ gene.name }}</span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">v{{ gene.version }}</span>
-                        <span
-                          v-if="hasNativeTools(gene)"
-                          class="shrink-0 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
-                        >
-                          {{ t('geneMarket.hasNativeTools') }}
-                        </span>
-                      </div>
-                      <p class="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {{ gene.short_description ?? gene.description ?? '' }}
-                      </p>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap gap-1 mt-2">
-                    <span
-                      v-for="tag in gene.tags.slice(0, 3)"
-                      :key="tag"
-                      class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary"
+                  <CustomSelect
+                    v-if="viewMode === 'genes'"
+                    v-model="selectedCategory"
+                    :options="categorySelectOptions"
+                  />
+                  <CustomSelect v-model="sortBy" :options="sortSelectOptions" />
+                </div>
+
+                <!-- Tags -->
+                <div v-if="viewMode === 'genes' && tagStats.length" class="flex flex-wrap gap-1.5 mb-4">
+                  <button
+                    v-for="ts in tagStats"
+                    :key="ts.tag"
+                    :class="['px-2.5 py-1 rounded-lg text-xs font-medium transition-colors', selectedTag === ts.tag ? 'bg-primary/10 text-primary' : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted']"
+                    @click="selectedTag = selectedTag === ts.tag ? null : ts.tag"
+                  >
+                    {{ localizeGeneMeta(ts.tag) }}
+                  </button>
+                </div>
+
+                <!-- Loading -->
+                <div v-if="dialogLoading" class="flex justify-center py-16">
+                  <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+
+                <!-- Gene cards -->
+                <template v-else-if="viewMode === 'genes'">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div
+                      v-for="gene in genes"
+                      :key="gene.id"
+                      class="p-4 rounded-xl border border-border bg-background hover:border-primary/30 transition cursor-pointer relative overflow-hidden"
+                      @click="openGeneDetail(gene.id)"
                     >
-                      {{ localizeGeneMeta(tag) }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                    <span class="flex items-center gap-0.5">
-                      <Star class="w-3 h-3 fill-amber-400 text-amber-400" />
-                      {{ (gene.avg_rating ?? 0).toFixed(1) }}
-                    </span>
-                    <div class="flex-1 min-w-0">
-                      <div class="h-1 rounded-full bg-muted overflow-hidden">
-                        <div class="h-full rounded-full bg-primary/60" :style="{ width: `${Math.min(100, (gene.effectiveness_score ?? 0) * 100)}%` }" />
+                      <div
+                        v-if="isInstalled(gene.slug)"
+                        class="absolute top-0 right-0 w-6 h-6 bg-green-600 rounded-bl-lg flex items-center justify-center"
+                      >
+                        <Check class="w-3 h-3 text-white" />
+                      </div>
+                      <div class="flex items-start gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <component :is="resolveIcon(gene.icon)" class="w-4 h-4 text-primary" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-sm truncate">{{ gene.name }}</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">v{{ gene.version }}</span>
+                            <span
+                              v-if="hasNativeTools(gene)"
+                              class="shrink-0 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
+                            >
+                              {{ t('geneMarket.hasNativeTools') }}
+                            </span>
+                          </div>
+                          <p class="text-xs text-muted-foreground line-clamp-2 mt-1">
+                            {{ gene.short_description ?? gene.description ?? '' }}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap gap-1 mt-2">
+                        <span
+                          v-for="tag in gene.tags.slice(0, 3)"
+                          :key="tag"
+                          class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary"
+                        >
+                          {{ localizeGeneMeta(tag) }}
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                        <span class="flex items-center gap-0.5">
+                          <Star class="w-3 h-3 fill-amber-400 text-amber-400" />
+                          {{ (gene.avg_rating ?? 0).toFixed(1) }}
+                        </span>
+                        <div class="flex-1 min-w-0">
+                          <div class="h-1 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full bg-primary/60" :style="{ width: `${Math.min(100, (gene.effectiveness_score ?? 0) * 100)}%` }" />
+                          </div>
+                        </div>
+                        <span class="shrink-0">{{ t('geneMarket.learnCount', { count: gene.install_count ?? 0 }) }}</span>
                       </div>
                     </div>
-                    <span class="shrink-0">{{ t('geneMarket.learnCount', { count: gene.install_count ?? 0 }) }}</span>
                   </div>
-                </div>
-              </div>
-              <div v-if="genes.length === 0" class="py-12 text-center text-muted-foreground text-sm">
-                {{ t('geneMarket.searchPlaceholder') }}
-              </div>
-            </template>
+                  <div v-if="genes.length === 0" class="py-12 text-center text-muted-foreground text-sm">
+                    {{ t('geneMarket.searchPlaceholder') }}
+                  </div>
+                </template>
 
-            <!-- Genome cards -->
-            <template v-else>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div
-                  v-for="genome in genomes"
-                  :key="genome.id"
-                  class="p-4 rounded-xl border border-border bg-background hover:border-primary/30 transition cursor-pointer"
-                  @click="openGenomeDetail(genome.id)"
+                <!-- Genome cards -->
+                <template v-else>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div
+                      v-for="genome in genomes"
+                      :key="genome.id"
+                      class="p-4 rounded-xl border border-border bg-background hover:border-primary/30 transition cursor-pointer"
+                      @click="openGenomeDetail(genome.id)"
+                    >
+                      <div class="flex items-start gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <component :is="resolveIcon(genome.icon)" class="w-4 h-4 text-primary" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-sm truncate">{{ genome.name }}</span>
+                            <span
+                              v-if="genome.native_tool_count"
+                              class="shrink-0 inline-flex items-center gap-1 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
+                            >
+                              <Wrench class="w-3 h-3" />
+                              {{ t('genome.nativeToolCount', { count: genome.native_tool_count }) }}
+                            </span>
+                            <span
+                              v-if="genome.mcp_server_count"
+                              class="shrink-0 inline-flex items-center gap-1 bg-violet-500/10 text-violet-400 text-[10px] px-1.5 py-0.5 rounded"
+                            >
+                              <Server class="w-3 h-3" />
+                              {{ t('genome.mcpServerCount', { count: genome.mcp_server_count }) }}
+                            </span>
+                          </div>
+                          <p class="text-xs text-muted-foreground line-clamp-2 mt-1">
+                            {{ genome.short_description ?? genome.description ?? '' }}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                        <span class="flex items-center gap-0.5">
+                          <Star class="w-3 h-3 fill-amber-400 text-amber-400" />
+                          {{ (genome.avg_rating ?? 0).toFixed(1) }}
+                        </span>
+                        <span class="shrink-0">{{ t('geneMarket.learnCount', { count: genome.install_count ?? 0 }) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="genomes.length === 0" class="py-12 text-center text-muted-foreground text-sm">
+                    {{ t('geneMarket.searchPlaceholder') }}
+                  </div>
+                </template>
+              </div>
+              <div v-if="totalPages > 1" class="shrink-0 flex items-center justify-center gap-2 mt-4 pt-4 border-t border-border">
+                <button
+                  :disabled="!canPrev"
+                  :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', canPrev ? 'text-foreground hover:bg-muted' : 'text-muted-foreground cursor-not-allowed']"
+                  @click="page = Math.max(1, page - 1)"
                 >
-                  <div class="flex items-start gap-3 mb-2">
-                    <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <component :is="resolveIcon(genome.icon)" class="w-4 h-4 text-primary" />
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-medium text-sm truncate">{{ genome.name }}</span>
-                        <span
-                          v-if="genome.native_tool_count"
-                          class="shrink-0 inline-flex items-center gap-1 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
-                        >
-                          <Wrench class="w-3 h-3" />
-                          {{ t('genome.nativeToolCount', { count: genome.native_tool_count }) }}
-                        </span>
-                        <span
-                          v-if="genome.mcp_server_count"
-                          class="shrink-0 inline-flex items-center gap-1 bg-violet-500/10 text-violet-400 text-[10px] px-1.5 py-0.5 rounded"
-                        >
-                          <Server class="w-3 h-3" />
-                          {{ t('genome.mcpServerCount', { count: genome.mcp_server_count }) }}
-                        </span>
-                      </div>
-                      <p class="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {{ genome.short_description ?? genome.description ?? '' }}
-                      </p>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                    <span class="flex items-center gap-0.5">
-                      <Star class="w-3 h-3 fill-amber-400 text-amber-400" />
-                      {{ (genome.avg_rating ?? 0).toFixed(1) }}
-                    </span>
-                    <span class="shrink-0">{{ t('geneMarket.learnCount', { count: genome.install_count ?? 0 }) }}</span>
-                  </div>
-                </div>
+                  {{ t('geneMarket.prevPage') }}
+                </button>
+                <span class="text-sm text-muted-foreground">{{ page }} / {{ totalPages }}</span>
+                <button
+                  :disabled="!canNext"
+                  :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', canNext ? 'text-foreground hover:bg-muted' : 'text-muted-foreground cursor-not-allowed']"
+                  @click="page = Math.min(totalPages, page + 1)"
+                >
+                  {{ t('geneMarket.nextPage') }}
+                </button>
               </div>
-              <div v-if="genomes.length === 0" class="py-12 text-center text-muted-foreground text-sm">
-                {{ t('geneMarket.searchPlaceholder') }}
-              </div>
-            </template>
-
-            <!-- Pagination -->
-            <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 mt-4">
-              <button
-                :disabled="!canPrev"
-                :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', canPrev ? 'text-foreground hover:bg-muted' : 'text-muted-foreground cursor-not-allowed']"
-                @click="page = Math.max(1, page - 1)"
-              >
-                {{ t('geneMarket.prevPage') }}
-              </button>
-              <span class="text-sm text-muted-foreground">{{ page }} / {{ totalPages }}</span>
-              <button
-                :disabled="!canNext"
-                :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', canNext ? 'text-foreground hover:bg-muted' : 'text-muted-foreground cursor-not-allowed']"
-                @click="page = Math.min(totalPages, page + 1)"
-              >
-                {{ t('geneMarket.nextPage') }}
-              </button>
             </div>
           </template>
 
           <!-- ═══ GENE DETAIL VIEW ═══ -->
           <template v-else-if="viewState === 'gene-detail'">
-            <div v-if="detailLoading" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-            <template v-else-if="detailGene">
-              <!-- Gene header info -->
-              <div class="flex items-center gap-4 mb-6">
-                <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <component :is="resolveIcon(detailGene.icon)" class="w-6 h-6 text-primary" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap gap-2 mt-1">
-                    <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">v{{ detailGene.version }}</span>
-                    <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ detailGene.source }}</span>
-                    <span v-if="detailGene.category" class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ localizeGeneMeta(detailGene.category) }}</span>
-                    <span
-                      v-if="toolAllowList.length"
-                      class="shrink-0 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
-                    >
-                      {{ t('geneMarket.hasNativeTools') }}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  v-if="!isInstalled(detailGene.slug)"
-                  class="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                  :disabled="installing"
-                  @click="handleInstallGene(detailGene.slug)"
-                >
-                  <Loader2 v-if="installing" class="w-4 h-4 animate-spin" />
-                  <Download v-else class="w-4 h-4" />
-                  {{ t('geneMarketDialog.learnForInstance') }}
-                </button>
-                <span
-                  v-else
-                  class="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/10 text-green-500 text-sm"
-                >
-                  <Check class="w-4 h-4" />
-                  {{ t('geneMarketDialog.alreadyLearned') }}
-                </span>
+            <div class="h-full overflow-y-auto">
+              <div v-if="detailLoading" class="flex justify-center py-16">
+                <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
-
-              <!-- Tags -->
-              <div v-if="detailGene.tags?.length" class="flex flex-wrap gap-2 mb-6">
-                <span
-                  v-for="tag in detailGene.tags"
-                  :key="tag"
-                  class="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary"
-                >
-                  {{ localizeGeneMeta(tag) }}
-                </span>
-              </div>
-
-              <!-- Description -->
-              <section v-if="detailGene.description" class="mb-6">
-                <h2 class="text-base font-semibold mb-2">{{ t('gene.description') }}</h2>
-                <div
-                  class="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary"
-                  v-html="descriptionHtml"
-                />
-              </section>
-
-              <!-- Tool capabilities -->
-              <section v-if="toolAllowList.length" class="mb-6">
-                <h2 class="text-base font-semibold mb-2">{{ t('gene.toolCapabilities') }}</h2>
-                <div class="flex flex-wrap gap-2">
-                  <div
-                    v-for="tool in toolAllowList"
-                    :key="tool"
-                    class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-background"
-                  >
-                    <Wrench class="w-4 h-4 text-cyan-400" />
-                    <span class="text-sm font-mono">{{ tool }}</span>
+              <template v-else-if="detailGene">
+                <!-- Gene header info -->
+                <div class="flex items-center gap-4 mb-6">
+                  <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <component :is="resolveIcon(detailGene.icon)" class="w-6 h-6 text-primary" />
                   </div>
-                </div>
-              </section>
-
-              <!-- Gene content -->
-              <section v-if="skillContentRaw" class="mb-6">
-                <div class="flex items-center justify-between mb-2">
-                  <h2 class="text-base font-semibold">{{ t('gene.content') }}</h2>
-                  <div class="flex items-center gap-1 rounded-lg border border-border p-0.5">
-                    <button
-                      :class="['p-1.5 rounded-md transition-colors', contentViewMode === 'rendered' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground']"
-                      :title="t('gene.renderDocument')"
-                      @click="contentViewMode = 'rendered'"
-                    >
-                      <FileText class="w-4 h-4" />
-                    </button>
-                    <button
-                      :class="['p-1.5 rounded-md transition-colors', contentViewMode === 'source' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground']"
-                      :title="t('gene.viewSource')"
-                      @click="contentViewMode = 'source'"
-                    >
-                      <Code class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div
-                  v-if="!hasFrontmatter"
-                  class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-3"
-                >
-                  <div class="flex items-start gap-2">
-                    <AlertTriangle class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <p class="text-xs text-muted-foreground">{{ t('gene.frontmatterMissing') }}</p>
-                  </div>
-                </div>
-                <div
-                  v-if="contentViewMode === 'rendered'"
-                  class="rounded-xl border border-border bg-background p-6 prose prose-sm prose-invert max-w-none prose-a:text-primary"
-                  v-html="skillContentHtml"
-                />
-                <pre
-                  v-else
-                  class="rounded-xl border border-border bg-background p-6 text-sm font-mono leading-relaxed text-foreground overflow-x-auto whitespace-pre-wrap wrap-break-word"
-                >{{ skillContentRaw }}</pre>
-              </section>
-
-              <!-- Rating -->
-              <section class="mb-4">
-                <h2 class="text-base font-semibold mb-2">{{ t('gene.rating') }}</h2>
-                <div class="flex items-center gap-6">
-                  <div class="flex items-center gap-1">
-                    <Star
-                      v-for="i in 5"
-                      :key="i"
-                      :class="['w-4 h-4', i <= Math.round(detailGene.avg_rating ?? 0) ? 'fill-amber-400 text-amber-400' : 'text-muted']"
-                    />
-                    <span class="ml-2 text-sm text-muted-foreground">{{ (detailGene.avg_rating ?? 0).toFixed(1) }}</span>
-                  </div>
-                  <div class="flex-1 min-w-0 max-w-xs">
-                    <div class="text-xs text-muted-foreground mb-1">{{ t('gene.effectivenessScore') }}</div>
-                    <div class="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div class="h-full rounded-full bg-primary/60" :style="{ width: `${Math.min(100, (detailGene.effectiveness_score ?? 0) * 100)}%` }" />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap gap-2 mt-1">
+                      <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">v{{ detailGene.version }}</span>
+                      <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ detailGene.source }}</span>
+                      <span v-if="detailGene.category" class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ localizeGeneMeta(detailGene.category) }}</span>
+                      <span
+                        v-if="toolAllowList.length"
+                        class="shrink-0 bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded"
+                      >
+                        {{ t('geneMarket.hasNativeTools') }}
+                      </span>
                     </div>
                   </div>
+                  <button
+                    v-if="!isInstalled(detailGene.slug)"
+                    class="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    :disabled="installing"
+                    @click="handleInstallGene(detailGene.slug)"
+                  >
+                    <Loader2 v-if="installing" class="w-4 h-4 animate-spin" />
+                    <Download v-else class="w-4 h-4" />
+                    {{ t('geneMarketDialog.learnForInstance') }}
+                  </button>
+                  <span
+                    v-else
+                    class="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/10 text-green-500 text-sm"
+                  >
+                    <Check class="w-4 h-4" />
+                    {{ t('geneMarketDialog.alreadyLearned') }}
+                  </span>
                 </div>
-              </section>
-            </template>
+
+                <!-- Tags -->
+                <div v-if="detailGene.tags?.length" class="flex flex-wrap gap-2 mb-6">
+                  <span
+                    v-for="tag in detailGene.tags"
+                    :key="tag"
+                    class="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary"
+                  >
+                    {{ localizeGeneMeta(tag) }}
+                  </span>
+                </div>
+
+                <!-- Description -->
+                <section v-if="detailGene.description" class="mb-6">
+                  <h2 class="text-base font-semibold mb-2">{{ t('gene.description') }}</h2>
+                  <div
+                    class="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary"
+                    v-html="descriptionHtml"
+                  />
+                </section>
+
+                <!-- Tool capabilities -->
+                <section v-if="toolAllowList.length" class="mb-6">
+                  <h2 class="text-base font-semibold mb-2">{{ t('gene.toolCapabilities') }}</h2>
+                  <div class="flex flex-wrap gap-2">
+                    <div
+                      v-for="tool in toolAllowList"
+                      :key="tool"
+                      class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-background"
+                    >
+                      <Wrench class="w-4 h-4 text-cyan-400" />
+                      <span class="text-sm font-mono">{{ tool }}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- Gene content -->
+                <section v-if="skillContentRaw" class="mb-6">
+                  <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-base font-semibold">{{ t('gene.content') }}</h2>
+                    <div class="flex items-center gap-1 rounded-lg border border-border p-0.5">
+                      <button
+                        :class="['p-1.5 rounded-md transition-colors', contentViewMode === 'rendered' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground']"
+                        :title="t('gene.renderDocument')"
+                        @click="contentViewMode = 'rendered'"
+                      >
+                        <FileText class="w-4 h-4" />
+                      </button>
+                      <button
+                        :class="['p-1.5 rounded-md transition-colors', contentViewMode === 'source' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground']"
+                        :title="t('gene.viewSource')"
+                        @click="contentViewMode = 'source'"
+                      >
+                        <Code class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    v-if="!hasFrontmatter"
+                    class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-3"
+                  >
+                    <div class="flex items-start gap-2">
+                      <AlertTriangle class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <p class="text-xs text-muted-foreground">{{ t('gene.frontmatterMissing') }}</p>
+                    </div>
+                  </div>
+                  <div
+                    v-if="contentViewMode === 'rendered'"
+                    class="rounded-xl border border-border bg-background p-6 prose prose-sm prose-invert max-w-none prose-a:text-primary"
+                    v-html="skillContentHtml"
+                  />
+                  <pre
+                    v-else
+                    class="rounded-xl border border-border bg-background p-6 text-sm font-mono leading-relaxed text-foreground overflow-x-auto whitespace-pre-wrap wrap-break-word"
+                  >{{ skillContentRaw }}</pre>
+                </section>
+
+                <!-- Rating -->
+                <section class="mb-4">
+                  <h2 class="text-base font-semibold mb-2">{{ t('gene.rating') }}</h2>
+                  <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-1">
+                      <Star
+                        v-for="i in 5"
+                        :key="i"
+                        :class="['w-4 h-4', i <= Math.round(detailGene.avg_rating ?? 0) ? 'fill-amber-400 text-amber-400' : 'text-muted']"
+                      />
+                      <span class="ml-2 text-sm text-muted-foreground">{{ (detailGene.avg_rating ?? 0).toFixed(1) }}</span>
+                    </div>
+                    <div class="flex-1 min-w-0 max-w-xs">
+                      <div class="text-xs text-muted-foreground mb-1">{{ t('gene.effectivenessScore') }}</div>
+                      <div class="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div class="h-full rounded-full bg-primary/60" :style="{ width: `${Math.min(100, (detailGene.effectiveness_score ?? 0) * 100)}%` }" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </template>
+            </div>
           </template>
 
           <!-- ═══ GENOME DETAIL VIEW ═══ -->
           <template v-else-if="viewState === 'genome-detail'">
-            <div v-if="detailLoading" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-            <template v-else-if="detailGenome">
+            <div class="h-full overflow-y-auto">
+              <div v-if="detailLoading" class="flex justify-center py-16">
+                <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+              <template v-else-if="detailGenome">
               <!-- Genome header info -->
               <div class="flex items-center gap-4 mb-6">
                 <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -913,7 +917,8 @@ onUnmounted(() => {
                   <span class="ml-2 text-sm text-muted-foreground">{{ (detailGenome.avg_rating ?? 0).toFixed(1) }}</span>
                 </div>
               </section>
-            </template>
+              </template>
+            </div>
           </template>
 
         </div>
