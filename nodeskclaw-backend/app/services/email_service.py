@@ -72,13 +72,15 @@ async def _send_email(
     msg.set_content(subject)
     msg.add_alternative(html_body, subtype="html")
 
+    is_implicit_tls = smtp_config.use_tls and smtp_config.smtp_port == 465
     await aiosmtplib.send(
         msg,
         hostname=smtp_config.smtp_host,
         port=smtp_config.smtp_port,
         username=smtp_config.smtp_username,
         password=smtp_config.smtp_password,
-        start_tls=smtp_config.use_tls,
+        use_tls=is_implicit_tls,
+        start_tls=smtp_config.use_tls and not is_implicit_tls,
         timeout=15,
     )
     logger.info("Email sent to %s via %s:%s", to_email, smtp_config.smtp_host, smtp_config.smtp_port)
