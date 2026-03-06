@@ -1429,6 +1429,26 @@ async def lifespan(app: FastAPI):
         await db.commit()
         logger.info("自动迁移 33：批量 seed 基因模板 — 新增 %d gene + %d genome，已有的更新 manifest", seeded_genes, seeded_genomes)
 
+    # ── 迁移 34: workspace_objectives 增加 obj_type + parent_id 字段 ──
+    async with engine.begin() as conn:
+        cols_check = await conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'workspace_objectives' AND column_name = 'obj_type'"
+        ))
+        if cols_check.first() is None:
+            await conn.execute(text(
+                "ALTER TABLE workspace_objectives "
+                "ADD COLUMN obj_type VARCHAR(20) NOT NULL DEFAULT 'objective', "
+                "ADD COLUMN parent_id VARCHAR(36) REFERENCES workspace_objectives(id) ON DELETE CASCADE"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX ix_workspace_objectives_obj_type ON workspace_objectives (obj_type)"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX ix_workspace_objectives_parent_id ON workspace_objectives (parent_id)"
+            ))
+            logger.info("自动迁移 34：workspace_objectives 增加 obj_type + parent_id 字段")
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。

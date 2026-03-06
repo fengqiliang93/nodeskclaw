@@ -644,10 +644,12 @@ def _task_to_info(t: WorkspaceTask, assignee_name: str | None = None) -> TaskInf
         created_at=t.created_at, updated_at=t.updated_at,
     )
 
-def _obj_to_info(o: WorkspaceObjective) -> ObjectiveInfo:
+def _obj_to_info(o: WorkspaceObjective, children: list[ObjectiveInfo] | None = None) -> ObjectiveInfo:
     return ObjectiveInfo(
         id=o.id, workspace_id=o.workspace_id, title=o.title,
         description=o.description, progress=o.progress,
+        obj_type=o.obj_type, parent_id=o.parent_id,
+        children=children or [],
         created_by=o.created_by,
         created_at=o.created_at, updated_at=o.updated_at,
     )
@@ -888,14 +890,30 @@ async def archive_task(db: AsyncSession, workspace_id: str, task_id: str) -> Tas
 
 # ── Objectives ───────────────────────────────────────
 
-async def list_objectives(db: AsyncSession, workspace_id: str) -> list[ObjectiveInfo]:
+async def list_objectives(db: AsyncSession, workspace_id: str, flat: bool = False) -> list[ObjectiveInfo]:
     rows = (await db.execute(
         select(WorkspaceObjective).where(
             WorkspaceObjective.workspace_id == workspace_id,
             WorkspaceObjective.deleted_at.is_(None),
         ).order_by(WorkspaceObjective.created_at.desc())
     )).scalars().all()
-    return [_obj_to_info(o) for o in rows]
+
+    if flat:
+        return [_obj_to_info(o) for o in rows]
+
+    by_parent: dict[str | None, list[WorkspaceObjective]] = {}
+    for o in rows:
+        by_parent.setdefault(o.parent_id, []).append(o)
+
+    def _build(parent_key: str | None) -> list[ObjectiveInfo]:
+        items = by_parent.get(parent_key, [])
+        result = []
+        for o in items:
+            child_infos = _build(o.id)
+            result.append(_obj_to_info(o, children=child_infos))
+        return result
+
+    return _build(None)
 
 
 async def create_objective(
@@ -905,6 +923,8 @@ async def create_objective(
         workspace_id=workspace_id,
         title=data.title,
         description=data.description,
+        obj_type=data.obj_type,
+        parent_id=data.parent_id,
         created_by=user_id,
     )
     db.add(obj)
@@ -932,6 +952,10 @@ async def update_objective(
         obj.description = data.description
     if data.progress is not None:
         obj.progress = max(0.0, min(1.0, data.progress))
+    if data.obj_type is not None:
+        obj.obj_type = data.obj_type
+    if data.parent_id is not None:
+        obj.parent_id = data.parent_id
     await db.commit()
     await db.refresh(obj)
     return _obj_to_info(obj)

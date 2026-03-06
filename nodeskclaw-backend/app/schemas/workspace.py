@@ -125,6 +125,9 @@ class ObjectiveInfo(BaseModel):
     title: str
     description: str | None = None
     progress: float = 0.0
+    obj_type: str = "objective"
+    parent_id: str | None = None
+    children: list["ObjectiveInfo"] = []
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -132,11 +135,15 @@ class ObjectiveInfo(BaseModel):
 class ObjectiveCreate(BaseModel):
     title: str = Field(min_length=1, max_length=256)
     description: str | None = None
+    obj_type: str = "objective"
+    parent_id: str | None = None
 
 class ObjectiveUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     progress: float | None = None
+    obj_type: str | None = None
+    parent_id: str | None = None
 
 
 # ── Blackboard ───────────────────────────────────────

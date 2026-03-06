@@ -78,6 +78,9 @@ export interface ObjectiveInfo {
   title: string
   description: string | null
   progress: number
+  obj_type: string
+  parent_id: string | null
+  children: ObjectiveInfo[]
   created_by: string | null
   created_at: string
   updated_at: string
