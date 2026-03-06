@@ -891,8 +891,8 @@ async def get_file_presigned_url(
     if wf is None:
         raise _error(404, 40431, "errors.file.not_found", "文件不存在")
 
-    url = await storage_service.get_presigned_url(wf.tos_key)
-    return _ok({"url": url, "expires_in": 3600})
+    url = await storage_service.get_presigned_url(wf.tos_key, expires=900)
+    return _ok({"url": url, "expires_in": 900})
 
 
 @router.post("/{workspace_id}/chat")
@@ -909,10 +909,9 @@ async def workspace_chat(
         raise _error(404, 40430, "errors.workspace.not_found", "办公室不存在")
 
     attachments_meta: list[dict] | None = None
-    attachments_with_urls: list[dict] = []
+    attachment_files: list = []
     if data.file_ids:
         from app.models.workspace_file import WorkspaceFile
-        from app.services import storage_service
 
         result = await db.execute(
             sa_select(WorkspaceFile).where(
@@ -921,16 +920,15 @@ async def workspace_chat(
                 WorkspaceFile.deleted_at.is_(None),
             )
         )
-        files = result.scalars().all()
-        attachments_meta = []
-        for f in files:
-            url = await storage_service.get_presigned_url(f.tos_key)
-            meta = {
-                "id": f.id, "name": f.original_name,
-                "size": f.file_size, "content_type": f.content_type,
-            }
-            attachments_meta.append(meta)
-            attachments_with_urls.append({**meta, "url": url})
+        attachment_files = list(result.scalars().all())
+        if attachment_files:
+            attachments_meta = [
+                {
+                    "id": f.id, "name": f.original_name,
+                    "size": f.file_size, "content_type": f.content_type,
+                }
+                for f in attachment_files
+            ]
 
     await msg_service.record_message(
         db,
@@ -998,6 +996,23 @@ async def workspace_chat(
 
     members = _build_members_list(ws_info, user)
     recent_messages = await msg_service.get_recent_messages(db, workspace_id)
+
+    attachments_with_urls: list[dict] = []
+    if attachment_files:
+        from app.services import storage_service
+        for f in attachment_files:
+            try:
+                url = await storage_service.get_presigned_url(f.tos_key, expires=3600)
+                attachments_with_urls.append({
+                    "id": f.id, "name": f.original_name,
+                    "size": f.file_size, "content_type": f.content_type,
+                    "url": url,
+                })
+            except Exception:
+                logger.warning(
+                    "workspace_chat: 生成文件 %s presigned URL 失败",
+                    f.original_name, exc_info=True,
+                )
 
     for inst, _ in target_agents:
         _fire_task(
