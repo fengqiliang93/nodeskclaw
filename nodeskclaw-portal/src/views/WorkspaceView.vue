@@ -882,16 +882,16 @@ function handleKeydown(e: KeyboardEvent) {
         </button>
         <div
           v-if="ws"
-          class="flex items-center gap-2"
+          class="flex items-center gap-2 min-w-0"
         >
           <div
-            class="w-6 h-6 rounded flex items-center justify-center text-xs"
+            class="w-6 h-6 rounded flex items-center justify-center text-xs shrink-0"
             :style="{ backgroundColor: ws.color + '22', color: ws.color }"
           >
             <Bot v-if="ws.icon === 'bot'" class="w-3.5 h-3.5" />
             <template v-else>{{ ws.icon }}</template>
           </div>
-          <span class="font-semibold text-sm">{{ ws.name }}</span>
+          <span class="font-semibold text-sm truncate max-w-[10rem] sm:max-w-[14rem] md:max-w-[20rem]">{{ ws.name }}</span>
         </div>
         <button
           v-if="store.hasPermission('manage_agents')"
