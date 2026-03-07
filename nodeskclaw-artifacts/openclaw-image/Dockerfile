@@ -7,7 +7,7 @@
 
 ARG NODE_VERSION=22
 
-FROM <DOCKER_MIRROR>/library/node:${NODE_VERSION}-bookworm-slim
+FROM node:${NODE_VERSION}-bookworm-slim
 
 # ---------- 构建参数 ----------
 ARG OPENCLAW_VERSION=2026.2.26
@@ -19,16 +19,26 @@ LABEL org.opencontainers.image.title="OpenClaw"
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
 LABEL org.opencontainers.image.description="OpenClaw AI Agent 平台 - NoDeskClaw 定制镜像"
 
-# ---------- slim 镜像缺少的依赖（可缓存，不随版本变化）----------
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git openssh-client ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
+# ---------- 系统依赖（BuildKit apt 缓存，重复构建秒过）----------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git openssh-client ca-certificates \
+        curl wget \
+        python3 python3-pip \
+        jq procps net-tools && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
     git config --global url."https://github.com/".insteadOf ssh://git@github.com/ && \
     git config --global --add url."https://github.com/".insteadOf git@github.com:
 
-# ---------- 全局安装 OpenClaw ----------
-RUN npm install -g openclaw@${OPENCLAW_VERSION} @nodeskai/genehub && \
-    npm cache clean --force
+# ---------- Python 依赖 ----------
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages requests tos
+
+# ---------- 全局安装 OpenClaw（BuildKit npm 缓存）----------
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g openclaw@${OPENCLAW_VERSION} @nodeskai/genehub
 
 # ---------- 预置用户数据目录结构 ----------
 RUN mkdir -p /root/.openclaw/agents/main/sessions \
