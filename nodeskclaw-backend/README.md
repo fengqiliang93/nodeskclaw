@@ -92,7 +92,7 @@ nodeskclaw-backend/
 API 路由同时挂载在两个前缀下：
 
 - **`/api/v1/...`** — Portal（用户门户）使用，仅做登录/组织成员基础检查
-- **`/api/v1/admin/...`** — 管理平台（nodeskclaw-frontend）使用，通过 `require_org_role(min_role)` 检查 `admin_memberships` 表
+- **`/api/v1/admin/...`** — 管理平台（ee/nodeskclaw-frontend）使用，通过 `require_org_role(min_role)` 检查 `admin_memberships` 表
 
 两个前缀使用同一套路由处理函数，不重复业务逻辑。管理前端 axios 的 baseURL 为 `/api/v1/admin`。
 

@@ -49,8 +49,8 @@ alwaysApply: true
 
 | 归属 | 内容 |
 |------|------|
-| CE | 核心功能代码（`nodeskclaw-backend/`、`nodeskclaw-frontend/`、`nodeskclaw-portal/` 等） |
-| EE | 企业功能扩展（`ee/backend/`、`ee/frontend/`），通过 FeatureGate 控制加载 |
+| CE | 核心功能代码（`nodeskclaw-backend/`、`nodeskclaw-portal/` 等） |
+| EE | 企业功能扩展（`ee/backend/`、`ee/nodeskclaw-frontend/`、`ee/frontend/portal/`），通过 FeatureGate 控制加载 |
 
 EE 代码通过接口扩展 CE（工厂注册、路由追加、hook 订阅），**不直接修改 CE 代码**。
 

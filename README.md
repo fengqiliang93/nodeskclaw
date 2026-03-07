@@ -32,14 +32,14 @@ Runtime auto-detection via `FeatureGate` -- if `ee/` exists it runs as EE, other
 
 ```
 DeskClaw/
-├── nodeskclaw-portal/             # User Portal -- Vue 3 + Tailwind CSS
-├── nodeskclaw-frontend/           # Admin Console -- Vue 3 + shadcn-vue + Tailwind CSS
+├── nodeskclaw-portal/             # User Portal -- Vue 3 + Tailwind CSS (CE + EE)
 ├── nodeskclaw-backend/            # API Server -- Python 3.12 + FastAPI + SQLAlchemy
 ├── nodeskclaw-llm-proxy/          # LLM Proxy -- Go
 ├── nodeskclaw-artifacts/          # Docker images & deploy manifests
 ├── openclaw-channel-nodeskclaw/   # Workspace Agent channel plugin
 ├── features.yaml                  # CE/EE feature registry
 ├── ee/                            # Enterprise Edition (private)
+│   └── nodeskclaw-frontend/      # Admin Console -- Vue 3 + shadcn-vue (EE-only)
 ├── openclaw/                      # DeskClaw runtime source (external)
 └── vibecraft/                     # VibeCraft source (external)
 ```
@@ -90,18 +90,27 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API at `http://localhost:8000` | Swagger at `http://localhost:8000/docs` | Auto-migration on first boot.
 
-### 3. Frontend
+### 3. Frontend (Portal)
 
 ```bash
-cd nodeskclaw-frontend
+cd nodeskclaw-portal
 npm install && npm run dev
 ```
 
-Portal at `http://localhost:5173` | `/api` and `/stream` auto-proxy to backend.
+Portal at `http://localhost:5174` | `/api` auto-proxy to backend.
 
-### 4. Go
+### 4. Frontend (Admin, EE-only)
 
-Open `http://localhost:5173`, sign in with Feishu.
+```bash
+cd ee/nodeskclaw-frontend
+npm install && npm run dev
+```
+
+Admin at `http://localhost:5173` | `/api` and `/stream` auto-proxy to backend.
+
+### 5. Go
+
+Open `http://localhost:5174` (Portal) or `http://localhost:5173` (Admin, EE), sign in.
 
 > Feishu redirect URL: `http://localhost:5173/api/v1/auth/feishu/callback`
 

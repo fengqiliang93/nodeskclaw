@@ -91,17 +91,17 @@ deploy/
 | 组件 | Dockerfile | Nginx 配置 |
 |------|-----------|------------|
 | backend | `nodeskclaw-backend/Dockerfile` | — |
-| admin | `nodeskclaw-frontend/Dockerfile` | `nodeskclaw-frontend/nginx.conf` |
+| admin | `ee/nodeskclaw-frontend/Dockerfile` | `ee/nodeskclaw-frontend/nginx.conf` |
 | portal | `nodeskclaw-portal/Dockerfile` | `nodeskclaw-portal/nginx.conf` |
 
 ## CE/EE 构建差异
 
 `deploy.sh` 自动检测项目根目录下是否存在 `ee/` 目录：
 
-- **CE 模式**（无 `ee/`）：使用各组件自身的 Dockerfile 和 build context，构建纯 CE 镜像
-- **EE 模式**（有 `ee/`）：自动生成临时 Dockerfile，将 build context 提升到项目根，注入 EE 代码：
+- **CE 模式**（无 `ee/`）：使用各组件自身的 Dockerfile 和 build context，构建纯 CE 镜像。admin 组件跳过构建（CE 不含管理后台）。
+- **EE 模式**（有 `ee/`）：
   - backend：追加 `COPY ee/ ./ee/` 将 EE 后端模块打入镜像
-  - admin：`COPY ee/frontend/admin/ /ee/frontend/admin/` 使 Vite alias 覆盖生效
-  - portal：`COPY ee/frontend/portal/ /ee/frontend/portal/` 同理
+  - admin：直接使用 `ee/nodeskclaw-frontend/Dockerfile` 构建（该目录本身就是完整的 EE 前端项目）
+  - portal：生成临时 Dockerfile，`COPY ee/frontend/portal/ /ee/frontend/portal/` 使 Vite alias 覆盖生效
 
 K8s 清单（`k8s/*.yaml`）CE/EE 通用，差异仅在镜像内容。

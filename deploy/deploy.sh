@@ -52,7 +52,7 @@ get_image_name() {
 get_build_context() {
   case "$1" in
     backend) echo "$PROJECT_ROOT" ;;
-    admin)   echo "$PROJECT_ROOT/nodeskclaw-frontend" ;;
+    admin)   echo "$PROJECT_ROOT/ee/nodeskclaw-frontend" ;;
     portal)  echo "$PROJECT_ROOT/nodeskclaw-portal" ;;
     *)       return 1 ;;
   esac
@@ -61,7 +61,7 @@ get_build_context() {
 get_dockerfile() {
   case "$1" in
     backend) echo "$PROJECT_ROOT/nodeskclaw-backend/Dockerfile" ;;
-    admin)   echo "$PROJECT_ROOT/nodeskclaw-frontend/Dockerfile" ;;
+    admin)   echo "$PROJECT_ROOT/ee/nodeskclaw-frontend/Dockerfile" ;;
     portal)  echo "$PROJECT_ROOT/nodeskclaw-portal/Dockerfile" ;;
     *)       return 1 ;;
   esac
@@ -165,23 +165,10 @@ build_and_push() {
         dockerfile="$ee_df"
         ;;
       admin)
-        cat > "$ee_df" <<EODF
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-COPY --from=ee frontend/admin/ /ee/frontend/admin/
-RUN npm run build
-
-FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-EODF
-        dockerfile="$ee_df"
-        extra_args="--build-context ee=$PROJECT_ROOT/ee"
+        if [[ ! -d "$PROJECT_ROOT/ee/nodeskclaw-frontend" ]]; then
+          warn "[$component] ee/nodeskclaw-frontend 不存在，跳过 admin 构建"
+          return 0
+        fi
         ;;
       portal)
         cat > "$ee_df" <<EODF
@@ -204,6 +191,9 @@ EODF
         ;;
     esac
     log "[$component] 检测到 ee/ 目录，构建 EE 版镜像"
+  elif [[ "$component" == "admin" ]]; then
+    warn "[$component] ee/ 目录不存在（CE 版本），跳过 admin 构建"
+    return 0
   fi
 
   log "[$component] 构建镜像: $image"

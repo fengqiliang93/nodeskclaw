@@ -23,13 +23,15 @@ uv sync
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-### 前端（管理后台 / 用户门户）
+### 前端（用户门户）
 
 ```bash
-cd nodeskclaw-frontend   # 或 nodeskclaw-portal
+cd nodeskclaw-portal
 npm install
 npm run dev
 ```
+
+> 管理后台（`ee/nodeskclaw-frontend`）属于 EE，贡献者通常只需关注 Portal。
 
 ## 贡献流程
 
@@ -49,8 +51,8 @@ cd nodeskclaw-backend
 uv run ruff check .
 uv run pytest
 
-# 前端
-cd nodeskclaw-frontend
+# 前端（Portal）
+cd nodeskclaw-portal
 npm run build
 vue-tsc -b
 ```

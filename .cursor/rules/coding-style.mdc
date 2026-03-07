@@ -383,7 +383,7 @@ UniqueConstraint("col_a", "col_b", name="uq_xxx")
 
 **修改一处逻辑后，必须主动搜索项目中是否存在相同或相似的逻辑副本，全部同步修改。**
 
-本项目存在多个前端工程（`nodeskclaw-frontend` 管理平台、`nodeskclaw-portal` 用户门户）和共享的后端逻辑，同一功能经常在多处有对应实现。
+本项目存在多个前端工程（`ee/nodeskclaw-frontend` 管理平台、`nodeskclaw-portal` 用户门户）和共享的后端逻辑，同一功能经常在多处有对应实现。
 
 ### 必须做
 
@@ -395,7 +395,7 @@ UniqueConstraint("col_a", "col_b", name="uq_xxx")
 
 | 逻辑类型 | 可能存在的位置 |
 |----|----|
-| slug 生成、表单校验 | `nodeskclaw-portal` 和 `nodeskclaw-frontend` 的对应页面 |
+| slug 生成、表单校验 | `nodeskclaw-portal` 和 `ee/nodeskclaw-frontend` 的对应页面 |
 | API 调用封装 | 两个前端工程各自的 `api.ts` / `composables` |
 | 类型定义、常量 | 两个前端工程各自的 `types/`、组件内 |
 | K8s 资源构建逻辑 | 后端 `resource_builder.py`、`deploy_service.py` |
@@ -452,7 +452,7 @@ UniqueConstraint("col_a", "col_b", name="uq_xxx")
 
 ## 按钮光标规则
 
-**全局 CSS 已在 `globals.css` 的 `@layer base` 中为 `button:not(:disabled)` 和 `[role="button"]:not(:disabled)` 设置了 `cursor: pointer`。** 两个前端项目（`nodeskclaw-frontend`、`nodeskclaw-portal`）均已配置。
+**全局 CSS 已在 `globals.css` 的 `@layer base` 中为 `button:not(:disabled)` 和 `[role="button"]:not(:disabled)` 设置了 `cursor: pointer`。** 两个前端项目（`ee/nodeskclaw-frontend`、`nodeskclaw-portal`）均已配置。
 
 ### 禁止
 
@@ -510,7 +510,7 @@ UniqueConstraint("col_a", "col_b", name="uq_xxx")
 
 ### 已知存量
 
-`nodeskclaw-frontend`（管理后台）中有 2 处原生 `<select>`（`Cluster/Detail.vue`、`AdvancedConfigPanel.vue`），后续迭代清理。
+`ee/nodeskclaw-frontend`（管理后台）中有 2 处原生 `<select>`（`Cluster/Detail.vue`、`AdvancedConfigPanel.vue`），后续迭代清理。
 
 ## i18n 文案与错误码规则
 

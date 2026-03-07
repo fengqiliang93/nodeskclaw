@@ -32,14 +32,14 @@ DeskClaw 是 AI 员工的可视化编排平台。通过赛博办公室（Cyber W
 
 ```
 DeskClaw/
-├── nodeskclaw-portal/             # 用户门户 -- Vue 3 + Tailwind CSS
-├── nodeskclaw-frontend/           # 管理后台 -- Vue 3 + shadcn-vue + Tailwind CSS
+├── nodeskclaw-portal/             # 用户门户 -- Vue 3 + Tailwind CSS（CE + EE）
 ├── nodeskclaw-backend/            # API 服务 -- Python 3.12 + FastAPI + SQLAlchemy
 ├── nodeskclaw-llm-proxy/          # LLM 代理 -- Go
 ├── nodeskclaw-artifacts/          # Docker 镜像与部署制品
 ├── openclaw-channel-nodeskclaw/   # 工作区 Agent 通道插件
 ├── features.yaml                  # CE/EE 功能注册表
 ├── ee/                            # 企业版（私有）
+│   └── nodeskclaw-frontend/      # 管理后台 -- Vue 3 + shadcn-vue（EE-only）
 ├── openclaw/                      # DeskClaw 运行时源码（外部）
 └── vibecraft/                     # VibeCraft 源码（外部）
 ```
@@ -90,18 +90,27 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API 地址 `http://localhost:8000` | Swagger 文档 `http://localhost:8000/docs` | 首次启动自动迁移数据库。
 
-### 3. 启动前端
+### 3. 启动前端（Portal）
 
 ```bash
-cd nodeskclaw-frontend
+cd nodeskclaw-portal
 npm install && npm run dev
 ```
 
-Portal 地址 `http://localhost:5173` | `/api` 和 `/stream` 自动代理到后端。
+Portal 地址 `http://localhost:5174` | `/api` 自动代理到后端。
 
-### 4. 开始使用
+### 4. 启动前端（Admin，EE-only）
 
-打开 `http://localhost:5173`，使用飞书登录。
+```bash
+cd ee/nodeskclaw-frontend
+npm install && npm run dev
+```
+
+Admin 地址 `http://localhost:5173` | `/api` 和 `/stream` 自动代理到后端。
+
+### 5. 开始使用
+
+打开 `http://localhost:5174`（Portal）或 `http://localhost:5173`（Admin，EE）登录。
 
 > 飞书回调地址：`http://localhost:5173/api/v1/auth/feishu/callback`
 

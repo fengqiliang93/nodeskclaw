@@ -25,10 +25,10 @@ uv run ruff check .                        # Lint 检查
 uv run ruff check --fix .                  # 自动修复
 ```
 
-### 前端（nodeskclaw-frontend / nodeskclaw-portal）
+### 前端（ee/nodeskclaw-frontend / nodeskclaw-portal）
 
 ```bash
-cd nodeskclaw-frontend
+cd ee/nodeskclaw-frontend  # 管理后台（EE-only）
 npm install
 npm run dev
 npm run build
@@ -191,7 +191,7 @@ fix(deploy): 修复 env_vars 存数据库未序列化的问题
 
 | 逻辑类型 | 可能位置 |
 |---------|----------|
-| slug 生成、表单校验 | frontend 和 portal 的对应页面 |
+| slug 生成、表单校验 | `ee/nodeskclaw-frontend` 和 `nodeskclaw-portal` 的对应页面 |
 | API 调用封装 | 两个前端的 `api.ts` |
 | K8s 资源构建逻辑 | `resource_builder.py`、`deploy_service.py` |
 
@@ -202,7 +202,7 @@ fix(deploy): 修复 env_vars 存数据库未序列化的问题
 - `features.yaml` — EE 功能清单定义
 - `ee/` — EE 私有仓库（`.gitignore` 排除，开发者通过 `scripts/setup-ee.sh` 拉取）
   - `ee/backend/` — EE 后端（路由、Service、Model、Hook）
-  - `ee/frontend/admin/` — Admin 前端 EE 页面和路由
+  - `ee/nodeskclaw-frontend/` — Admin 管理后台前端（EE-only，完整 Vue 项目）
   - `ee/frontend/portal/` — Portal 前端 EE 页面和路由
 
 ### FeatureGate
@@ -224,12 +224,10 @@ fix(deploy): 修复 env_vars 存数据库未序列化的问题
 
 EE Model 使用 CE 的 `Base`，在 `main.py` lifespan 中 `create_all` 前条件导入 `ee.backend.models`。
 
-### 前端 Stub + Alias Override
+### 前端架构
 
-CE 前端定义 `src/router/ee-stub.ts`（空数组），Vite 在检测到 `ee/` 时通过 alias 替换为 EE 路由定义。
-
-- Admin: `ee/frontend/admin/routes.ts` 提供 Members、Platform 等 EE 路由
-- Portal: `ee/frontend/portal/routes.ts` 提供 OrgSetup、OrgUsage、EnterpriseFiles 等 EE 路由
+- **Admin**（`ee/nodeskclaw-frontend/`）：完整独立的 Vue 项目，EE-only，CE 版不包含此目录。EE 路由直接定义在 `src/router/index.ts` 中。
+- **Portal**（`nodeskclaw-portal/`）：CE + EE 共用。CE 前端定义 `src/router/ee-stub.ts`（空数组），Vite 在检测到 `ee/` 时通过 alias 替换为 `ee/frontend/portal/routes.ts` 提供的 EE 路由。
 
 ### 开发指南
 

@@ -172,7 +172,7 @@ kubectl get sc nas-subpath
 ## 与其他项目的关系
 
 - **nodeskclaw-backend** -- NoDeskClaw 管理平台后端，有自己的 Dockerfile
-- **nodeskclaw-frontend** -- NoDeskClaw 管理平台前端，开发阶段无需独立镜像
+- **ee/nodeskclaw-frontend** -- NoDeskClaw 管理平台前端（EE-only），开发阶段无需独立镜像
 - **本目录** -- 被 NoDeskClaw 部署到 K8s 的 DeskClaw 实例镜像
 
 详细的镜像设计文档见 `docs/DeskClaw镜像构建规范.md`。

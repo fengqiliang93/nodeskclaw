@@ -12,7 +12,6 @@ DeskClaw（曾用名 NoDeskClaw）— DeskClaw 实例可视化管理平台，通
 
 ```
 NoDeskClaw/
-├── nodeskclaw-frontend/           # 管理后台前端（EE-only，Vue 3 + shadcn-vue + Tailwind CSS）
 ├── nodeskclaw-portal/              # 用户门户前端（CE + EE，Vue 3 + Tailwind CSS）
 ├── nodeskclaw-backend/             # 后端 API 服务（Python 3.12 + FastAPI）
 ├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Go）
@@ -20,6 +19,7 @@ NoDeskClaw/
 ├── openclaw-channel-nodeskclaw/   # DeskClaw channel plugin
 ├── features.yaml                   # CE/EE Feature 定义
 ├── ee/                             # Enterprise Edition 模块（私有）
+│   └── nodeskclaw-frontend/       # 管理后台前端（EE-only，Vue 3 + shadcn-vue + Tailwind CSS）
 ├── openclaw/                       # DeskClaw 源码（独立仓库）
 └── vibecraft/                      # VibeCraft 源码（独立仓库）
 ```
@@ -41,8 +41,8 @@ uv run ruff check --fix . # 自动修复
 ### 前端
 
 ```bash
-# 管理前端
-cd nodeskclaw-frontend
+# 管理前端（EE-only）
+cd ee/nodeskclaw-frontend
 npm install
 npm run dev               # 开发服务器 http://localhost:5173
 npm run build             # 构建生产版本
@@ -61,13 +61,13 @@ npm run lint              # ESLint 检查
 
 ## i18n 国际化
 
-- 覆盖范围：`nodeskclaw-portal`、`nodeskclaw-frontend`、`nodeskclaw-backend`
+- 覆盖范围：`nodeskclaw-portal`、`ee/nodeskclaw-frontend`、`nodeskclaw-backend`
 - 前端错误展示：优先使用后端 `message_key` 本地翻译，词条缺失时回退 `message`
 - 后端失败响应：`code` + `error_code` + `message_key` + `message` + `data`
 
 ## 代码架构
 
-- **前端**：双前端架构。`nodeskclaw-frontend`（Admin 管理后台）仅 EE 版部署，CE 用户只有 `nodeskclaw-portal`（用户门户）。图标统一使用 `lucide-vue-next`
+- **前端**：双前端架构。`ee/nodeskclaw-frontend`（Admin 管理后台）仅 EE 版部署，CE 用户只有 `nodeskclaw-portal`（用户门户）。图标统一使用 `lucide-vue-next`
 - **后端**：FastAPI + SQLAlchemy + asyncpg，采用 Service Layer 模式
 - **K8s**：通过 kubectl 与 K8s 集群交互，目标节点架构 `linux/amd64`
 - **DeskClaw 源码**：本地副本位于 `openclaw/src/`，用于调试和问题排查

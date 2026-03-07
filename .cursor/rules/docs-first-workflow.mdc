@@ -50,7 +50,8 @@ alwaysApply: true
 
 - **根 README** (`README.md`)：整体架构、项目结构变更时更新
 - **后端 README** (`nodeskclaw-backend/README.md`)：后端配置项、启动方式、目录结构、新功能模块变更时更新
-- **前端 README** (`nodeskclaw-frontend/README.md`)：前端配置项、启动方式变更时更新
+- **Portal 前端 README** (`nodeskclaw-portal/README.md`)：Portal 前端配置项、启动方式变更时更新
+- **Admin 前端 README** (`ee/nodeskclaw-frontend/README.md`)：Admin 前端（EE）配置项、启动方式变更时更新
 - **制品 README** (`nodeskclaw-artifacts/README.md`)：部署制品、镜像变更时更新
 - **子目录 README**：新建目录时必须创建
 
