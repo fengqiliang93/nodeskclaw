@@ -51,34 +51,27 @@ async def _resolve_broadcast(workspace_id: str, db) -> list[DeliveryTarget]:
 
     if has_topo:
         endpoints = await get_blackboard_audience(workspace_id, db)
-        targets: list[DeliveryTarget] = []
+        targets_list: list[DeliveryTarget] = []
         for ep in endpoints:
             type_spec = NODE_TYPE_REGISTRY.get(ep.endpoint_type)
             transport = type_spec.transport if type_spec else ""
-            targets.append(DeliveryTarget(
+            targets_list.append(DeliveryTarget(
                 node_id=ep.entity_id,
                 node_type=ep.endpoint_type,
                 transport=transport or "",
             ))
-        return targets
+        return targets_list
 
-    from app.models.base import not_deleted
-    from app.models.node_card import NodeCard
-    from sqlalchemy import select
+    from app.services.corridor_router import get_all_addressable_nodes
 
-    stmt = select(NodeCard).where(
-        NodeCard.workspace_id == workspace_id,
-        not_deleted(NodeCard),
-        NodeCard.node_type.in_(["agent", "human"]),
-    )
-    result = await db.execute(stmt)
+    addressable = await get_all_addressable_nodes(workspace_id, db)
     targets = []
-    for card in result.scalars().all():
-        type_spec = NODE_TYPE_REGISTRY.get(card.node_type)
+    for ep in addressable:
+        type_spec = NODE_TYPE_REGISTRY.get(ep.endpoint_type)
         transport = type_spec.transport if type_spec else ""
         targets.append(DeliveryTarget(
-            node_id=card.node_id,
-            node_type=card.node_type,
+            node_id=ep.entity_id,
+            node_type=ep.endpoint_type,
             transport=transport or "",
         ))
     return targets
@@ -143,15 +136,19 @@ class RoutingMiddleware(MessageMiddleware):
 
         db = ctx.db
 
-        if data.routing.targets:
-            mode = "unicast" if len(data.routing.targets) == 1 else "multicast"
+        explicit_targets = data.routing.targets
+        if not explicit_targets and data.routing.target:
+            explicit_targets = [data.routing.target]
+
+        if explicit_targets:
+            mode = "unicast" if len(explicit_targets) == 1 else "multicast"
             resolved: list[DeliveryTarget] = []
             if db is not None:
                 resolved = await _resolve_targets_by_name(
-                    data.routing.targets, ctx.workspace_id, db,
+                    explicit_targets, ctx.workspace_id, db,
                 )
             ctx.delivery_plan = DeliveryPlan(
-                targets=data.routing.targets,
+                targets=explicit_targets,
                 resolved_targets=resolved,
                 mode=mode,
                 workspace_id=ctx.workspace_id,
@@ -183,11 +180,41 @@ class RoutingMiddleware(MessageMiddleware):
                 db,
             )
 
+        ctx.extra["hooks_to_fire"] = []
+        if ctx.delivery_plan.mode == "broadcast" and db is not None:
+            try:
+                from app.services.corridor_router import get_reachable_endpoints
+
+                sender_id = data.sender.instance_id or data.sender.id
+                from app.models.base import not_deleted
+                from app.models.node_card import NodeCard
+                from sqlalchemy import select
+
+                src_q = await db.execute(
+                    select(NodeCard.hex_q, NodeCard.hex_r).where(
+                        NodeCard.node_id == sender_id,
+                        NodeCard.workspace_id == ctx.workspace_id,
+                        not_deleted(NodeCard),
+                    ).limit(1)
+                )
+                src_row = src_q.first()
+                if src_row:
+                    _eps, hooks = await get_reachable_endpoints(
+                        ctx.workspace_id, src_row.hex_q, src_row.hex_r, db,
+                    )
+                    ctx.extra["hooks_to_fire"] = [
+                        {"node_id": h.node_id, "node_type": h.node_type, "hook": h.hook_name}
+                        for h in hooks
+                    ]
+            except Exception as e:
+                logger.warning("Failed to collect BFS hooks: %s", e)
+
         logger.debug(
-            "Routing: mode=%s resolved=%d targets for envelope %s",
+            "Routing: mode=%s resolved=%d targets for envelope %s (hooks=%d)",
             ctx.delivery_plan.mode,
             len(ctx.delivery_plan.resolved_targets),
             ctx.envelope.id,
+            len(ctx.extra.get("hooks_to_fire", [])),
         )
 
         await next_fn(ctx)

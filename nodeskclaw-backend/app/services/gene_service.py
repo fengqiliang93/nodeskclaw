@@ -209,7 +209,7 @@ async def _notify_skill_learned_in_workspace(
         if hex_pos is None:
             return
 
-        reachable = await get_reachable_endpoints(
+        reachable, _hooks = await get_reachable_endpoints(
             workspace_id, hex_pos[0], hex_pos[1], db,
         )
         if not reachable:

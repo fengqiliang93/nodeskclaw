@@ -193,14 +193,28 @@ def _is_addressable(node_type: str) -> bool:
     return node_type != "corridor"
 
 
+@dataclass
+class HookToFire:
+    node_id: str
+    node_type: str
+    hook_name: str
+    hex_q: int
+    hex_r: int
+
+
 async def get_reachable_endpoints(
     workspace_id: str, from_q: int, from_r: int, db: AsyncSession,
-) -> list[ReachableEndpoint]:
-    """BFS from (from_q, from_r) using registry-driven routing rules."""
+) -> tuple[list[ReachableEndpoint], list[HookToFire]]:
+    """BFS from (from_q, from_r) using registry-driven routing rules.
+
+    Returns (endpoints, hooks_to_fire) where hooks_to_fire lists nodes
+    whose type definitions include hooks like on_message_passing.
+    """
     hex_map = await _build_hex_map(workspace_id, db)
     adj = await _get_adjacency(workspace_id, db)
 
     endpoints: list[ReachableEndpoint] = []
+    hooks_to_fire: list[HookToFire] = []
     visited: set[tuple[int, int]] = {(from_q, from_r)}
     queue: deque[tuple[int, int]] = deque([(from_q, from_r)])
 
@@ -214,6 +228,8 @@ async def get_reachable_endpoints(
             if node is None:
                 continue
 
+            type_def = NODE_TYPE_REGISTRY.get(node.node_type)
+
             if _should_consume(node.node_type):
                 endpoints.append(ReachableEndpoint(
                     node.hex_q, node.hex_r, node.node_type,
@@ -224,7 +240,16 @@ async def get_reachable_endpoints(
             if _should_propagate(node.node_type):
                 queue.append(neighbor)
 
-    return endpoints
+            if type_def and "on_message_passing" in (type_def.hooks or []):
+                hooks_to_fire.append(HookToFire(
+                    node_id=node.entity_id or "",
+                    node_type=node.node_type,
+                    hook_name="on_message_passing",
+                    hex_q=node.hex_q,
+                    hex_r=node.hex_r,
+                ))
+
+    return endpoints, hooks_to_fire
 
 
 async def get_agent_hex_in_workspace(
@@ -258,7 +283,8 @@ async def get_agent_hex_in_workspace(
 async def get_blackboard_audience(
     workspace_id: str, db: AsyncSession,
 ) -> list[ReachableEndpoint]:
-    return await get_reachable_endpoints(workspace_id, 0, 0, db)
+    endpoints, _hooks = await get_reachable_endpoints(workspace_id, 0, 0, db)
+    return endpoints
 
 
 async def can_reach(

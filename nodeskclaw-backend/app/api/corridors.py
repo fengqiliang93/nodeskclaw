@@ -646,7 +646,7 @@ async def get_reachable_from_instance(
     hex_pos = await corridor_router.get_agent_hex_in_workspace(instance_id, workspace_id, db)
     if hex_pos is None:
         return _ok({"reachable": []})
-    endpoints = await corridor_router.get_reachable_endpoints(
+    endpoints, _hooks = await corridor_router.get_reachable_endpoints(
         workspace_id, hex_pos[0], hex_pos[1], db,
     )
     return _ok({"reachable": [

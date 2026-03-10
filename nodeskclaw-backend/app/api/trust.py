@@ -125,7 +125,7 @@ async def submit_approval_request(
     if hex_pos is None:
         return _ok({"status": "agent_not_placed"})
 
-    endpoints = await corridor_router.get_reachable_endpoints(
+    endpoints, _hooks = await corridor_router.get_reachable_endpoints(
         body.workspace_id, hex_pos[0], hex_pos[1], db,
     )
     human_endpoints = [ep for ep in endpoints if ep.endpoint_type == "human"]

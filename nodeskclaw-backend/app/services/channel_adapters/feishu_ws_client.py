@@ -99,7 +99,7 @@ async def _handle_message_event(
 
         from app.services import corridor_router
 
-        endpoints = await corridor_router.get_reachable_endpoints(
+        endpoints, _hooks = await corridor_router.get_reachable_endpoints(
             workspace_id, target_hex.hex_q, target_hex.hex_r, db
         )
         agent_ids = [ep.entity_id for ep in endpoints if ep.endpoint_type == "agent"]

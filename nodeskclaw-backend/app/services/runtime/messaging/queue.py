@@ -57,7 +57,21 @@ async def dequeue(
     target_node_id: str,
     batch_size: int = 1,
 ) -> list[MessageQueueItem]:
-    """Consume messages for a target using WFQ ordering with FOR UPDATE SKIP LOCKED."""
+    """Consume messages for a target using WFQ virtual-time ordering.
+
+    virtual_time = epoch(created_at) / weight(priority).
+    Lower virtual_time = higher effective priority, preventing starvation
+    because old low-priority messages eventually gain precedence.
+    """
+    from sqlalchemy import case, extract, func
+
+    weight_expr = case(
+        (MessageQueueItem.priority == PRIORITY_WEIGHT[Priority.CRITICAL], 8),
+        (MessageQueueItem.priority == PRIORITY_WEIGHT[Priority.NORMAL], 4),
+        else_=1,
+    )
+    vtime_expr = extract("epoch", MessageQueueItem.created_at) / weight_expr
+
     stmt = (
         select(MessageQueueItem)
         .where(
@@ -66,10 +80,7 @@ async def dequeue(
             MessageQueueItem.scheduled_at <= datetime.now(timezone.utc),
             not_deleted(MessageQueueItem),
         )
-        .order_by(
-            (MessageQueueItem.priority * 1).desc(),
-            MessageQueueItem.created_at.asc(),
-        )
+        .order_by(vtime_expr.asc())
         .limit(batch_size)
         .with_for_update(skip_locked=True)
     )

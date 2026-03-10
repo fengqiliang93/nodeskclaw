@@ -93,6 +93,15 @@ class TransportMiddleware(MessageMiddleware):
     async def _deliver_one(
         self, adapter, ctx: PipelineContext, target_node_id: str, transport_id: str,
     ) -> DeliveryResult:
+        from app.services.runtime.messaging.middlewares.rate_limit import check_receiver_rate
+
+        if not check_receiver_rate(target_node_id):
+            logger.warning("Receiver rate limit exceeded for %s", target_node_id)
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=transport_id, error="receiver_rate_limited",
+            )
+
         try:
             return await adapter.deliver(
                 ctx.envelope,

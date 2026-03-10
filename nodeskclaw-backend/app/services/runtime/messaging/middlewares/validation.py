@@ -53,26 +53,25 @@ class ValidationMiddleware(MessageMiddleware):
         await next_fn(ctx)
 
     async def _check_idempotency(self, ctx: PipelineContext, db) -> bool:
-        """Return True if this message was already processed (short-circuits)."""
+        """Return True if this message was already processed (short-circuits).
+
+        Uses INSERT ON CONFLICT DO NOTHING for atomic dedup — no SELECT+INSERT race.
+        """
         try:
-            from sqlalchemy import select
-
             from app.models.idempotency_cache import IdempotencyCache
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-            result = await db.execute(
-                select(IdempotencyCache).where(
-                    IdempotencyCache.message_id == ctx.envelope.id,
-                )
-            )
-            existing = result.scalar_one_or_none()
-            if existing is not None:
+            stmt = pg_insert(IdempotencyCache).values(
+                message_id=ctx.envelope.id,
+            ).on_conflict_do_nothing(index_elements=["message_id"])
+            result = await db.execute(stmt)
+
+            if result.rowcount == 0:
                 logger.info("Idempotency: duplicate message %s, short-circuiting", ctx.envelope.id)
                 ctx.short_circuited = True
                 ctx.extra["idempotency_hit"] = True
                 return True
 
-            cache_entry = IdempotencyCache(message_id=ctx.envelope.id)
-            db.add(cache_entry)
             await db.flush()
         except Exception as e:
             logger.warning("Idempotency check failed (non-fatal): %s", e)
