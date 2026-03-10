@@ -13,17 +13,23 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-async def run_seed(session_factory: async_sessionmaker[AsyncSession], *, is_ee: bool = False) -> None:
-    await _seed_initial_admin(session_factory)
+async def run_seed(
+    session_factory: async_sessionmaker[AsyncSession], *, is_ee: bool = False,
+) -> dict[str, str] | None:
+    """Run all seed tasks. Returns admin credentials dict if password was generated."""
+    admin_credentials = await _seed_initial_admin(session_factory)
     await _seed_default_org_and_templates(session_factory, is_ee=is_ee)
     await _ensure_admin_memberships(session_factory)
     await _ensure_workspace_schedules(session_factory)
+    return admin_credentials
 
 
-async def _seed_initial_admin(session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def _seed_initial_admin(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict[str, str] | None:
     account = settings.INIT_ADMIN_ACCOUNT.strip()
     if not account:
-        return
+        return None
 
     from app.models.org_membership import OrgMembership, OrgRole
     from app.models.organization import Organization
@@ -79,15 +85,8 @@ async def _seed_initial_admin(session_factory: async_sessionmaker[AsyncSession])
             logger.info("种子数据：超管 [%s] 尚未改密，已重新生成随机密码", account)
 
         if plain_password:
-            print(
-                "\n"
-                "========================================\n"
-                "  CE 超级管理员初始密码\n"
-                f"  账号: {account}\n"
-                f"  密码: {plain_password}\n"
-                "  请登录后立即修改密码\n"
-                "========================================\n"
-            )
+            return {"account": account, "password": plain_password}
+        return None
 
 
 async def _seed_default_org_and_templates(

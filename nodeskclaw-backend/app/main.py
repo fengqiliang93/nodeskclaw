@@ -141,7 +141,7 @@ async def lifespan(app: FastAPI):
 
     # ── 种子数据（幂等，每次启动执行）──
     from app.startup.seed import run_seed
-    await run_seed(async_session_factory, is_ee=_fg.is_ee)
+    _admin_credentials = await run_seed(async_session_factory, is_ee=_fg.is_ee)
 
     # 预热 K8s 连接池：从 DB 加载所有已连接集群
     async with async_session_factory() as db:
@@ -399,6 +399,18 @@ async def lifespan(app: FastAPI):
                 logger.info("Runtime v2: 数据迁移完成 %s", migrated)
     except Exception as e:
         logger.warning("Runtime v2 启动部分失败（非致命）: %s", e)
+
+    if _admin_credentials:
+        print(
+            "\n"
+            "========================================\n"
+            "  CE 超级管理员初始密码\n"
+            f"  账号: {_admin_credentials['account']}\n"
+            f"  密码: {_admin_credentials['password']}\n"
+            "  请登录后立即修改密码\n"
+            "========================================",
+            flush=True,
+        )
 
     yield
 
