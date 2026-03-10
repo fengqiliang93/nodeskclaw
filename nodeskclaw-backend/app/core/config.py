@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # ── 登录安全 ─────────────────────────────────────────
     LOGIN_EMAIL_WHITELIST: str = ""  # 逗号分隔的域名列表，为空则不限制
 
+    # ── CE 超管 ──────────────────────────────────────────
+    INIT_ADMIN_ACCOUNT: str = "admin"  # 默认超管 username，留空则跳过自动创建
+    RESET_ADMIN_PASSWORD: bool = False  # 设为 True 后重启强制重置超管密码
+
     # ── Encryption (AES-256-GCM for KubeConfig) ─────────
     ENCRYPTION_KEY: str = "change-me-32-bytes-base64-key__="
 
