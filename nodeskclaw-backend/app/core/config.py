@@ -1,5 +1,9 @@
 """Application settings loaded from environment variables."""
 
+import re
+import socket
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +17,23 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = ""  # PostgreSQL，从 .env 读取
+    DATABASE_NAME_SUFFIX: str = ""  # auto = 用本机 hostname，留空 = 使用 DATABASE_URL 原始库名
+
+    @model_validator(mode="after")
+    def _resolve_database_url(self) -> "Settings":
+        if not self.DATABASE_NAME_SUFFIX:
+            return self
+        suffix = self.DATABASE_NAME_SUFFIX
+        if suffix == "auto":
+            raw = socket.gethostname()
+            suffix = re.sub(r"[^a-z0-9]", "_", raw.lower()).strip("_")
+            suffix = re.sub(r"_local$", "", suffix)
+            suffix = re.sub(r"_+", "_", suffix)
+            suffix = suffix[:40]
+        base_url, sep, db_name = self.DATABASE_URL.rpartition("/")
+        if sep:
+            self.DATABASE_URL = f"{base_url}/{db_name}_{suffix}"
+        return self
 
     # ── JWT ──────────────────────────────────────────────
     JWT_SECRET: str = "change-me-in-production"

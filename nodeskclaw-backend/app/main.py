@@ -76,6 +76,27 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────
     register_provider(FeishuProvider())
 
+    # ── 自动创建开发数据库（仅 DATABASE_NAME_SUFFIX 非空时触发）──
+    if settings.DATABASE_NAME_SUFFIX:
+        import asyncpg
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1))
+        target_db = parsed.path.lstrip("/")
+        admin_url = urlunparse(parsed._replace(path="/postgres"))
+        _auto_conn = await asyncpg.connect(admin_url)
+        try:
+            exists = await _auto_conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1", target_db
+            )
+            if not exists:
+                await _auto_conn.execute(f'CREATE DATABASE "{target_db}"')
+                logger.info("自动创建开发数据库: %s", target_db)
+            else:
+                logger.info("开发数据库已存在: %s", target_db)
+        finally:
+            await _auto_conn.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
