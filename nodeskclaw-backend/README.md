@@ -88,7 +88,8 @@ nodeskclaw-backend/
 │   │   │   ├── messaging/        # 消息系统核心
 │   │   │   │   ├── envelope.py   # CloudEvents 对齐的 MessageEnvelope
 │   │   │   │   ├── bus.py        # MessageBus 单例 + Middleware Pipeline
-│   │   │   │   ├── queue.py      # PGMQ 消息队列（WFQ + ACK/Retry + DLQ）
+│   │   │   │   ├── queue.py      # PGMQ 消息队列（WFQ + ACK/Retry + DLQ + NOTIFY）
+│   │   │   │   ├── queue_consumer.py  # NOTIFY 驱动队列消费者 + 轮询兜底
 │   │   │   │   ├── event_log.py  # 事件溯源日志
 │   │   │   │   ├── middlewares/  # 中间件（Validation/Semantic/Routing/Transport/CircuitBreaker/RateLimit/Audit/Metrics）
 │   │   │   │   └── ingestion/    # 接入层适配器（Portal/Agent/Feishu/Cron）
@@ -219,7 +220,7 @@ API 路由同时挂载在两个前缀下：
   → Ingestion Adapter（构建 MessageEnvelope）
   → MessageBus.publish()
   → Middleware Pipeline:
-      Metrics → Validation → RateLimit → Semantic → Routing → CircuitBreaker → Transport → Audit
+      Metrics → Validation → ContentFilter → RateLimit → Semantic → Routing → CircuitBreaker → Transport → Audit
   → TransportAdapter（Agent/Channel）投递到目标节点
 ```
 
@@ -241,21 +242,23 @@ MessageEnvelope 遵循 CloudEvents 1.0 规范，扩展字段：
 |--------|------|
 | MetricsMiddleware | OpenTelemetry 埋点（PRODUCER span + 计数器） |
 | ValidationMiddleware | Schema 校验 + 幂等性（INSERT ON CONFLICT）+ 工作区隔离 |
+| ContentFilterMiddleware | 内容合规过滤（CE no-op，EE 通过 FeatureGate 注入策略） |
 | RateLimitMiddleware | 发送方令牌桶限流 |
-| SemanticMiddleware | 规则链：mention→CRITICAL/IMMEDIATE, delay→SCHEDULED, collaborate→NORMAL |
-| RoutingMiddleware | BFS 拓扑解析 + 语义评分 + 背压过滤 + hook 收集 + 拓扑版本追踪 |
+| SemanticMiddleware | 8 条规则链：mention→CRITICAL, NOTIFY/CRON→BACKGROUND, ACK→DEFERRED, delay→SCHEDULED, EXTERNAL→升级, collaborate→NORMAL, routing.priority 覆盖 |
+| RoutingMiddleware | 发送方 BFS + anycast 最少队列选择 + 语义评分 + 背压过滤 + TTL/visited 限制 + 拓扑版本追踪 |
 | CircuitBreakerMiddleware | 熔断保护（OPEN 跳过，HALF_OPEN 探测），恢复时自动重投 recoverable 死信 |
-| TransportMiddleware | 投递 + 接收方速率限制 + 熔断状态更新 + 拓扑版本检测 + 失败重试/DLQ |
-| AuditMiddleware | 8 种事件全生命周期记录（created/routed/delivering/delivered/failed/retried/dead_lettered/error） |
+| TransportMiddleware | 投递 + 优先级分级接收方速率限制 + 熔断状态更新 + 拓扑版本检测 + Edge 指标 + 失败重试/DLQ |
+| AuditMiddleware | 8 种事件全生命周期记录 + backend_instance_id 追踪 |
 
 ### 可靠性
 
-- **PGMQ**: PostgreSQL 消息队列 + WFQ 虚拟时间调度防饥饿
-- **ACK/Retry/DLQ**: 指数退避重试（max 3 次），死信标记 recoverable
-- **熔断器**: 三态（CLOSED/OPEN/HALF_OPEN），恢复时自动重投可恢复死信
+- **PGMQ**: PostgreSQL 消息队列 + WFQ 虚拟时间调度防饥饿 + PG NOTIFY 驱动即时消费 + 5s 轮询兜底
+- **ACK/Retry/DLQ**: 指数退避 + jitter 抖动重试（max 3 次），不可恢复错误（node_card_not_found 等）直接进 DLQ
+- **熔断器**: 三态（CLOSED/OPEN/HALF_OPEN），恢复时自动重投 recoverable 死信
 - **背压**: 按队列深度分级（FULL/NORMAL_ONLY/CRITICAL_ONLY/NONE）
 - **幂等**: INSERT ON CONFLICT DO NOTHING 原子去重
 - **拓扑版本**: 路由缓存带版本号，投递失败时检测版本变更
+- **离线消息**: Agent 重连时自动重放积压消息（on_agent_joined → _replay_pending_messages）
 
 ### SSE 跨实例推送
 
@@ -266,7 +269,7 @@ MessageEnvelope 遵循 CloudEvents 1.0 规范，扩展字段：
 
 ### delegate/escalate 协议
 
-Agent 响应以 `delegate:<target>` 或 `escalate:<target>` 开头时，自动构建新 envelope 转发给目标 Agent 或 Human。
+Agent 响应以 `delegate:<target>` 或 `escalate:<target>` 开头时，自动构建新 envelope 转发给目标 Agent 或 Human。协作深度限制 `MAX_COLLABORATION_DEPTH=5`，超限拒绝。delegation 链通过 `routing.visited` 追踪已访问节点，`causationid`/`correlationid` 追踪因果链。
 
 ### Channel 降级链
 
@@ -290,7 +293,15 @@ deploy_service 根据 Instance.compute_provider 字段分发部署：
 
 ### 启动时初始化
 
-lifespan 中依次初始化：OpenTelemetry → NodeType 同步到 DB → NodeHook 注册 → PG LISTEN/NOTIFY 订阅（topology_changed + sse_push）→ 心跳扫描（含 Agent 健康检查）→ 数据迁移。
+lifespan 中依次初始化：OpenTelemetry → NodeType 同步到 DB → NodeHook 注册 → PG LISTEN/NOTIFY 订阅（topology_changed + sse_push + message_enqueued）→ 心跳扫描（含 Agent 健康检查）→ 队列消费者（NOTIFY 驱动 + 轮询兜底）→ 数据迁移。
+
+### 数据保留策略
+
+| 层级 | 时间范围 | 处理 |
+|------|---------|------|
+| Hot | 0–30 天 | 保留完整 JSONB data |
+| Warm | 30–90 天 | 清除 data 列，只保留 event_type/message_id/trace_id |
+| Cold | >90 天 | 软删除 |
 
 ## 本地开发
 
