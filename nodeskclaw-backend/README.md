@@ -83,7 +83,7 @@ nodeskclaw-backend/
 │   │   │   ├── registries/       # 六大注册表（NodeType/Transport/Runtime/Compute/ContextBridge/Channel）
 │   │   │   ├── adapters/         # Agent 运行时适配器（OpenClaw/ClaudeCode/GenericHTTP）
 │   │   │   ├── context_bridges/  # 上下文注入桥接（ChannelPlugin/SystemPrompt/MCP）
-│   │   │   ├── compute/          # 计算资源提供者（K8s/Docker）
+│   │   │   ├── compute/          # 计算资源提供者（K8s/Docker/Process）
 │   │   │   ├── transport/        # 消息投递适配器（Agent/Channel）
 │   │   │   ├── messaging/        # 消息系统核心
 │   │   │   │   ├── envelope.py   # CloudEvents 对齐的 MessageEnvelope
@@ -98,6 +98,9 @@ nodeskclaw-backend/
 │   │   │   ├── pg_notify.py      # PG LISTEN/NOTIFY 集成
 │   │   │   ├── telemetry.py      # OpenTelemetry 集成
 │   │   │   ├── security.py       # 安全模型（RBAC/隔离/沙箱）
+│   │   │   ├── companion.py      # Companion Process 客户端（CLI Agent HTTP 包装）
+│   │   │   ├── route_cache.py    # RouteTable 拓扑缓存 + PG NOTIFY 失效
+│   │   │   ├── retention.py      # 数据保留策略（EventLog/Queue 清理）
 │   │   │   ├── failure_recovery.py # 实例故障恢复
 │   │   │   └── migration.py      # 数据迁移脚本（旧表 → node_cards）
 │   │   └── k8s/                  # K8s 相关
@@ -204,6 +207,48 @@ API 路由同时挂载在两个前缀下：
 - `message`（文案）为后端可读提示（当前语言）
 - 不再返回 `detail`（错误详情字段）
 - HTTP `status_code`（状态码）保持语义化，不统一改为 200
+
+## 运行时平台 v2 架构
+
+### 消息流转
+
+所有工作区消息（用户聊天、Agent 协作、系统通知）统一通过 MessageBus 管道处理：
+
+```
+入口（Portal/Agent SSE/Feishu/System）
+  → Ingestion Adapter（构建 MessageEnvelope）
+  → MessageBus.publish()
+  → Middleware Pipeline:
+      Metrics → Validation → RateLimit → Semantic → Routing → CircuitBreaker → Transport → Audit
+  → TransportAdapter（Agent/Channel）投递到目标节点
+```
+
+### 中间件管道
+
+| 中间件 | 职责 |
+|--------|------|
+| MetricsMiddleware | OpenTelemetry 埋点（PRODUCER span + 计数器） |
+| ValidationMiddleware | Schema 校验 + 幂等检查 + 工作区隔离 |
+| RateLimitMiddleware | 令牌桶限流 |
+| SemanticMiddleware | 语义标注（消息分类 + 紧急度） |
+| RoutingMiddleware | 拓扑解析（BFS + 语义评分）→ 生成 DeliveryPlan |
+| CircuitBreakerMiddleware | 熔断保护（OPEN 节点自动跳过） |
+| TransportMiddleware | 执行投递 + 失败重试/DLQ |
+| AuditMiddleware | EventLog 写入（事件溯源） |
+
+### 计算环境
+
+deploy_service 根据 Instance.compute_provider 字段分发部署：
+
+| compute_provider | 实现 | 场景 |
+|------------------|------|------|
+| k8s（默认） | 内置 K8s 部署管道 | 生产环境 |
+| docker | DockerComputeProvider | 本地开发/测试 |
+| process | ProcessComputeProvider | 单机调试 |
+
+### 启动时初始化
+
+lifespan 中依次初始化：OpenTelemetry → NodeType 同步到 DB → NodeHook 注册 → PG LISTEN/NOTIFY 订阅 → 心跳扫描 → 数据迁移。
 
 ## 本地开发
 
