@@ -63,11 +63,13 @@ class UserInfo(BaseModel):
     name: str
     email: str | None = None
     phone: str | None = None
+    username: str | None = None
     avatar_url: str | None = None
     role: str
     is_active: bool = True
     is_super_admin: bool = False
     has_password: bool = False
+    must_change_password: bool = False
     current_org_id: str | None = None
     org_role: str | None = None
     portal_org_role: str | None = None
