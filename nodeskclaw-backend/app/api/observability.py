@@ -330,3 +330,160 @@ async def discover_nodes(
     if tag:
         cards = [c for c in cards if c.get("tags") and tag in c["tags"]]
     return _ok(cards)
+
+
+@router.put("/{workspace_id}/nodes/{node_id}/card")
+async def update_node_card(
+    workspace_id: str, node_id: str,
+    body: dict,
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    user, org = org_ctx
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    from app.services.runtime import node_card as nc_service
+
+    card = await nc_service.get_node_card(db, node_id=node_id, workspace_id=workspace_id)
+    if card is None:
+        return {"code": 40430, "message": "NodeCard not found", "data": None}
+
+    allowed = {"name", "description", "tags", "status", "metadata"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if updates:
+        await nc_service.update_node_card(db, card, **updates)
+        await db.commit()
+    return _ok({"node_id": card.node_id, "updated": list(updates.keys())})
+
+
+@router.post("/{workspace_id}/nodes/{node_id}/messages")
+async def post_node_message(
+    workspace_id: str, node_id: str,
+    body: dict,
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    """Type-agnostic node messaging endpoint."""
+    user, org = org_ctx
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    from app.services.runtime.messaging.bus import message_bus
+    from app.services.runtime.messaging.envelope import (
+        IntentType,
+        MessageData,
+        MessageEnvelope,
+        MessageRouting,
+        MessageSender,
+        Priority,
+        SenderType,
+    )
+
+    content = body.get("content", "")
+    target = body.get("target", "")
+    targets = [target] if target else []
+
+    envelope = MessageEnvelope(
+        source=f"api/node/{node_id}",
+        type="deskclaw.msg.v1.collaborate",
+        workspaceid=workspace_id,
+        data=MessageData(
+            sender=MessageSender(
+                id=node_id,
+                type=SenderType(body.get("sender_type", "agent")),
+                name=body.get("sender_name", ""),
+                instance_id=node_id,
+            ),
+            intent=IntentType(body.get("intent", "collaborate")),
+            content=content,
+            priority=Priority(body.get("priority", "normal")),
+            routing=MessageRouting(
+                mode="unicast" if targets else "broadcast",
+                targets=targets,
+            ),
+        ),
+    )
+
+    result = await message_bus.publish(envelope, db=db)
+    await db.commit()
+    return _ok({
+        "envelope_id": envelope.id,
+        "trace_id": envelope.traceid,
+        "error": result.error,
+    })
+
+
+@router.get("/{workspace_id}/nodes/types")
+async def list_node_types(
+    workspace_id: str,
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    user, org = org_ctx
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    from app.services.runtime.registries.node_type_registry import NODE_TYPE_REGISTRY
+
+    types = NODE_TYPE_REGISTRY.all_types()
+    return _ok([
+        {
+            "type_id": t.type_id,
+            "routing_role": t.routing_role.value,
+            "transport": t.transport,
+            "propagates": t.propagates,
+            "consumes": t.consumes,
+            "is_addressable": t.is_addressable,
+            "can_originate": t.can_originate,
+            "description": t.description,
+        }
+        for t in types
+    ])
+
+
+@router.get("/{workspace_id}/messages/alerts")
+async def get_active_alerts(
+    workspace_id: str,
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    user, org = org_ctx
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    open_circuits = await db.execute(
+        select(CircuitState).where(
+            CircuitState.workspace_id == workspace_id,
+            CircuitState.state.in_(["open", "half_open"]),
+            not_deleted(CircuitState),
+        )
+    )
+    circuit_alerts = [
+        {
+            "type": "circuit_breaker",
+            "node_id": cs.node_id,
+            "state": cs.state,
+            "failure_count": cs.failure_count,
+            "opened_at": cs.opened_at.isoformat() if cs.opened_at else None,
+        }
+        for cs in open_circuits.scalars().all()
+    ]
+
+    dl_count_q = await db.execute(
+        select(func.count(DeadLetter.id)).where(
+            DeadLetter.workspace_id == workspace_id,
+            DeadLetter.recovered_at.is_(None),
+            not_deleted(DeadLetter),
+        )
+    )
+    dl_count = dl_count_q.scalar_one_or_none() or 0
+
+    pending_q = await db.execute(
+        select(func.count(MessageQueueItem.id)).where(
+            MessageQueueItem.workspace_id == workspace_id,
+            MessageQueueItem.status.in_(["pending", "retrying"]),
+            not_deleted(MessageQueueItem),
+        )
+    )
+    pending_count = pending_q.scalar_one_or_none() or 0
+
+    alerts = circuit_alerts
+    if dl_count > 0:
+        alerts.append({"type": "dead_letters", "count": dl_count})
+    if pending_count > 10:
+        alerts.append({"type": "queue_backlog", "pending_count": pending_count})
+
+    return _ok(alerts)

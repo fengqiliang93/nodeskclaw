@@ -665,6 +665,29 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   let eventSource: EventSource | null = null
   let externalCallback: ChatSSECallback | null = null
+  let _reconnectAttempts = 0
+  let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let _lastEventId = ''
+  const _recentMessageIds = new Set<string>()
+  const _MAX_DEDUP_IDS = 1000
+
+  function _isDuplicateMessage(id: string): boolean {
+    if (!id) return false
+    if (_recentMessageIds.has(id)) return true
+    _recentMessageIds.add(id)
+    if (_recentMessageIds.size > _MAX_DEDUP_IDS) {
+      const first = _recentMessageIds.values().next().value
+      if (first) _recentMessageIds.delete(first)
+    }
+    return false
+  }
+
+  function _getReconnectDelay(): number {
+    const base = 1000
+    const max = 30000
+    const delay = Math.min(base * Math.pow(2, _reconnectAttempts), max)
+    return delay + Math.random() * 500
+  }
 
   async function connectSSE(workspaceId: string, onEvent?: ChatSSECallback) {
     disconnectSSE()
@@ -677,7 +700,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } catch { /* ignore */ }
     if (!token) token = localStorage.getItem('portal_token') || ''
 
-    eventSource = new EventSource(`/api/v1/workspaces/${workspaceId}/events?token=${token}`)
+    let sseUrl = `/api/v1/workspaces/${workspaceId}/events?token=${token}`
+    if (_lastEventId) {
+      sseUrl += `&after=${encodeURIComponent(_lastEventId)}`
+    }
+    eventSource = new EventSource(sseUrl)
 
     eventSource.onmessage = (e) => {
       try {
@@ -850,15 +877,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
 
     eventSource.onerror = () => {
-      setTimeout(() => {
-        if (eventSource?.readyState === EventSource.CLOSED) {
+      if (eventSource?.readyState === EventSource.CLOSED) {
+        _reconnectAttempts++
+        const delay = _getReconnectDelay()
+        _reconnectTimer = setTimeout(() => {
           connectSSE(workspaceId, externalCallback || undefined)
-        }
-      }, 3000)
+        }, delay)
+      }
     }
+
+    _reconnectAttempts = 0
   }
 
   function disconnectSSE() {
+    if (_reconnectTimer) {
+      clearTimeout(_reconnectTimer)
+      _reconnectTimer = null
+    }
+    _reconnectAttempts = 0
     eventSource?.close()
     eventSource = null
     externalCallback = null
