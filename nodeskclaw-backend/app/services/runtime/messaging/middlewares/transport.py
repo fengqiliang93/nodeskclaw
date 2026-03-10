@@ -68,11 +68,13 @@ class TransportMiddleware(MessageMiddleware):
                 elif isinstance(r, DeliveryResult):
                     ctx.delivery_results.append(r)
 
+        sender_id = ctx.envelope.data.sender.id if ctx.envelope.data and ctx.envelope.data.sender else ""
         if ctx.db:
             from app.services.runtime.messaging.middlewares.circuit_breaker import (
                 record_failure,
                 record_success,
             )
+            from app.services.runtime.telemetry import record_edge_latency, record_edge_message
             for r in ctx.delivery_results:
                 try:
                     if r.success:
@@ -81,6 +83,10 @@ class TransportMiddleware(MessageMiddleware):
                         await record_failure(ctx.db, r.target_node_id, ctx.workspace_id)
                 except Exception as e:
                     logger.warning("Failed to update circuit state for %s: %s", r.target_node_id, e)
+
+                record_edge_message(sender_id, r.target_node_id, ctx.workspace_id)
+                if r.latency_ms:
+                    record_edge_latency(r.latency_ms / 1000, sender_id, r.target_node_id, ctx.workspace_id)
             await ctx.db.flush()
 
         failed = [r for r in ctx.delivery_results if not r.success]

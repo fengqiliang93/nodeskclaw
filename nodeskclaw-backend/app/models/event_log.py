@@ -16,4 +16,5 @@ class EventLog(BaseModel):
     source_node_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     target_node_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    backend_instance_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

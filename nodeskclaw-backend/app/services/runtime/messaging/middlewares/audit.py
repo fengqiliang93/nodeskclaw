@@ -26,6 +26,7 @@ async def record_audit_event(ctx: PipelineContext, event_type: str, data: dict |
         return
     try:
         from app.models.event_log import EventLog
+        from app.services.runtime.sse_registry import BACKEND_INSTANCE_ID
 
         envelope = ctx.envelope
         sender = envelope.data.sender if envelope.data else None
@@ -35,6 +36,7 @@ async def record_audit_event(ctx: PipelineContext, event_type: str, data: dict |
             workspace_id=ctx.workspace_id,
             source_node_id=sender.id if sender else None,
             trace_id=envelope.traceid,
+            backend_instance_id=BACKEND_INSTANCE_ID,
             data=data,
         )
         db.add(log)

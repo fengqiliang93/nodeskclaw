@@ -25,12 +25,15 @@ _msg_received_counter: Any = None
 _msg_failed_counter: Any = None
 _response_latency_histogram: Any = None
 _queue_depth_gauge: Any = None
+_edge_msg_counter: Any = None
+_edge_latency_histogram: Any = None
 
 
 def _try_setup_otel() -> bool:
     global _OTEL_AVAILABLE, _tracer, _meter
     global _msg_sent_counter, _msg_received_counter, _msg_failed_counter
     global _response_latency_histogram, _queue_depth_gauge
+    global _edge_msg_counter, _edge_latency_histogram
 
     endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
@@ -83,6 +86,16 @@ def _try_setup_otel() -> bool:
         _queue_depth_gauge = _meter.create_up_down_counter(
             "deskclaw_msg_queue_depth",
             description="Current message queue depth per node",
+        )
+
+        _edge_msg_counter = _meter.create_counter(
+            "deskclaw_edge_msg_total",
+            description="Total messages per source→target edge",
+        )
+        _edge_latency_histogram = _meter.create_histogram(
+            "deskclaw_edge_latency_seconds",
+            description="Delivery latency per source→target edge",
+            unit="s",
         )
 
         _OTEL_AVAILABLE = True
@@ -181,3 +194,17 @@ def record_response_latency(seconds: float, workspace_id: str, node_id: str) -> 
 def record_queue_depth_change(delta: int, node_id: str) -> None:
     if _queue_depth_gauge:
         _queue_depth_gauge.add(delta, {"node_id": node_id})
+
+
+def record_edge_message(source_node: str, target_node: str, workspace_id: str = "") -> None:
+    if _edge_msg_counter:
+        _edge_msg_counter.add(1, {
+            "source_node": source_node, "target_node": target_node, "workspace_id": workspace_id,
+        })
+
+
+def record_edge_latency(seconds: float, source_node: str, target_node: str, workspace_id: str = "") -> None:
+    if _edge_latency_histogram:
+        _edge_latency_histogram.record(seconds, {
+            "source_node": source_node, "target_node": target_node, "workspace_id": workspace_id,
+        })
