@@ -899,6 +899,20 @@ const enUS = {
     wrongPassword: "Incorrect current password",
     saving: "Saving...",
   },
+  forceChangePassword: {
+    title: "Change Password",
+    description: "You must set a new password before continuing",
+    newPassword: "New Password",
+    newPasswordPlaceholder: "Enter new password (min 6 characters)",
+    confirmPassword: "Confirm Password",
+    confirmPasswordPlaceholder: "Re-enter new password",
+    submit: "Set Password",
+    submitting: "Submitting...",
+    passwordMismatch: "Passwords do not match",
+    passwordTooShort: "Password must be at least 6 characters",
+    success: "Password updated",
+    failed: "Failed to change password",
+  },
   errors: {
     common: {
       not_found: "Resource not found",
@@ -935,6 +949,8 @@ const enUS = {
       old_password_required: "Current password is required",
       wrong_password: "Incorrect current password",
       email_domain_not_allowed: "Email domain is not in the allowed list",
+      password_change_required: "Please change your password first",
+      verification_code_requires_email_or_phone: "Verification code login only supports email or phone number",
     },
     org: {
       user_has_no_org: "User has not joined any organization",

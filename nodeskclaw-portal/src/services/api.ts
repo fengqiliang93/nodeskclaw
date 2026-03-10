@@ -55,6 +55,14 @@ api.interceptors.response.use(
         }
       }
     }
+
+    if (status === 403) {
+      const detail = error.response?.data?.detail
+      if (detail?.error_code === 40350 && window.location.pathname !== '/force-change-password') {
+        window.location.href = '/force-change-password'
+      }
+    }
+
     return Promise.reject(error)
   },
 )

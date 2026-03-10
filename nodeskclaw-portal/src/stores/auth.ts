@@ -12,9 +12,11 @@ export interface PortalUser {
   name: string
   email: string | null
   phone: string | null
+  username: string | null
   avatar_url: string | null
   is_super_admin: boolean
   has_password: boolean
+  must_change_password: boolean
   current_org_id: string | null
   portal_org_role: string | null
   oauth_connections: OAuthConnectionInfo[]

@@ -16,6 +16,12 @@ const ceRoutes: RouteRecordRaw[] = [
     meta: { requiresAuth: false },
   },
   {
+    path: '/force-change-password',
+    name: 'ForceChangePassword',
+    component: () => import('@/views/ForceChangePassword.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/',
     name: 'WorkspaceList',
     component: () => import('@/views/WorkspaceList.vue'),
@@ -135,7 +141,7 @@ router.beforeEach(async (to, _from, next) => {
     return next('/login')
   }
 
-  if (token && !isSetupPage && !to.meta.allowNoOrg) {
+  if (token) {
     const { useAuthStore } = await import('@/stores/auth')
     const authStore = useAuthStore()
     if (!authStore.systemInfo) {
@@ -144,11 +150,17 @@ router.beforeEach(async (to, _from, next) => {
     if (!authStore.user) {
       await authStore.fetchUser()
     }
-    if (authStore.user && !authStore.user.current_org_id) {
-      return next('/setup-org')
+
+    if (authStore.user?.must_change_password && to.path !== '/force-change-password') {
+      return next('/force-change-password')
     }
 
-    // CE-only routes: redirect to home in EE mode
+    if (!isSetupPage && !to.meta.allowNoOrg && to.path !== '/force-change-password') {
+      if (authStore.user && !authStore.user.current_org_id) {
+        return next('/setup-org')
+      }
+    }
+
     if (to.meta.ceOnly && authStore.systemInfo?.edition === 'ee') {
       return next('/')
     }

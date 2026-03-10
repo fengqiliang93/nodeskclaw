@@ -899,6 +899,20 @@ const zhCN = {
     wrongPassword: "当前密码错误",
     saving: "保存中...",
   },
+  forceChangePassword: {
+    title: "修改密码",
+    description: "管理员账号首次登录需要设置新密码",
+    newPassword: "新密码",
+    newPasswordPlaceholder: "请输入新密码（至少 6 位）",
+    confirmPassword: "确认密码",
+    confirmPasswordPlaceholder: "再次输入新密码",
+    submit: "设置密码",
+    submitting: "提交中...",
+    passwordMismatch: "两次输入的密码不一致",
+    passwordTooShort: "密码至少 6 位",
+    success: "密码已更新",
+    failed: "密码修改失败",
+  },
   errors: {
     common: {
       not_found: "资源不存在",
@@ -935,6 +949,8 @@ const zhCN = {
       old_password_required: "请输入当前密码",
       wrong_password: "当前密码错误",
       email_domain_not_allowed: "当前邮箱域名不在允许范围内",
+      password_change_required: "请先修改密码",
+      verification_code_requires_email_or_phone: "验证码登录仅支持邮箱或手机号",
     },
     org: {
       user_has_no_org: "用户未加入任何组织",
