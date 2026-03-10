@@ -83,6 +83,7 @@ async def lifespan(app: FastAPI):
 
         parsed = urlparse(settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1))
         target_db = parsed.path.lstrip("/")
+        db_user = parsed.username or ""
         admin_url = urlunparse(parsed._replace(path="/postgres"))
         _auto_conn = await asyncpg.connect(admin_url)
         try:
@@ -96,6 +97,14 @@ async def lifespan(app: FastAPI):
                 logger.info("开发数据库已存在: %s", target_db)
         finally:
             await _auto_conn.close()
+
+        if db_user:
+            _target_url = urlunparse(parsed._replace(path=f"/{target_db}"))
+            _target_conn = await asyncpg.connect(_target_url)
+            try:
+                await _target_conn.execute(f'GRANT ALL ON SCHEMA public TO "{db_user}"')
+            finally:
+                await _target_conn.close()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
