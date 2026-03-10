@@ -31,6 +31,7 @@ from app.schemas.corridor import (
 )
 from app.services import corridor_router
 from app.services import workspace_member_service as wm_service
+from app.services.runtime import node_card as node_card_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -125,6 +126,16 @@ async def create_corridor_hex(
     )
     db.add(ch)
 
+    await node_card_service.create_node_card(
+        db,
+        node_type="corridor",
+        node_id=ch.id,
+        workspace_id=workspace_id,
+        hex_q=body.hex_q,
+        hex_r=body.hex_r,
+        name=body.display_name or "",
+    )
+
     await corridor_router.auto_connect_hex(workspace_id, body.hex_q, body.hex_r, user.id if user else None, db)
 
     await db.commit()
@@ -210,6 +221,17 @@ async def update_corridor_hex(
             ch.hex_r = new_r
             position_changed = True
 
+    card = await node_card_service.get_node_card(db, node_id=ch.id, workspace_id=workspace_id)
+    if card:
+        updates: dict = {}
+        if body.display_name is not None:
+            updates["name"] = ch.display_name
+        if position_changed:
+            updates["hex_q"] = ch.hex_q
+            updates["hex_r"] = ch.hex_r
+        if updates:
+            await node_card_service.update_node_card(db, card, **updates)
+
     await db.commit()
 
     if position_changed:
@@ -270,6 +292,7 @@ async def delete_corridor_hex(
         conn.soft_delete()
 
     ch.soft_delete()
+    await node_card_service.soft_delete_node_card(db, node_id=ch.id, workspace_id=workspace_id)
     await db.commit()
     actor_type, actor_id = _actor(org_ctx)
     broadcast_event(workspace_id, "corridor:hex_removed", {"hex_id": ch.id})
@@ -430,6 +453,23 @@ async def create_human_hex(
         created_by=actor_id,
     )
     db.add(hh)
+
+    await node_card_service.create_node_card(
+        db,
+        node_type="human",
+        node_id=hh.id,
+        workspace_id=workspace_id,
+        hex_q=body.hex_q,
+        hex_r=body.hex_r,
+        name=body.display_name or "",
+        metadata={
+            "user_id": body.user_id,
+            "display_color": body.display_color,
+            "channel_type": body.channel_type,
+            "channel_config": body.channel_config,
+        },
+    )
+
     await db.commit()
     broadcast_event(workspace_id, "human:hex_placed", {"hex_id": hh.id, "user_id": body.user_id, "hex_q": hh.hex_q, "hex_r": hh.hex_r, "display_name": hh.display_name})
     await hooks.emit(
@@ -483,6 +523,31 @@ async def update_human_hex(
         hh.channel_type = body.channel_type
     if body.channel_config is not None:
         hh.channel_config = body.channel_config
+
+    card = await node_card_service.get_node_card(db, node_id=hh.id, workspace_id=workspace_id)
+    if card:
+        card_updates: dict = {}
+        if body.display_name is not None:
+            card_updates["name"] = hh.display_name or ""
+        if position_changed:
+            card_updates["hex_q"] = hh.hex_q
+            card_updates["hex_r"] = hh.hex_r
+        meta = card.metadata_ or {}
+        meta_changed = False
+        if body.display_color is not None:
+            meta["display_color"] = hh.display_color
+            meta_changed = True
+        if body.channel_type is not None:
+            meta["channel_type"] = hh.channel_type
+            meta_changed = True
+        if body.channel_config is not None:
+            meta["channel_config"] = hh.channel_config
+            meta_changed = True
+        if meta_changed:
+            card_updates["metadata"] = meta
+        if card_updates:
+            await node_card_service.update_node_card(db, card, **card_updates)
+
     await db.commit()
     if position_changed:
         await corridor_router.cascade_delete_connections(workspace_id, old_q, old_r, db)
@@ -527,6 +592,7 @@ async def delete_human_hex(
     if not hh:
         raise HTTPException(404, "human hex not found")
     hh.soft_delete()
+    await node_card_service.soft_delete_node_card(db, node_id=hh.id, workspace_id=workspace_id)
     await db.commit()
     actor_type, actor_id = _actor(org_ctx)
     broadcast_event(workspace_id, "human:hex_removed", {"hex_id": hex_id})

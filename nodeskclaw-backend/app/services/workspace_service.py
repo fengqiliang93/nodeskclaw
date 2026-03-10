@@ -11,6 +11,7 @@ from app.models.blackboard import Blackboard
 from app.models.instance import Instance
 from app.models.workspace import Workspace
 from app.models.workspace_agent import WorkspaceAgent
+from app.services.runtime import node_card as node_card_service
 from app.models.workspace_member import WorkspaceMember, WorkspaceRole
 from app.models.workspace_objective import WorkspaceObjective
 from app.models.workspace_schedule import WorkspaceSchedule
@@ -88,6 +89,16 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
 
     bb = Blackboard(workspace_id=ws.id)
     db.add(bb)
+
+    await node_card_service.create_node_card(
+        db,
+        node_type="blackboard",
+        node_id=bb.id if bb.id else ws.id,
+        workspace_id=ws.id,
+        hex_q=0,
+        hex_r=0,
+        name="Blackboard",
+    )
 
     member = WorkspaceMember(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.owner, is_admin=True)
     db.add(member)
@@ -336,6 +347,17 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
     db.add(wa)
     await db.flush()
 
+    await node_card_service.create_node_card(
+        db,
+        node_type="agent",
+        node_id=inst.id,
+        workspace_id=workspace_id,
+        hex_q=hex_q,
+        hex_r=hex_r,
+        name=data.display_name or inst.name,
+        metadata={"runtime": "openclaw", "instance_id": inst.id},
+    )
+
     from app.services import corridor_router
     connected = await corridor_router.auto_connect_hex(
         workspace_id, wa.hex_q, wa.hex_r, user_id, db,
@@ -422,6 +444,9 @@ async def remove_agent(db: AsyncSession, workspace_id: str, instance_id: str) ->
 
     await _remove_channel_plugin(inst, db, workspace_id)
     wa.soft_delete()
+    await node_card_service.soft_delete_node_card(
+        db, node_id=instance_id, workspace_id=workspace_id,
+    )
     await db.commit()
     return True
 

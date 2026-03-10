@@ -1,4 +1,9 @@
-"""Corridor routing engine — BFS-based bidirectional graph traversal for workspace topology."""
+"""Corridor routing engine — type-agnostic BFS-based directed graph traversal for workspace topology.
+
+v2: Reads from both node_cards (primary) and legacy tables (fallback during transition).
+    Uses NodeTypeRegistry for routing decisions instead of hardcoded type checks.
+    Supports directed edges via HexConnection.direction field.
+"""
 
 from __future__ import annotations
 
@@ -13,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.base import not_deleted
 from app.models.corridor import CorridorHex, HexConnection, HumanHex, ordered_pair
 from app.models.instance import Instance
+from app.models.node_card import NodeCard
 from app.models.workspace_agent import WorkspaceAgent
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_message import WorkspaceMessage
+from app.services.runtime.registries.node_type_registry import NODE_TYPE_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +31,8 @@ logger = logging.getLogger(__name__)
 class ReachableEndpoint:
     hex_q: int
     hex_r: int
-    endpoint_type: str  # "agent" | "human" | "blackboard"
-    entity_id: str  # instance_id or user_id
+    endpoint_type: str
+    entity_id: str
     display_name: str = ""
 
 
@@ -33,7 +40,7 @@ class ReachableEndpoint:
 class TopologyNode:
     hex_q: int
     hex_r: int
-    node_type: str  # "blackboard" | "agent" | "human" | "corridor"
+    node_type: str
     entity_id: str | None = None
     display_name: str | None = None
     extra: dict = field(default_factory=dict)
@@ -46,6 +53,7 @@ class TopologyEdge:
     b_q: int
     b_r: int
     auto_created: bool
+    direction: str = "both"
 
 
 @dataclass
@@ -55,8 +63,37 @@ class Topology:
 
 
 async def _build_hex_map(workspace_id: str, db: AsyncSession) -> dict[tuple[int, int], TopologyNode]:
-    """Build a mapping from (q, r) -> node info for all occupied hexes."""
+    """Build a mapping from (q, r) -> node info.
+
+    Reads from node_cards first; falls back to legacy tables for nodes not yet migrated.
+    """
     hex_map: dict[tuple[int, int], TopologyNode] = {}
+
+    cards_q = await db.execute(
+        select(NodeCard).where(
+            NodeCard.workspace_id == workspace_id,
+            not_deleted(NodeCard),
+        )
+    )
+    for card in cards_q.scalars().all():
+        meta = card.metadata_ or {}
+        extra = {}
+        if card.node_type == "human":
+            extra = {
+                "user_id": meta.get("user_id"),
+                "display_color": meta.get("display_color", "#f59e0b"),
+                "channel_type": meta.get("channel_type"),
+                "channel_config": meta.get("channel_config"),
+            }
+        hex_map[(card.hex_q, card.hex_r)] = TopologyNode(
+            card.hex_q, card.hex_r, card.node_type,
+            entity_id=card.node_id,
+            display_name=card.name,
+            extra=extra,
+        )
+
+    if hex_map:
+        return hex_map
 
     hex_map[(0, 0)] = TopologyNode(0, 0, "blackboard")
 
@@ -106,11 +143,14 @@ async def _build_hex_map(workspace_id: str, db: AsyncSession) -> dict[tuple[int,
     return hex_map
 
 
-async def _get_adjacency(workspace_id: str, db: AsyncSession) -> dict[tuple[int, int], list[tuple[int, int]]]:
-    """Build bidirectional adjacency list from hex_connections.
+async def _get_adjacency(
+    workspace_id: str, db: AsyncSession,
+) -> dict[tuple[int, int], list[tuple[int, int]]]:
+    """Build adjacency list from hex_connections, respecting direction field.
 
-    All connections are treated as bidirectional (direction control removed in this version).
-    Returns {(q, r): [(neighbor_q, neighbor_r), ...]}
+    direction="both": bidirectional edges.
+    direction="a_to_b": only a->b edge.
+    direction="b_to_a": only b->a edge.
     """
     conns_q = await db.execute(
         select(HexConnection).where(
@@ -122,16 +162,41 @@ async def _get_adjacency(workspace_id: str, db: AsyncSession) -> dict[tuple[int,
     for conn in conns_q.scalars().all():
         a = (conn.hex_a_q, conn.hex_a_r)
         b = (conn.hex_b_q, conn.hex_b_r)
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
+        direction = conn.direction or "both"
+
+        if direction in ("both", "a_to_b"):
+            adj.setdefault(a, []).append(b)
+        if direction in ("both", "b_to_a"):
+            adj.setdefault(b, []).append(a)
 
     return adj
 
 
+def _should_propagate(node_type: str) -> bool:
+    type_def = NODE_TYPE_REGISTRY.get(node_type)
+    if type_def is not None:
+        return type_def.propagates
+    return node_type in ("corridor", "blackboard")
+
+
+def _should_consume(node_type: str) -> bool:
+    type_def = NODE_TYPE_REGISTRY.get(node_type)
+    if type_def is not None:
+        return type_def.consumes
+    return node_type in ("agent", "human", "blackboard")
+
+
+def _is_addressable(node_type: str) -> bool:
+    type_def = NODE_TYPE_REGISTRY.get(node_type)
+    if type_def is not None:
+        return type_def.is_addressable
+    return node_type != "corridor"
+
+
 async def get_reachable_endpoints(
-    workspace_id: str, from_q: int, from_r: int, db: AsyncSession
+    workspace_id: str, from_q: int, from_r: int, db: AsyncSession,
 ) -> list[ReachableEndpoint]:
-    """BFS from (from_q, from_r), corridor hexes relay, agent/human hexes terminate."""
+    """BFS from (from_q, from_r) using registry-driven routing rules."""
     hex_map = await _build_hex_map(workspace_id, db)
     adj = await _get_adjacency(workspace_id, db)
 
@@ -148,23 +213,15 @@ async def get_reachable_endpoints(
             node = hex_map.get(neighbor)
             if node is None:
                 continue
-            if node.node_type == "agent":
+
+            if _should_consume(node.node_type):
                 endpoints.append(ReachableEndpoint(
-                    node.hex_q, node.hex_r, "agent", node.entity_id or "",
+                    node.hex_q, node.hex_r, node.node_type,
+                    node.entity_id or "",
                     display_name=node.display_name or "",
                 ))
-            elif node.node_type == "human":
-                endpoints.append(ReachableEndpoint(
-                    node.hex_q, node.hex_r, "human", node.entity_id or "",
-                    display_name=node.display_name or "",
-                ))
-            elif node.node_type == "corridor":
-                queue.append(neighbor)
-            elif node.node_type == "blackboard":
-                endpoints.append(ReachableEndpoint(
-                    node.hex_q, node.hex_r, "blackboard", "blackboard",
-                    display_name="Blackboard",
-                ))
+
+            if _should_propagate(node.node_type):
                 queue.append(neighbor)
 
     return endpoints
@@ -173,7 +230,18 @@ async def get_reachable_endpoints(
 async def get_agent_hex_in_workspace(
     instance_id: str, workspace_id: str, db: AsyncSession,
 ) -> tuple[int, int] | None:
-    """Get the workspace-specific hex position for an instance from workspace_agents."""
+    card_q = await db.execute(
+        select(NodeCard.hex_q, NodeCard.hex_r).where(
+            NodeCard.node_id == instance_id,
+            NodeCard.workspace_id == workspace_id,
+            NodeCard.node_type == "agent",
+            not_deleted(NodeCard),
+        ).limit(1)
+    )
+    row = card_q.first()
+    if row:
+        return (row.hex_q, row.hex_r)
+
     wa = await db.execute(
         select(WorkspaceAgent.hex_q, WorkspaceAgent.hex_r)
         .where(
@@ -188,16 +256,14 @@ async def get_agent_hex_in_workspace(
 
 
 async def get_blackboard_audience(
-    workspace_id: str, db: AsyncSession
+    workspace_id: str, db: AsyncSession,
 ) -> list[ReachableEndpoint]:
-    """Get all endpoints reachable from the blackboard at (0, 0)."""
     return await get_reachable_endpoints(workspace_id, 0, 0, db)
 
 
 async def can_reach(
-    workspace_id: str, from_q: int, from_r: int, to_q: int, to_r: int, db: AsyncSession
+    workspace_id: str, from_q: int, from_r: int, to_q: int, to_r: int, db: AsyncSession,
 ) -> bool:
-    """Check if there is a path from source to target."""
     hex_map = await _build_hex_map(workspace_id, db)
     adj = await _get_adjacency(workspace_id, db)
 
@@ -214,14 +280,13 @@ async def can_reach(
                 continue
             visited.add(neighbor)
             node = hex_map.get(neighbor)
-            if node and node.node_type in ("corridor", "blackboard"):
+            if node and _should_propagate(node.node_type):
                 queue.append(neighbor)
 
     return False
 
 
 async def get_topology(workspace_id: str, db: AsyncSession) -> Topology:
-    """Return the full topology graph for visualization."""
     hex_map = await _build_hex_map(workspace_id, db)
 
     conns_q = await db.execute(
@@ -231,7 +296,10 @@ async def get_topology(workspace_id: str, db: AsyncSession) -> Topology:
         )
     )
     edges = [
-        TopologyEdge(c.hex_a_q, c.hex_a_r, c.hex_b_q, c.hex_b_r, c.auto_created)
+        TopologyEdge(
+            c.hex_a_q, c.hex_a_r, c.hex_b_q, c.hex_b_r,
+            c.auto_created, direction=c.direction or "both",
+        )
         for c in conns_q.scalars().all()
     ]
 
@@ -239,7 +307,6 @@ async def get_topology(workspace_id: str, db: AsyncSession) -> Topology:
 
 
 async def has_any_connections(workspace_id: str, db: AsyncSession) -> bool:
-    """Check if the workspace has any connections configured (for backward compat)."""
     result = await db.execute(
         select(HexConnection.id).where(
             HexConnection.workspace_id == workspace_id,
@@ -249,10 +316,29 @@ async def has_any_connections(workspace_id: str, db: AsyncSession) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+async def has_no_connections(workspace_id: str, db: AsyncSession) -> bool:
+    return not await has_any_connections(workspace_id, db)
+
+
+async def get_all_addressable_nodes(
+    workspace_id: str, db: AsyncSession,
+) -> list[ReachableEndpoint]:
+    """Fallback when no topology exists: return all addressable nodes."""
+    hex_map = await _build_hex_map(workspace_id, db)
+    return [
+        ReachableEndpoint(
+            node.hex_q, node.hex_r, node.node_type,
+            node.entity_id or "",
+            display_name=node.display_name or "",
+        )
+        for node in hex_map.values()
+        if _is_addressable(node.node_type)
+    ]
+
+
 async def cascade_delete_connections(
     workspace_id: str, q: int, r: int, db: AsyncSession,
 ) -> None:
-    """Soft-delete all hex connections referencing the given position."""
     conns = await db.execute(
         select(HexConnection).where(
             HexConnection.workspace_id == workspace_id,
@@ -270,11 +356,6 @@ async def cascade_delete_connections(
 async def auto_connect_hex(
     workspace_id: str, q: int, r: int, created_by: str | None, db: AsyncSession,
 ) -> list[TopologyNode]:
-    """Auto-create bidirectional connections to all adjacent occupied hexes.
-
-    Returns the list of neighbor TopologyNodes that were connected (including
-    already-connected ones).
-    """
     hex_map = await _build_hex_map(workspace_id, db)
     offsets = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)]
     connected: list[TopologyNode] = []
@@ -313,12 +394,8 @@ async def auto_connect_hex(
 
 
 async def detect_islands(
-    workspace_id: str, db: AsyncSession
+    workspace_id: str, db: AsyncSession,
 ) -> list[list[str]]:
-    """Detect topology islands — return list of mutually disconnected node groups.
-
-    Each group is a list of hex keys as "q,r" strings. Uses BFS from each unvisited node.
-    """
     hex_map = await _build_hex_map(workspace_id, db)
     adj = await _get_adjacency(workspace_id, db)
 
@@ -345,12 +422,8 @@ async def detect_islands(
 
 
 async def detect_single_points_of_failure(
-    workspace_id: str, db: AsyncSession
+    workspace_id: str, db: AsyncSession,
 ) -> list[str]:
-    """Detect single points of failure — nodes whose removal would split the topology.
-
-    Returns list of hex keys as "q,r" strings (articulation points).
-    """
     hex_map = await _build_hex_map(workspace_id, db)
     adj = await _get_adjacency(workspace_id, db)
     all_nodes = set(hex_map.keys())
@@ -393,13 +466,8 @@ class MessageFlowPair:
 
 
 async def get_message_flow_stats(
-    workspace_id: str, db: AsyncSession
+    workspace_id: str, db: AsyncSession,
 ) -> list[MessageFlowPair]:
-    """Count messages per sender-receiver hex pair from workspace_messages.
-
-    Maps sender_id/sender_type and target_instance_id to hex positions.
-    Only includes pairs where both sender and receiver have hex positions in this workspace.
-    """
     agents_q = await db.execute(
         select(Instance.id, WorkspaceAgent.hex_q, WorkspaceAgent.hex_r).join(
             WorkspaceAgent,
