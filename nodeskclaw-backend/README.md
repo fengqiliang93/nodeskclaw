@@ -347,6 +347,13 @@ cp .env.example .env
 
 未来接入其他 OAuth 提供方（如钉钉、企业微信等）时，需在配置中新增对应 `*_APP_ID`、`*_APP_SECRET` 等变量。
 
+CE 超管配置（可选）：
+
+| 变量 | 说明 |
+|------|------|
+| `INIT_ADMIN_ACCOUNT` | 超管的 username，默认 `admin`。留空则跳过自动创建 |
+| `RESET_ADMIN_PASSWORD` | 设为 `true` 后重启可强制重置超管密码。默认 `false` |
+
 可选项：
 
 | 变量 | 说明 |
@@ -474,12 +481,42 @@ uv run alembic merge -m "merge branches" <rev1> <rev2>
 
 首次启动时自动创建（幂等，每次启动检查）：
 
+- **CE 超管用户**（见下方"CE 超管初始化"）
 - 默认组织（Default Organization）
 - 预设工作区模板（软件研发团队、内容工作室、研究实验室）
 - 超管用户的 AdminMembership 记录
 - 工作区定时器（任务巡检）
 
 种子数据逻辑位于 `app/startup/seed.py`。
+
+### CE 超管初始化
+
+CE 版本通过 `INIT_ADMIN_ACCOUNT` 配置项自动创建超管账号。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `INIT_ADMIN_ACCOUNT` | `admin` | 超管的 username，留空则跳过自动创建 |
+| `RESET_ADMIN_PASSWORD` | `false` | 设为 `true` 后重启会强制重置超管密码 |
+
+#### 首次启动
+
+1. 自动创建 `admin` 用户（`is_super_admin=True`）
+2. 生成随机密码并在 Console 醒目输出
+3. 用户使用 `admin` + 随机密码登录后，系统强制跳转到改密页面
+4. 设置新密码后即可正常使用
+
+#### 重置密码
+
+如果超管忘记密码，在 `.env` 中设置 `RESET_ADMIN_PASSWORD=true` 后重启服务，Console 会输出新的随机密码。重置完成后记得将配置改回 `false`。
+
+#### 每次重启的行为
+
+| 超管状态 | 行为 |
+|----------|------|
+| 不存在 | 创建用户 + 生成随机密码 |
+| 存在 + `RESET_ADMIN_PASSWORD=true` | 强制重置密码 |
+| 存在 + 尚未改密（`must_change_password=true`） | 重新生成随机密码（确保 Console 输出最新可用密码） |
+| 存在 + 已改密 | 不做任何操作 |
 
 ### 软删除
 
