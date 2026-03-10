@@ -9,22 +9,48 @@ from app.services.runtime.messaging.pipeline import MessageMiddleware, NextFn, P
 logger = logging.getLogger(__name__)
 
 
+async def _record_event(ctx: PipelineContext, event_type: str, data: dict | None = None) -> None:
+    db = ctx.db
+    if db is None:
+        return
+    try:
+        from app.models.event_log import EventLog
+
+        envelope = ctx.envelope
+        sender = envelope.data.sender if envelope.data else None
+        log = EventLog(
+            event_type=event_type,
+            message_id=envelope.id,
+            workspace_id=ctx.workspace_id,
+            source_node_id=sender.id if sender else None,
+            trace_id=envelope.traceid,
+            data=data,
+        )
+        db.add(log)
+        await db.flush()
+    except Exception as e:
+        logger.warning("AuditMiddleware: failed to record event: %s", e)
+
+
 class AuditMiddleware(MessageMiddleware):
     async def process(self, ctx: PipelineContext, next_fn: NextFn) -> None:
-        logger.debug(
-            "AuditMiddleware: message %s entering pipeline (workspace=%s)",
-            ctx.envelope.id, ctx.workspace_id,
-        )
-
         await next_fn(ctx)
 
+        delivered = [r for r in ctx.delivery_results if r.success]
+        failed = [r for r in ctx.delivery_results if not r.success]
+
         if ctx.error:
-            logger.info(
-                "AuditMiddleware: message %s failed: %s",
-                ctx.envelope.id, ctx.error,
-            )
+            await _record_event(ctx, "message_pipeline_error", {
+                "error": ctx.error,
+            })
+        elif failed and not delivered:
+            await _record_event(ctx, "message_delivery_failed", {
+                "failed_targets": [r.target_node_id for r in failed],
+                "errors": [r.error for r in failed],
+            })
         else:
-            logger.debug(
-                "AuditMiddleware: message %s completed pipeline",
-                ctx.envelope.id,
-            )
+            await _record_event(ctx, "message_delivered", {
+                "delivered_to": [r.target_node_id for r in delivered],
+                "failed_targets": [r.target_node_id for r in failed] if failed else [],
+                "mode": ctx.delivery_plan.mode if ctx.delivery_plan else "unknown",
+            })

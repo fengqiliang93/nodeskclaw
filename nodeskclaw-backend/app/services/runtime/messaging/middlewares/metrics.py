@@ -1,4 +1,4 @@
-"""MetricsMiddleware — collects message processing metrics (OpenTelemetry integration point)."""
+"""MetricsMiddleware — collects message processing metrics with OpenTelemetry integration."""
 
 from __future__ import annotations
 
@@ -20,14 +20,35 @@ class MetricsMiddleware(MessageMiddleware):
         start = time.monotonic()
         self._total_messages += 1
 
-        await next_fn(ctx)
+        try:
+            from app.services.runtime.telemetry import producer_span, record_message_sent
 
-        elapsed_ms = (time.monotonic() - start) * 1000
-        self._total_latency_ms += elapsed_ms
-        ctx.metrics["pipeline_latency_ms"] = elapsed_ms
+            with producer_span(ctx.envelope) as span:
+                await next_fn(ctx)
 
-        if ctx.error:
-            self._total_errors += 1
+                elapsed_ms = (time.monotonic() - start) * 1000
+                self._total_latency_ms += elapsed_ms
+                ctx.metrics["pipeline_latency_ms"] = elapsed_ms
+
+                if ctx.error:
+                    self._total_errors += 1
+                    from app.services.runtime.telemetry import record_message_failed
+                    record_message_failed(ctx.envelope, ctx.error)
+                    if span:
+                        span.set_status_error(ctx.error)
+                else:
+                    record_message_sent(ctx.envelope)
+                    delivered = [r for r in ctx.delivery_results if r.success]
+                    for r in delivered:
+                        from app.services.runtime.telemetry import record_response_latency
+                        record_response_latency(r.latency_ms)
+        except ImportError:
+            await next_fn(ctx)
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._total_latency_ms += elapsed_ms
+            ctx.metrics["pipeline_latency_ms"] = elapsed_ms
+            if ctx.error:
+                self._total_errors += 1
 
     @property
     def stats(self) -> dict:

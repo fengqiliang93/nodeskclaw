@@ -1,4 +1,4 @@
-"""ValidationMiddleware — schema validation and source node legitimacy checks."""
+"""ValidationMiddleware — schema validation, idempotency, and workspace isolation."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ import logging
 from app.services.runtime.messaging.pipeline import MessageMiddleware, NextFn, PipelineContext
 
 logger = logging.getLogger(__name__)
-
-IDEMPOTENCY_ENABLED = False
 
 
 class ValidationMiddleware(MessageMiddleware):
@@ -32,7 +30,50 @@ class ValidationMiddleware(MessageMiddleware):
             ctx.error = "workspaceid is required"
             return
 
-        if IDEMPOTENCY_ENABLED:
-            pass
+        db = ctx.db
+        if db is not None:
+            if await self._check_idempotency(ctx, db):
+                return
+
+            from app.services.runtime.security import check_workspace_isolation
+            isolation_ok = await check_workspace_isolation(
+                envelope.workspaceid,
+                envelope.data.sender.id if envelope.data.sender else "",
+                db,
+            )
+            if not isolation_ok:
+                logger.warning(
+                    "ValidationMiddleware: workspace isolation check failed for %s",
+                    envelope.id,
+                )
+                ctx.short_circuited = True
+                ctx.error = "workspace_isolation_violation"
+                return
 
         await next_fn(ctx)
+
+    async def _check_idempotency(self, ctx: PipelineContext, db) -> bool:
+        """Return True if this message was already processed (short-circuits)."""
+        try:
+            from sqlalchemy import select
+
+            from app.models.idempotency_cache import IdempotencyCache
+
+            result = await db.execute(
+                select(IdempotencyCache).where(
+                    IdempotencyCache.message_id == ctx.envelope.id,
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                logger.info("Idempotency: duplicate message %s, short-circuiting", ctx.envelope.id)
+                ctx.short_circuited = True
+                ctx.extra["idempotency_hit"] = True
+                return True
+
+            cache_entry = IdempotencyCache(message_id=ctx.envelope.id)
+            db.add(cache_entry)
+            await db.flush()
+        except Exception as e:
+            logger.warning("Idempotency check failed (non-fatal): %s", e)
+        return False
