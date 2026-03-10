@@ -30,6 +30,8 @@ dependencies = [
     "aiosmtplib>=3.0.0",
     # Object Storage (Volcengine TOS)
     "tos>=2.7.0",
+    # Database migrations
+    "alembic>=1.13.0",
 ]
 
 [dependency-groups]
