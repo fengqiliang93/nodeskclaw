@@ -275,6 +275,7 @@ class _DeployContext:
     has_llm_configs: bool = False
     template_id: str | None = None
     template_gene_slugs: list[str] | None = None
+    compute_provider: str = "k8s"
 
 
 async def deploy_instance(
@@ -445,14 +446,22 @@ async def deploy_instance(
         has_llm_configs=bool(req.llm_configs),
         template_id=req.template_id,
         template_gene_slugs=template_gene_slugs,
+        compute_provider=instance.compute_provider,
     )
 
 
 async def execute_deploy_pipeline(ctx: _DeployContext) -> None:
     """
-    后台异步阶段：使用独立 DB session 执行 K8s 资源创建。
-    通过 EventBus 推送 SSE 进度事件。
+    后台异步阶段：根据 compute_provider 选择部署方式。
+    K8s 走完整的内置管道；Docker/Process 等委托给 ComputeProvider。
     """
+    if ctx.compute_provider != "k8s":
+        try:
+            await _execute_via_compute_provider(ctx)
+        finally:
+            _unregister_deploy_task(ctx.record_id)
+        return
+
     from app.core.deps import async_session_factory
     from app.services.config_service import get_config
 
@@ -467,6 +476,105 @@ async def execute_deploy_pipeline(ctx: _DeployContext) -> None:
         await _execute_deploy_inner(ctx, async_session_factory, get_config, total, steps)
     finally:
         _unregister_deploy_task(ctx.record_id)
+
+
+async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
+    """非 K8s 环境：通过 COMPUTE_REGISTRY 查找对应 provider 并委托部署。"""
+    from app.core.deps import async_session_factory
+    from app.services.runtime.registries.compute_registry import COMPUTE_REGISTRY
+
+    spec = COMPUTE_REGISTRY.get(ctx.compute_provider)
+    if spec is None or spec.provider is None:
+        logger.error("未注册的 compute_provider: %s", ctx.compute_provider)
+        await _mark_deploy_failed(ctx, f"未注册的 compute_provider: {ctx.compute_provider}")
+        return
+
+    provider = spec.provider
+    config = {
+        "instance_id": ctx.instance_id,
+        "name": ctx.name,
+        "namespace": ctx.namespace,
+        "image": f"openclaw:{ctx.image_version}",
+        "image_version": ctx.image_version,
+        "replicas": ctx.replicas,
+        "cpu_request": ctx.cpu_request,
+        "cpu_limit": ctx.cpu_limit,
+        "mem_request": ctx.mem_request,
+        "mem_limit": ctx.mem_limit,
+        "storage_size": ctx.storage_size,
+        "env_vars": ctx.env_vars or {},
+        "advanced_config": ctx.advanced_config or {},
+    }
+
+    event_bus.publish(
+        "deploy_progress",
+        DeployProgress(
+            deploy_id=ctx.record_id, step=1, total_steps=3,
+            current_step=f"启动 {ctx.compute_provider} 部署", status="in_progress",
+            message=None, percent=10,
+        ).model_dump(),
+    )
+
+    try:
+        result = await provider.create_instance(config)
+        logger.info("ComputeProvider[%s] 部署完成: %s", ctx.compute_provider, result)
+    except Exception as e:
+        logger.exception("ComputeProvider[%s] 部署失败", ctx.compute_provider)
+        await _mark_deploy_failed(ctx, str(e)[:500])
+        event_bus.publish(
+            "deploy_progress",
+            DeployProgress(
+                deploy_id=ctx.record_id, step=3, total_steps=3,
+                current_step="失败", status="failed",
+                message=str(e)[:200], percent=100,
+            ).model_dump(),
+        )
+        return
+
+    async with async_session_factory() as db:
+        rec_result = await db.execute(select(DeployRecord).where(DeployRecord.id == ctx.record_id))
+        record = rec_result.scalar_one()
+        record.status = DeployStatus.success
+        record.finished_at = datetime.now(timezone.utc)
+
+        inst_result = await db.execute(select(Instance).where(Instance.id == ctx.instance_id))
+        instance = inst_result.scalar_one()
+        instance.status = InstanceStatus.running
+        await db.commit()
+
+    event_bus.publish(
+        "deploy_progress",
+        DeployProgress(
+            deploy_id=ctx.record_id, step=3, total_steps=3,
+            current_step="完成", status="success",
+            message="部署成功", percent=100,
+        ).model_dump(),
+    )
+
+
+async def _mark_deploy_failed(ctx: _DeployContext, message: str) -> None:
+    """标记部署记录为失败并软删除实例。"""
+    from app.core.deps import async_session_factory
+
+    try:
+        async with async_session_factory() as db:
+            rec_result = await db.execute(select(DeployRecord).where(DeployRecord.id == ctx.record_id))
+            record = rec_result.scalar_one()
+            record.status = DeployStatus.failed
+            record.message = message
+            record.finished_at = datetime.now(timezone.utc)
+
+            inst_result = await db.execute(select(Instance).where(Instance.id == ctx.instance_id))
+            instance = inst_result.scalar_one()
+            instance.soft_delete()
+            await db.execute(
+                update(DeployRecord)
+                .where(DeployRecord.instance_id == ctx.instance_id, DeployRecord.deleted_at.is_(None))
+                .values(deleted_at=func.now())
+            )
+            await db.commit()
+    except Exception:
+        logger.exception("标记部署失败状态时出错")
 
 
 async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, steps) -> None:
