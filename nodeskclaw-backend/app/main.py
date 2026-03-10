@@ -98,13 +98,19 @@ async def lifespan(app: FastAPI):
         finally:
             await _auto_conn.close()
 
-        if db_user:
-            _target_url = urlunparse(parsed._replace(path=f"/{target_db}"))
-            _target_conn = await asyncpg.connect(_target_url)
-            try:
-                await _target_conn.execute(f'GRANT ALL ON SCHEMA public TO "{db_user}"')
-            finally:
-                await _target_conn.close()
+        _target_url = urlunparse(parsed._replace(path=f"/{target_db}"))
+        _target_conn = await asyncpg.connect(_target_url)
+        try:
+            await _target_conn.execute(
+                "CREATE SCHEMA IF NOT EXISTS nodeskclaw AUTHORIZATION current_user"
+            )
+            await _target_conn.execute(
+                f'ALTER DATABASE "{target_db}" SET search_path TO nodeskclaw, public'
+            )
+            await _target_conn.execute("SET search_path TO nodeskclaw, public")
+            logger.info("开发数据库 schema 已就绪: nodeskclaw (search_path = nodeskclaw, public)")
+        finally:
+            await _target_conn.close()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

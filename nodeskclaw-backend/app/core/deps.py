@@ -9,10 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.core.feature_gate import feature_gate
 
+_connect_args: dict = {"ssl": False}
+if settings.DATABASE_NAME_SUFFIX:
+    _connect_args["server_settings"] = {"search_path": "nodeskclaw, public"}
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    connect_args={"ssl": False},  # 托管数据库 内网不需要 SSL
+    connect_args=_connect_args,
 )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
