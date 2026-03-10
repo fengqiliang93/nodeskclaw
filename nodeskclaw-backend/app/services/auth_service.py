@@ -425,7 +425,7 @@ async def change_password(
     if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    if user.password_hash:
+    if user.password_hash and not user.must_change_password:
         if not old_password:
             raise HTTPException(
                 status_code=400,
@@ -446,6 +446,7 @@ async def change_password(
             )
 
     user.password_hash = _hash_password(new_password)
+    user.must_change_password = False
     await db.commit()
     logger.info("密码修改: user_id=%s", user_id)
 
