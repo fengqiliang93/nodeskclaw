@@ -1,4 +1,4 @@
-"""ChannelPluginBridge — injects workspace context via Channel Plugin file writes."""
+"""ChannelPluginBridge — injects workspace context via Channel Plugin deployment."""
 
 from __future__ import annotations
 
@@ -18,10 +18,32 @@ class ChannelPluginBridge:
         workspace_id: str,
         context: WorkspaceContext,
     ) -> None:
-        logger.debug(
+        logger.info(
             "ChannelPluginBridge.inject_context: instance=%s workspace=%s",
             instance_id, workspace_id,
         )
+        try:
+            from app.core.deps import async_session_factory
+            from app.services.llm_config_service import deploy_nodeskclaw_channel_plugin
+
+            async with async_session_factory() as db:
+                from app.models.instance import Instance
+                from sqlalchemy import select
+
+                result = await db.execute(select(Instance).where(Instance.id == instance_id))
+                inst = result.scalar_one_or_none()
+                if inst and inst.cluster_id:
+                    await deploy_nodeskclaw_channel_plugin(
+                        instance_id=instance_id,
+                        cluster_id=inst.cluster_id,
+                        db=db,
+                    )
+                    logger.info(
+                        "ChannelPlugin deployed for instance %s in workspace %s",
+                        instance_id, workspace_id,
+                    )
+        except Exception as e:
+            logger.warning("ChannelPluginBridge.inject_context failed: %s", e)
 
     async def remove_context(
         self,
