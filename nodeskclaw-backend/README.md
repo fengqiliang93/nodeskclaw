@@ -15,8 +15,15 @@ NoDeskClaw 管理平台后端服务，基于 FastAPI 构建，提供集群管理
 
 ```
 nodeskclaw-backend/
+├── alembic/                 # Alembic 数据库迁移
+│   ├── env.py               # 迁移环境配置
+│   ├── versions/            # 迁移文件
+│   └── script.py.mako       # 迁移文件模板
+├── alembic.ini              # Alembic 配置
 ├── app/
 │   ├── main.py              # FastAPI 入口，lifespan 管理
+│   ├── startup/             # 启动时初始化
+│   │   └── seed.py          # 幂等种子数据
 │   ├── api/                  # 路由层
 │   │   ├── router.py         # 路由聚合
 │   │   ├── auth.py           # OAuth 登录、回调、token 刷新
@@ -398,28 +405,87 @@ logs/
 
 ## 数据库
 
-使用PostgreSQL，首次启动时通过 `Base.metadata.create_all` 自动建表，无需手动迁移。
+使用 PostgreSQL，Schema 变更由 [Alembic](https://alembic.sqlalchemy.org/) 管理。
 
-### OAuth 相关表（重构后）
+### 数据库迁移（Alembic）
 
-| 表名 | 说明 |
+项目使用 Alembic（SQLAlchemy 官方迁移工具）管理所有 Schema 变更。迁移文件位于 `alembic/versions/`。
+
+#### 日常开发流程
+
+```
+修改 Model → 自动生成迁移 → Review → Commit → 启动时自动应用
+```
+
+1. **修改 Model**：编辑 `app/models/` 下的 SQLAlchemy 模型
+
+2. **生成迁移文件**：
+   ```bash
+   uv run alembic revision --autogenerate -m "描述（如：instances 新增 gpu_type 列）"
+   ```
+   Alembic 会对比当前 Model 和数据库 Schema，自动生成 `alembic/versions/xxx_描述.py`
+
+3. **Review 生成的迁移文件**：
+   - 检查 `upgrade()` 和 `downgrade()` 是否正确
+   - autogenerate 无法检测**列重命名**（会生成 DROP + ADD），需手动改为 `op.alter_column(..., new_column_name=...)`
+   - Partial Unique Index（`postgresql_where`）需确认是否被正确识别
+
+4. **Commit 迁移文件**：迁移文件是代码的一部分，必须提交到 Git
+
+5. **应用迁移**（自动）：
+   - `./dev.sh` 启动时自动执行 `alembic upgrade head`
+   - Docker 容器启动时同样自动执行
+   - 也可以手动执行：`uv run alembic upgrade head`
+
+#### 常用命令
+
+| 场景 | 命令 |
 |------|------|
-| `user_oauth_connections` | 用户与 OAuth 提供方的关联（provider、provider_user_id、provider_tenant_id） |
-| `org_oauth_bindings` | 组织与 OAuth 租户的关联（provider、provider_tenant_id） |
+| 改了 Model，生成迁移 | `uv run alembic revision --autogenerate -m "描述"` |
+| 手动应用迁移 | `uv run alembic upgrade head` |
+| 查看当前版本 | `uv run alembic current` |
+| 查看迁移历史 | `uv run alembic history --verbose` |
+| 回滚上一个迁移 | `uv run alembic downgrade -1` |
+| 生成空迁移（手写数据迁移用） | `uv run alembic revision -m "描述"` |
 
-原先的 `users.feishu_uid`、`organizations.feishu_tenant_key` 等字段已移除，统一迁移至上述表。
+#### 多人协作
 
-### 默认基因/基因组初始化
+两人同时生成迁移会产生分叉（两个迁移文件的 `down_revision` 指向同一个版本），合并分支后需要：
 
-- 启动流程不再自动 seed（初始化写入）默认 `Gene`（基因）/`Genome`（基因组）数据。
-- 默认数据需通过一次性 SQL（结构化查询语言）显式回填到数据库。
-- 回填建议使用 `ON CONFLICT ... DO NOTHING`（冲突跳过）策略，按 `slug`（唯一标识）去重，避免覆盖现有记录。
+```bash
+uv run alembic merge -m "merge branches" <rev1> <rev2>
+```
+
+#### 版本发布 / 开源用户升级
+
+- 每次 release 镜像中包含最新的迁移文件
+- 容器启动时 `alembic upgrade head` 自动将数据库从任意版本升级到最新
+- 开源用户拉取新版镜像后重启即可，无需手动执行 SQL
+- **生产库首次接入 Alembic**：需手动执行一次 `alembic stamp head` 标记当前版本
+
+#### 注意事项
+
+- **autogenerate 盲区**：列重命名、列类型精细变更、数据迁移需手动编辑生成的迁移文件
+- **Partial Unique Index**：项目大量使用 `Index(..., postgresql_where=text("deleted_at IS NULL"))`，review 时需留意
+- **迁移文件必须 commit**：`alembic/versions/` 下的文件是代码的一部分
+- **EE Model**：`alembic/env.py` 条件导入 `ee.backend.models`，EE 表的迁移也能被 autogenerate 检测
+
+### 种子数据
+
+首次启动时自动创建（幂等，每次启动检查）：
+
+- 默认组织（Default Organization）
+- 预设工作区模板（软件研发团队、内容工作室、研究实验室）
+- 超管用户的 AdminMembership 记录
+- 工作区定时器（任务巡检）
+
+种子数据逻辑位于 `app/startup/seed.py`。
 
 ### 软删除
 
-所有数据模型（User、Cluster、Instance、DeployRecord、SystemConfig）均采用逻辑删除，通过 `deleted_at` 字段标记：
+所有数据模型均采用逻辑删除，通过 `deleted_at` 字段标记：
 
 - `deleted_at = NULL`：正常记录
 - `deleted_at = 时间戳`：已删除记录
 
-**数据库迁移**：升级到软删除版本后，首次启动时后端会自动检测并为已有表添加 `deleted_at` 列和索引，无需手动执行 SQL。
+唯一约束使用 Partial Unique Index：`Index(..., unique=True, postgresql_where=text("deleted_at IS NULL"))`。
