@@ -1,5 +1,24 @@
 import axios from 'axios'
 import { getCurrentLocale } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { i18n } from '@/i18n'
+
+let lastBackendWarningAt = 0
+const BACKEND_WARNING_COOLDOWN = 15_000
+
+function notifyBackendUnavailable(status?: number) {
+  const now = Date.now()
+  if (now - lastBackendWarningAt < BACKEND_WARNING_COOLDOWN) return
+  lastBackendWarningAt = now
+
+  const { t } = i18n.global
+  const toast = useToast()
+  const key =
+    status && status >= 502 && status <= 504
+      ? 'errors.system.backend_starting'
+      : 'errors.system.backend_unreachable'
+  toast.warning(t(key), { duration: 6000 })
+}
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -18,7 +37,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+
+    if (!error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+      notifyBackendUnavailable()
+    } else if (status >= 502 && status <= 504) {
+      notifyBackendUnavailable(status)
+    }
+
+    if (status === 401) {
       const url = error.config?.url || ''
       if (!url.includes('/auth/')) {
         localStorage.removeItem('portal_token')

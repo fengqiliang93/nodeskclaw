@@ -908,6 +908,8 @@ const zhCN = {
     },
     system: {
       internal_error: "服务器内部错误",
+      backend_starting: "后端服务正在启动中，请稍候重试",
+      backend_unreachable: "无法连接到后端服务，请检查网络连接",
     },
     billing: {
       instance_limit_exceeded: "AI 员工数量已达上限（{used}/{limit}），请升级套餐或联系管理员",

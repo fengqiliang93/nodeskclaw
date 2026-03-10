@@ -908,6 +908,8 @@ const enUS = {
     },
     system: {
       internal_error: "Internal server error",
+      backend_starting: "Backend service is starting, please retry shortly",
+      backend_unreachable: "Unable to connect to the backend service, please check network",
     },
     billing: {
       instance_limit_exceeded: "AI Employee limit reached ({used}/{limit}). Please upgrade your plan or contact admin.",
