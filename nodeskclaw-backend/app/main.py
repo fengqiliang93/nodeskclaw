@@ -69,7 +69,7 @@ _root_logger.addHandler(_file_handler)
 _root_logger.addHandler(_console_handler)
 
 logging.getLogger("sqlalchemy.engine").setLevel(
-    logging.INFO if settings.DEBUG else logging.WARNING
+    logging.INFO if settings.LOG_SQL else logging.WARNING
 )
 
 

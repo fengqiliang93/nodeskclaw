@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "NoDeskClaw"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    LOG_SQL: bool = False
 
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = ""  # PostgreSQL，从 .env 读取
