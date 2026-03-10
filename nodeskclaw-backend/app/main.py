@@ -68,6 +68,10 @@ _root_logger.setLevel(logging.INFO)
 _root_logger.addHandler(_file_handler)
 _root_logger.addHandler(_console_handler)
 
+logging.getLogger("sqlalchemy.engine").setLevel(
+    logging.INFO if settings.DEBUG else logging.WARNING
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
