@@ -17,8 +17,13 @@ function buildAdjacency(edges: TopologyEdge[]): Map<string, string[]> {
     const kb = hexKey(e.b_q, e.b_r)
     if (!adj.has(ka)) adj.set(ka, [])
     if (!adj.has(kb)) adj.set(kb, [])
-    adj.get(ka)!.push(kb)
-    adj.get(kb)!.push(ka)
+    const dir = e.direction || 'both'
+    if (dir === 'both' || dir === 'a_to_b') {
+      adj.get(ka)!.push(kb)
+    }
+    if (dir === 'both' || dir === 'b_to_a') {
+      adj.get(kb)!.push(ka)
+    }
   }
   return adj
 }

@@ -156,6 +156,7 @@ export interface TopologyEdge {
   b_q: number
   b_r: number
   auto_created: boolean
+  direction?: 'both' | 'a_to_b' | 'b_to_a'
 }
 
 export interface TopologyInfo {
@@ -178,6 +179,11 @@ export interface MessageFlowPair {
   count: number
 }
 
+export interface HeatmapEntry {
+  node_id: string
+  message_count: number
+}
+
 export interface FileAttachment {
   id: string
   name: string
@@ -195,6 +201,11 @@ export interface GroupChatMessage {
   created_at: string
   streaming?: boolean
   attachments?: FileAttachment[]
+  trace_id?: string
+  causation_id?: string
+  intent?: string
+  priority?: string
+  envelope_id?: string
 }
 
 export type ChatSSECallback = (event: string, data: Record<string, unknown>) => void
@@ -228,6 +239,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const connections = ref<ConnectionInfo[]>([])
   const topology = ref<TopologyInfo | null>(null)
   const messageFlowStats = ref<MessageFlowPair[]>([])
+  const heatmap = ref<HeatmapEntry[]>([])
 
   const decoration = ref<DecorationConfig | null>(null)
 
@@ -551,7 +563,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       existing.content += content
     } else {
       chatMessages.value.push({
-        id: `stream-${instanceId}-${Date.now()}`,
+        id: (data.envelope_id as string) || `stream-${instanceId}-${Date.now()}`,
         sender_type: 'agent',
         sender_id: instanceId,
         sender_name: agentName,
@@ -559,6 +571,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         message_type: 'chat',
         created_at: new Date().toISOString(),
         streaming: true,
+        trace_id: data.trace_id as string | undefined,
+        causation_id: data.causation_id as string | undefined,
+        envelope_id: data.envelope_id as string | undefined,
       })
       _incrementUnread()
     }
@@ -614,13 +629,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const content = data.content as string
 
     chatMessages.value.push({
-      id: `collab-${instanceId}-${Date.now()}`,
+      id: (data.envelope_id as string) || `collab-${instanceId}-${Date.now()}`,
       sender_type: 'agent',
       sender_id: instanceId,
       sender_name: agentName,
       content,
       message_type: 'collaboration',
       created_at: new Date().toISOString(),
+      trace_id: data.trace_id as string | undefined,
+      causation_id: data.causation_id as string | undefined,
+      intent: data.intent as string | undefined,
+      priority: data.priority as string | undefined,
+      envelope_id: data.envelope_id as string | undefined,
     })
     _incrementUnread()
   }
@@ -899,6 +919,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       console.error('fetchTopology error:', e)
     }
     fetchMessageFlowStats(workspaceId)
+    fetchHeatmap(workspaceId)
   }
 
   async function fetchMessageFlowStats(workspaceId: string) {
@@ -907,6 +928,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       messageFlowStats.value = res.data.data || []
     } catch {
       messageFlowStats.value = []
+    }
+  }
+
+  async function fetchHeatmap(workspaceId: string) {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/messages/heatmap`)
+      heatmap.value = res.data.data || []
+    } catch {
+      heatmap.value = []
     }
   }
 
@@ -1109,6 +1139,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     chatMessages.value = []
     corridorHexes.value = []
     connections.value = []
+    heatmap.value = []
     typingAgents.value.clear()
     unreadCount.value = 0
     myPermissions.value = []
@@ -1132,6 +1163,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     topologyNodes: computed(() => topology.value?.nodes || []),
     topologyEdges: computed(() => topology.value?.edges || []),
     messageFlowStats,
+    heatmap,
     decoration,
     myPermissions,
     isWorkspaceAdmin,
@@ -1173,6 +1205,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     disconnectSSE,
     sendMessage,
     fetchTopology,
+    fetchHeatmap,
     fetchCorridorHexes,
     createCorridorHex,
     moveCorridorHex,

@@ -690,6 +690,19 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
               >
                 collaboration
               </span>
+              <span
+                v-if="msg.intent"
+                class="text-[10px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 shrink-0"
+              >
+                {{ msg.intent }}
+              </span>
+              <span
+                v-if="msg.priority && msg.priority !== 'normal'"
+                class="text-[10px] px-1 py-0.5 rounded shrink-0"
+                :class="msg.priority === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'"
+              >
+                {{ msg.priority }}
+              </span>
             </div>
             <div
               v-if="msg.sender_type === 'agent'"

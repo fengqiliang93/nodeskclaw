@@ -16,6 +16,9 @@ interface TimelineMessage {
   target_instance_id: string | null
   depth: number
   created_at: string
+  trace_id?: string
+  intent?: string
+  priority?: string
 }
 
 const props = defineProps<{
@@ -79,14 +82,17 @@ function onClickMessage(msg: TimelineMessage) {
 
 function addLiveMessage(data: Record<string, unknown>) {
   messages.value.push({
-    id: `live-${Date.now()}`,
+    id: (data.envelope_id as string) || `live-${Date.now()}`,
     sender_type: 'agent',
     sender_id: data.instance_id as string || '',
     sender_name: data.agent_name as string || '',
     content: data.content as string || '',
-    target_instance_id: null,
-    depth: 0,
+    target_instance_id: data.target_instance_id as string | null ?? null,
+    depth: (data.depth as number) || 0,
     created_at: new Date().toISOString(),
+    trace_id: data.trace_id as string | undefined,
+    intent: data.intent as string | undefined,
+    priority: data.priority as string | undefined,
   })
 }
 
