@@ -944,63 +944,6 @@ async def workspace_chat(
         attachments=attachments_meta,
     )
 
-    running_agents = await _get_running_agents(db, workspace_id)
-    if not running_agents:
-        logger.warning("workspace_chat: workspace=%s 没有运行中的 Agent", workspace_id)
-        _broadcast_system_info(workspace_id, "办公室内没有运行中的 AI 员工")
-        return _ok({"status": "no_agents"})
-
-    from app.services import corridor_router
-    has_topo = await corridor_router.has_any_connections(workspace_id, db)
-
-    human_endpoints: list = []
-
-    if has_topo:
-        audience = await corridor_router.get_blackboard_audience(workspace_id, db)
-        reachable_ids = {ep.entity_id for ep in audience if ep.endpoint_type == "agent"}
-        human_endpoints = [ep for ep in audience if ep.endpoint_type == "human"]
-        target_agents = [a for a in running_agents if a[0].id in reachable_ids]
-        excluded = [a for a in running_agents if a[0].id not in reachable_ids]
-        if excluded:
-            repaired = False
-            for inst, wa in excluded:
-                if wa.hex_q is not None or wa.hex_r is not None:
-                    connected = await corridor_router.auto_connect_hex(
-                        workspace_id, wa.hex_q, wa.hex_r or 0, user.id, db,
-                    )
-                    if connected:
-                        logger.info(
-                            "workspace_chat: 自动补连 Agent %s 到 %d 个邻居",
-                            inst.agent_display_name or inst.name, len(connected),
-                        )
-                        repaired = True
-            if repaired:
-                await db.commit()
-                audience = await corridor_router.get_blackboard_audience(workspace_id, db)
-                reachable_ids = {ep.entity_id for ep in audience if ep.endpoint_type == "agent"}
-                human_endpoints = [ep for ep in audience if ep.endpoint_type == "human"]
-                target_agents = [a for a in running_agents if a[0].id in reachable_ids]
-                excluded = [a for a in running_agents if a[0].id not in reachable_ids]
-            if excluded:
-                excluded_names = [a[0].agent_display_name or a[0].name for a in excluded]
-                logger.warning(
-                    "workspace_chat: workspace=%s 拓扑过滤排除了 %d 个 Agent: %s",
-                    workspace_id, len(excluded), excluded_names,
-                )
-    else:
-        target_agents = running_agents
-
-    if not target_agents:
-        logger.warning(
-            "workspace_chat: workspace=%s has_topo=%s, 没有可达的运行中 AI 员工 (running=%d)",
-            workspace_id, has_topo, len(running_agents),
-        )
-        _broadcast_system_info(workspace_id, "没有可达的运行中 AI 员工")
-        return _ok({"status": "no_reachable_agents"})
-
-    members = _build_members_list(ws_info, user)
-    recent_messages = await msg_service.get_recent_messages(db, workspace_id)
-
     attachments_with_urls: list[dict] = []
     if attachment_files:
         from app.services import storage_service
@@ -1018,32 +961,29 @@ async def workspace_chat(
                     f.original_name, exc_info=True,
                 )
 
-    for inst, _ in target_agents:
-        _fire_task(
-            _stream_agent_response(
-                workspace_id=workspace_id,
-                instance=inst,
-                members=members,
-                recent_messages=recent_messages,
-                user_name=user.name,
-                user_message=data.message,
-                ws_name=ws_info.name,
-                mentions=data.mentions,
-                attachments=attachments_with_urls or None,
-            )
-        )
+    from app.services.runtime.messaging.bus import message_bus
+    from app.services.runtime.messaging.ingestion.portal import build_portal_envelope
 
-    if human_endpoints:
-        from app.services.collaboration_service import deliver_to_human
-        for ep in human_endpoints:
-            _fire_task(deliver_to_human(
-                workspace_id=workspace_id,
-                human_hex_id=ep.entity_id,
-                source_name=user.name,
-                message=data.message,
-            ))
+    envelope = build_portal_envelope(
+        workspace_id=workspace_id,
+        user_id=user.id,
+        user_name=user.name,
+        content=data.message,
+        mentions=data.mentions,
+        attachments=attachments_with_urls or None,
+    )
 
-    return _ok({"status": "broadcasting", "agent_count": len(target_agents), "human_count": len(human_endpoints)})
+    async def _publish_via_bus():
+        async with async_session_factory() as bus_db:
+            result = await message_bus.publish(envelope, db=bus_db)
+            await bus_db.commit()
+            if result.error:
+                logger.error("workspace_chat: MessageBus error: %s", result.error)
+            return result
+
+    _fire_task(_publish_via_bus())
+
+    return _ok({"status": "broadcasting"})
 
 
 class SystemMessageRequest(BaseModel):

@@ -39,11 +39,7 @@ async def handle_collaboration_message(
 ) -> None:
     """Process an inbound collaboration message from a channel plugin.
 
-    1. Validate depth limit
-    2. Look up source instance
-    3. Record message
-    4. Broadcast SSE event to frontend
-    5. Route to target agent(s)
+    Routes all messages through the MessageBus pipeline for unified processing.
     """
     if depth > msg_service.MAX_COLLABORATION_DEPTH:
         logger.warning(
@@ -61,7 +57,6 @@ async def handle_collaboration_message(
         source_name = source_inst.agent_display_name or source_inst.name
 
         resolved_target_id: str | None = None
-        target_inst: Instance | None = None
         if target.startswith("agent:"):
             target_inst = await _find_agent_by_name_or_id(db, workspace_id, target[6:])
             if target_inst:
@@ -87,110 +82,22 @@ async def handle_collaboration_message(
             "content": text,
         })
 
-        if target.startswith("agent:"):
-            if target_inst:
-                from app.services import corridor_router
-                has_topo = await corridor_router.has_any_connections(workspace_id, db)
-                src_hex = await corridor_router.get_agent_hex_in_workspace(source_instance_id, workspace_id, db) if has_topo else None
-                if has_topo and src_hex is not None:
-                    tgt_hex = await corridor_router.get_agent_hex_in_workspace(target_inst.id, workspace_id, db)
-                    if tgt_hex is None:
-                        tgt_hex = (0, 0)
-                    can = await corridor_router.can_reach(
-                        workspace_id,
-                        src_hex[0], src_hex[1],
-                        tgt_hex[0], tgt_hex[1],
-                        db,
-                    )
-                    if not can:
-                        logger.info("Corridor topology blocks %s -> %s", source_name, target[6:])
-                        return
-                _fire_task(
-                    _invoke_target_agent(
-                        workspace_id=workspace_id,
-                        target_instance=target_inst,
-                        source_name=source_name,
-                        source_instance_id=source_instance_id,
-                        message=text,
-                        depth=depth + 1,
-                    )
-                )
-            else:
-                hh = await _find_human_by_display_name(db, workspace_id, target[6:])
-                if hh:
-                    await _route_to_human(
-                        db, workspace_id, source_instance_id, source_name, hh, text,
-                    )
-                else:
-                    logger.warning(
-                        "Unresolvable collaboration target %s from %s",
-                        target, source_name,
-                    )
-        elif target.startswith("human:"):
-            human_ref = target[6:]
-            from app.services import corridor_router
-            if _looks_like_uuid(human_ref):
-                hh = await _get_human_hex(db, human_ref)
-            else:
-                hh = await _find_human_by_display_name(db, workspace_id, human_ref)
-            if hh:
-                await _route_to_human(
-                    db, workspace_id, source_instance_id, source_name, hh, text,
-                )
-            else:
-                logger.warning(
-                    "Unresolvable collaboration target %s from %s",
-                    target, source_name,
-                )
-        elif target == "broadcast":
-            from app.services import corridor_router
-            has_topo = await corridor_router.has_any_connections(workspace_id, db)
-            src_hex = await corridor_router.get_agent_hex_in_workspace(source_instance_id, workspace_id, db) if has_topo else None
-            if has_topo and src_hex is not None:
-                endpoints = await corridor_router.get_reachable_endpoints(
-                    workspace_id,
-                    src_hex[0], src_hex[1],
-                    db,
-                )
-                reachable_ids = {ep.entity_id for ep in endpoints if ep.endpoint_type == "agent"}
-                agents = await _get_workspace_agents(db, workspace_id)
-                for agent in agents:
-                    if agent.id != source_instance_id and agent.id in reachable_ids:
-                        _fire_task(
-                            _invoke_target_agent(
-                                workspace_id=workspace_id,
-                                target_instance=agent,
-                                source_name=source_name,
-                                source_instance_id=source_instance_id,
-                                message=text,
-                                depth=depth + 1,
-                            )
-                        )
+        from app.services.runtime.messaging.bus import message_bus
+        from app.services.runtime.messaging.ingestion.agent import build_agent_collaboration_envelope
 
-                human_endpoints = [ep for ep in endpoints if ep.endpoint_type == "human"]
-                for ep in human_endpoints:
-                    hh = await _get_human_hex(db, ep.entity_id)
-                    if hh:
-                        _fire_task(deliver_to_human(
-                            workspace_id=workspace_id,
-                            human_hex_id=hh.id,
-                            source_name=source_name,
-                            message=text,
-                        ))
-            else:
-                agents = await _get_workspace_agents(db, workspace_id)
-                for agent in agents:
-                    if agent.id != source_instance_id:
-                        _fire_task(
-                            _invoke_target_agent(
-                                workspace_id=workspace_id,
-                                target_instance=agent,
-                                source_name=source_name,
-                                source_instance_id=source_instance_id,
-                                message=text,
-                                depth=depth + 1,
-                            )
-                        )
+        envelope = build_agent_collaboration_envelope(
+            workspace_id=workspace_id,
+            source_instance_id=source_instance_id,
+            source_name=source_name,
+            target=target,
+            content=text,
+            depth=depth,
+        )
+
+        result = await message_bus.publish(envelope, db=db)
+        await db.commit()
+        if result.error:
+            logger.error("MessageBus error in collaboration: %s", result.error)
 
 
 async def _route_to_human(
@@ -573,35 +480,19 @@ async def send_system_message_to_agents(
     message: str,
     db: AsyncSession,
 ) -> None:
-    """Send a system-generated message to specific agents via their SSE channels."""
-    from app.models.base import not_deleted
+    """Send a system-generated message to specific agents via the MessageBus."""
+    from app.services.runtime.messaging.bus import message_bus
+    from app.services.runtime.messaging.ingestion.system import build_system_envelope
 
-    for agent_id in agent_ids:
-        inst_q = await db.execute(
-            select(Instance).where(Instance.id == agent_id, not_deleted(Instance))
-        )
-        inst = inst_q.scalar_one_or_none()
-        if not inst or inst.status != "running":
-            continue
+    envelope = build_system_envelope(
+        workspace_id=workspace_id,
+        content=message,
+        source_label="system_notify",
+        targets=agent_ids,
+    )
 
-        ws_info = await workspace_service.get_workspace_detail(db, workspace_id)
-        if not ws_info:
-            continue
-
-        members = [
-            {"name": "System", "role": "system"},
-        ]
-        recent = await msg_service.get_recent_messages(db, workspace_id)
-
-        _fire_task(
-            _stream_agent_reply(
-                workspace_id=workspace_id,
-                instance_id=inst.id,
-                agent_name=inst.agent_display_name or inst.name,
-                proxy_token=inst.proxy_token,
-                user_content=message,
-                members=members,
-                recent_messages=recent,
-                depth=0,
-            )
+    result = await message_bus.publish(envelope, db=db)
+    if result.error:
+        logger.error(
+            "send_system_message_to_agents: MessageBus error: %s", result.error,
         )
