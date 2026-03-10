@@ -19,6 +19,7 @@ from app.api.settings import router as settings_router
 from app.api.storage import router as storage_router
 from app.api.corridors import router as corridor_router
 from app.api.channel_configs import router as channel_config_router
+from app.api.observability import router as observability_router
 from app.api.mcp import router as mcp_router
 from app.api.trust import router as trust_router
 from app.api.webhooks import router as webhook_router
@@ -85,6 +86,7 @@ api_router.include_router(settings_router, prefix="/settings", tags=["系统配�
 api_router.include_router(storage_router, prefix="/storage-classes", tags=["存储"])
 api_router.include_router(workspace_router, prefix="/workspaces", tags=["赛博办公室"])
 api_router.include_router(corridor_router, prefix="/workspaces", tags=["过道系统"])
+api_router.include_router(observability_router, prefix="/workspaces", tags=["可观测性"])
 api_router.include_router(trust_router, prefix="/workspaces", tags=["渐进式信任"])
 api_router.include_router(template_router, prefix="/workspaces", tags=["办公室模板"])
 api_router.include_router(instance_template_router, tags=["AI 员工模板"])
@@ -100,6 +102,7 @@ admin_router.include_router(auth_router, prefix="/auth", tags=["Admin - 认证"]
 admin_router.include_router(org_router, prefix="/orgs", tags=["Admin - 组织"])
 admin_router.include_router(workspace_router, prefix="/workspaces", tags=["Admin - 赛博办公室"])
 admin_router.include_router(corridor_router, prefix="/workspaces", tags=["Admin - 过道系统"])
+admin_router.include_router(observability_router, prefix="/workspaces", tags=["Admin - 可观测性"])
 admin_router.include_router(trust_router, prefix="/workspaces", tags=["Admin - 渐进式信任"])
 admin_router.include_router(template_router, prefix="/workspaces", tags=["Admin - 办公室模板"])
 admin_router.include_router(channel_config_router, prefix="/instances", tags=["Admin - Channel 配置"])

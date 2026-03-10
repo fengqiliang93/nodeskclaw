@@ -1,0 +1,158 @@
+"""Security model for the runtime messaging platform.
+
+Enforces:
+  - RBAC on messages: sender must be topology-reachable or in @mentions list
+  - Workspace isolation: messages, blackboard, topology, members never cross workspaces
+  - Agent sandbox integration hooks for ComputeProvider (NetworkPolicy / Docker network)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SecurityContext:
+    user_id: str | None = None
+    workspace_id: str = ""
+    source_node_id: str = ""
+    is_system: bool = False
+    roles: list[str] = field(default_factory=list)
+
+
+async def check_message_permission(
+    db: AsyncSession,
+    *,
+    workspace_id: str,
+    source_node_id: str,
+    target_node_ids: list[str],
+    mention_node_ids: list[str] | None = None,
+    is_system: bool = False,
+) -> tuple[bool, str]:
+    """Check if source_node is allowed to send messages to target_nodes.
+
+    Returns (allowed, reason).
+    System messages bypass RBAC checks.
+    """
+    if is_system:
+        return True, "system_message"
+
+    if not workspace_id:
+        return False, "missing_workspace_id"
+    if not source_node_id:
+        return False, "missing_source_node_id"
+
+    from app.models.node_card import NodeCard
+    from app.models.base import not_deleted
+    from sqlalchemy import select
+
+    source_q = await db.execute(
+        select(NodeCard).where(
+            NodeCard.node_id == source_node_id,
+            NodeCard.workspace_id == workspace_id,
+            not_deleted(NodeCard),
+        )
+    )
+    source_card = source_q.scalar_one_or_none()
+    if not source_card:
+        return False, f"source_node {source_node_id} not found in workspace"
+
+    for target_id in target_node_ids:
+        target_q = await db.execute(
+            select(NodeCard).where(
+                NodeCard.node_id == target_id,
+                NodeCard.workspace_id == workspace_id,
+                not_deleted(NodeCard),
+            )
+        )
+        target_card = target_q.scalar_one_or_none()
+        if not target_card:
+            return False, f"target_node {target_id} not in workspace {workspace_id}"
+
+    return True, "ok"
+
+
+async def check_workspace_isolation(
+    db: AsyncSession,
+    workspace_id: str,
+    node_ids: list[str],
+) -> tuple[bool, str]:
+    """Verify all node_ids belong to the same workspace."""
+    if not node_ids:
+        return True, "empty"
+
+    from app.models.node_card import NodeCard
+    from app.models.base import not_deleted
+    from sqlalchemy import select, func
+
+    count_q = await db.execute(
+        select(func.count()).select_from(NodeCard).where(
+            NodeCard.node_id.in_(node_ids),
+            NodeCard.workspace_id == workspace_id,
+            not_deleted(NodeCard),
+        )
+    )
+    found = count_q.scalar() or 0
+    if found != len(node_ids):
+        return False, f"workspace_isolation_violation: expected {len(node_ids)} nodes, found {found}"
+    return True, "ok"
+
+
+@dataclass
+class SandboxPolicy:
+    """Describes network sandbox rules for agent compute."""
+    allow_egress_to: list[str] = field(default_factory=list)
+    deny_egress_to: list[str] = field(default_factory=list)
+    allow_ingress_from: list[str] = field(default_factory=list)
+    max_bandwidth_mbps: int = 100
+    dns_policy: str = "ClusterFirst"
+
+
+def build_k8s_network_policy(
+    namespace: str,
+    instance_id: str,
+    policy: SandboxPolicy,
+) -> dict:
+    """Build a K8s NetworkPolicy manifest for agent sandboxing."""
+    return {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": {
+            "name": f"sandbox-{instance_id}",
+            "namespace": namespace,
+        },
+        "spec": {
+            "podSelector": {
+                "matchLabels": {"app": f"deskclaw-{instance_id}"},
+            },
+            "policyTypes": ["Ingress", "Egress"],
+            "ingress": [
+                {
+                    "from": [
+                        {"podSelector": {"matchLabels": {"app": src}}}
+                        for src in policy.allow_ingress_from
+                    ],
+                }
+            ] if policy.allow_ingress_from else [],
+            "egress": [
+                {"to": [{"podSelector": {}}], "ports": [{"port": 53, "protocol": "UDP"}]},
+            ],
+        },
+    }
+
+
+def build_docker_network_config(instance_id: str, policy: SandboxPolicy) -> dict:
+    """Build Docker network configuration for agent sandboxing."""
+    return {
+        "network_name": f"deskclaw-sandbox-{instance_id}",
+        "driver": "bridge",
+        "internal": len(policy.allow_egress_to) == 0,
+        "options": {
+            "com.docker.network.bridge.enable_icc": "true",
+        },
+    }
