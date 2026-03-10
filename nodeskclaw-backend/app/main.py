@@ -1139,20 +1139,6 @@ async def lifespan(app: FastAPI):
             ))
             logger.info("自动迁移：已为 instances 表添加 agent_label 列")
 
-        # ── 迁移: instances 表新增 compute_provider / runtime 列（Runtime v2）──
-        col = (await conn.execute(text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'instances' AND column_name = 'compute_provider'"
-        ))).first()
-        if col is None:
-            await conn.execute(text(
-                "ALTER TABLE instances ADD COLUMN compute_provider VARCHAR(32) NOT NULL DEFAULT 'k8s'"
-            ))
-            await conn.execute(text(
-                "ALTER TABLE instances ADD COLUMN runtime VARCHAR(32) NOT NULL DEFAULT 'openclaw'"
-            ))
-            logger.info("自动迁移：已为 instances 表添加 compute_provider / runtime 列")
-
     # ── 迁移 24: 为已有实例补建 InstanceMember 记录 ──
     async with engine.begin() as conn:
         await conn.execute(text("""
@@ -1423,6 +1409,25 @@ async def lifespan(app: FastAPI):
                 await db.commit()
                 logger.info("自动迁移 35：已将 %d 条 Instance.workspace_id 数据迁移到 workspace_agents", migrated)
 
+    # ── 迁移 36: Runtime v2 表新增列 ──────────────────
+    async with engine.begin() as conn:
+        _rt_cols = [
+            ("event_logs", "backend_instance_id", "VARCHAR(36)"),
+            ("dead_letters", "recoverable", "BOOLEAN NOT NULL DEFAULT true"),
+            ("dead_letters", "recovered_at", "TIMESTAMPTZ"),
+            ("dead_letters", "recovered_by", "VARCHAR(36)"),
+        ]
+        for _tbl, _col, _typ in _rt_cols:
+            _chk = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = :tbl AND column_name = :col"
+            ), {"tbl": _tbl, "col": _col})
+            if _chk.first() is None:
+                await conn.execute(text(
+                    f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_typ}"
+                ))
+                logger.info("自动迁移 36：已为 %s 表添加 %s 列", _tbl, _col)
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。
@@ -1569,9 +1574,11 @@ async def lifespan(app: FastAPI):
 
     # ── Runtime Platform v2 Startup ──────────────────
     _pg_notify_service = None
-    import asyncio
-
     _heartbeat_task = None
+    _raw_conn = None
+    _asyncpg_conn = None
+    _pg_notify_channels: list[str] = []
+    _queue_consumer_task = None
     try:
         if os.environ.get("OTEL_ENABLED", "").lower() in ("1", "true"):
             from app.services.runtime.telemetry import init_telemetry
@@ -1646,7 +1653,7 @@ async def lifespan(app: FastAPI):
             _raw_conn = None
 
         from app.services.runtime.failure_recovery import run_heartbeat_scanner
-        _heartbeat_task = asyncio.create_task(run_heartbeat_scanner(async_session_factory))
+        _heartbeat_task = asyncio.create_task(run_heartbeat_scanner(engine))
         logger.info("Runtime v2: SSE 心跳扫描已启动")
 
         from app.services.runtime.messaging.queue_consumer import start_consumer
@@ -1656,9 +1663,9 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as _mig_db:
             from app.services.runtime.migration import run_full_migration
             migrated = await run_full_migration(_mig_db)
-            total = sum(migrated.values()) if migrated else 0
-            if total > 0:
-                logger.info("Runtime v2: 数据迁移完成 %s", migrated)
+            if migrated > 0:
+                await _mig_db.commit()
+                logger.info("Runtime v2: 数据迁移完成，迁移了 %d 条记录", migrated)
     except Exception as e:
         logger.warning("Runtime v2 启动部分失败（非致命）: %s", e)
 
@@ -1684,7 +1691,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
         from app.services.runtime.failure_recovery import shutdown_cleanup
-        await shutdown_cleanup(async_session_factory)
+        await shutdown_cleanup(engine)
         logger.info("Runtime v2: 已清理")
     except Exception as e:
         logger.warning("Runtime v2 关闭部分失败: %s", e)
