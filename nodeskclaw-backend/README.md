@@ -28,7 +28,9 @@ nodeskclaw-backend/
 │   │   ├── registry.py       # 镜像仓库
 │   │   ├── settings.py       # 系统配置
 │   │   ├── workspaces.py     # 工作区 CRUD、群聊、SSE
-│   │   └── templates.py      # 工作区模板 CRUD、应用
+│   │   ├── templates.py      # 工作区模板 CRUD、应用
+│   │   ├── observability.py  # 可观测性 API（消息追踪/热力图/死信/熔断/事件溯源）
+│   │   └── runtime_admin.py  # 运行时管理 API（节点类型/注册表/Pipeline 查询）
 │   ├── core/                 # 核心模块
 │   │   ├── config.py         # pydantic-settings 配置
 │   │   ├── deps.py           # 依赖注入（DB session、当前用户等）
@@ -40,7 +42,7 @@ nodeskclaw-backend/
 │   │   ├── oauth_connection.py   # 用户 OAuth 关联（provider, provider_user_id, provider_tenant_id）
 │   │   ├── org_oauth_binding.py  # 组织 OAuth 租户关联（provider, provider_tenant_id）
 │   │   ├── cluster.py        # 集群
-│   │   ├── instance.py       # 实例
+│   │   ├── instance.py       # 实例（含 compute_provider/runtime 字段）
 │   │   ├── deploy_record.py  # 部署记录
 │   │   ├── workspace.py      # 工作区
 │   │   ├── workspace_message.py  # 工作区群聊消息
@@ -48,7 +50,17 @@ nodeskclaw-backend/
 │   │   ├── blackboard.py     # 工作区黑板
 │   │   ├── workspace_template.py  # 工作区模板
 │   │   ├── system_config.py  # 系统配置（键值对）
-│   │   └── org_smtp_config.py  # 组织 SMTP 邮件配置
+│   │   ├── org_smtp_config.py  # 组织 SMTP 邮件配置
+│   │   ├── node_type.py      # 节点类型定义（运行时平台 v2）
+│   │   ├── node_card.py      # 统一节点卡片（运行时平台 v2）
+│   │   ├── message_queue.py  # 消息队列项
+│   │   ├── event_log.py      # 事件溯源日志
+│   │   ├── delivery_log.py   # 投递日志
+│   │   ├── sse_connection.py # SSE 连接注册
+│   │   ├── idempotency_cache.py  # 幂等缓存
+│   │   ├── circuit_state.py  # 熔断器状态
+│   │   ├── dead_letter.py    # 死信队列
+│   │   └── message_schema.py # 消息 Schema 版本
 │   ├── schemas/              # Pydantic 请求/响应 Schema
 │   ├── services/             # 业务逻辑层
 │   │   ├── auth_service.py       # OAuth 登录逻辑（provider 可扩展）、统一账号/验证码登录
@@ -67,6 +79,27 @@ nodeskclaw-backend/
 │   │   ├── channel_config_service.py # Channel 发现、配置读写、Schema 注册、自定义部署
 │   │   ├── enterprise_file_service.py # 企业空间文件浏览（PodFS 只读）
 │   │   ├── summary_job.py        # 自动摘要生成
+│   │   ├── runtime/              # 运行时平台 v2（五层架构）
+│   │   │   ├── registries/       # 六大注册表（NodeType/Transport/Runtime/Compute/ContextBridge/Channel）
+│   │   │   ├── adapters/         # Agent 运行时适配器（OpenClaw/ClaudeCode/GenericHTTP）
+│   │   │   ├── context_bridges/  # 上下文注入桥接（ChannelPlugin/SystemPrompt/MCP）
+│   │   │   ├── compute/          # 计算资源提供者（K8s/Docker）
+│   │   │   ├── transport/        # 消息投递适配器（Agent/Channel）
+│   │   │   ├── messaging/        # 消息系统核心
+│   │   │   │   ├── envelope.py   # CloudEvents 对齐的 MessageEnvelope
+│   │   │   │   ├── bus.py        # MessageBus 单例 + Middleware Pipeline
+│   │   │   │   ├── queue.py      # PGMQ 消息队列（WFQ + ACK/Retry + DLQ）
+│   │   │   │   ├── event_log.py  # 事件溯源日志
+│   │   │   │   ├── middlewares/  # 中间件（Validation/Semantic/Routing/Transport/CircuitBreaker/RateLimit/Audit/Metrics）
+│   │   │   │   └── ingestion/    # 接入层适配器（Portal/Agent/Feishu/Cron）
+│   │   │   ├── hooks/            # NodeHookManager 生命周期钩子
+│   │   │   ├── node_card.py      # NodeCard 统一节点业务逻辑
+│   │   │   ├── sse_registry.py   # SSE 连接注册表（跨实例）
+│   │   │   ├── pg_notify.py      # PG LISTEN/NOTIFY 集成
+│   │   │   ├── telemetry.py      # OpenTelemetry 集成
+│   │   │   ├── security.py       # 安全模型（RBAC/隔离/沙箱）
+│   │   │   ├── failure_recovery.py # 实例故障恢复
+│   │   │   └── migration.py      # 数据迁移脚本（旧表 → node_cards）
 │   │   └── k8s/                  # K8s 相关
 │   │       ├── client_manager.py # K8s 连接池管理
 │   │       ├── k8s_client.py     # K8s API 封装
