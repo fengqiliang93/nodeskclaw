@@ -80,7 +80,28 @@ cp .env.example .env
 | `FEISHU_APP_SECRET` | Feishu App Secret |
 | `FEISHU_REDIRECT_URI` | `http://localhost:5173/api/v1/auth/feishu/callback` |
 
-### 2. Backend
+### 2. One-command Start
+
+```bash
+./dev.sh          # Auto-detect: ee/ exists -> EE, otherwise -> CE
+./dev.sh ce       # Force CE mode (backend + portal)
+./dev.sh ee       # Force EE mode (backend + portal + admin)
+./dev.sh --fresh  # Force reinstall all dependencies
+```
+
+The script handles dependency installation, starts all services with colored log prefixes, and cleans up on Ctrl+C.
+
+| Mode | Services | Ports |
+|------|----------|-------|
+| CE | backend + portal | 8000, 5174 |
+| EE | backend + portal + admin | 8000, 5174, 5173 |
+
+### Manual Start (alternative)
+
+<details>
+<summary>Start each service individually</summary>
+
+**Backend:**
 
 ```bash
 cd nodeskclaw-backend
@@ -90,7 +111,7 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API at `http://localhost:8000` | Swagger at `http://localhost:8000/docs` | Auto-migration on first boot.
 
-### 3. Frontend (Portal)
+**Frontend (Portal):**
 
 ```bash
 cd nodeskclaw-portal
@@ -99,7 +120,7 @@ npm install && npm run dev
 
 Portal at `http://localhost:5174` | `/api` auto-proxy to backend.
 
-### 4. Frontend (Admin, EE-only)
+**Frontend (Admin, EE-only):**
 
 ```bash
 cd ee/nodeskclaw-frontend
@@ -108,7 +129,9 @@ npm install && npm run dev
 
 Admin at `http://localhost:5173` | `/api` and `/stream` auto-proxy to backend.
 
-### 5. Go
+</details>
+
+### 3. Go
 
 Open `http://localhost:5174` (Portal) or `http://localhost:5173` (Admin, EE), sign in.
 

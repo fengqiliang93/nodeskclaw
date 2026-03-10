@@ -351,6 +351,16 @@ cp .env.example .env
 
 ### 启动
 
+推荐使用项目根目录的一键启动脚本（同时启动后端和前端）：
+
+```bash
+./dev.sh      # 自动检测 CE/EE
+./dev.sh ce   # 强制 CE 模式
+./dev.sh ee   # 强制 EE 模式
+```
+
+单独启动后端：
+
 ```bash
 uv run uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 3
 ```
