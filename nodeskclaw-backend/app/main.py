@@ -1613,7 +1613,10 @@ async def lifespan(app: FastAPI):
 
         _pg_notify_service.subscribe(_sse_push_channel, _on_sse_push)
 
-        _pg_notify_channels = ["topology_changed", _sse_push_channel]
+        from app.services.runtime.messaging.queue_consumer import on_queue_notify as _on_queue_notify
+        _pg_notify_service.subscribe("message_enqueued", _on_queue_notify)
+
+        _pg_notify_channels = ["topology_changed", _sse_push_channel, "message_enqueued"]
         try:
             _raw_conn = await engine.raw_connection()
             _asyncpg_conn = _raw_conn.connection._connection
@@ -1630,6 +1633,10 @@ async def lifespan(app: FastAPI):
         _heartbeat_task = asyncio.create_task(run_heartbeat_scanner(engine))
         logger.info("Runtime v2: SSE 心跳扫描已启动")
 
+        from app.services.runtime.messaging.queue_consumer import start_consumer
+        _queue_consumer_task = start_consumer(async_session_factory)
+        logger.info("Runtime v2: 队列消费者已启动")
+
         async with async_session_factory() as _mig_db:
             from app.services.runtime.migration import run_full_migration
             migrated = await run_full_migration(_mig_db)
@@ -1643,6 +1650,9 @@ async def lifespan(app: FastAPI):
 
     # ── Runtime Platform v2 Shutdown ─────────────────
     try:
+        from app.services.runtime.messaging.queue_consumer import stop_consumer
+        stop_consumer()
+
         if _heartbeat_task and not _heartbeat_task.done():
             _heartbeat_task.cancel()
         if _pg_notify_service and _raw_conn:

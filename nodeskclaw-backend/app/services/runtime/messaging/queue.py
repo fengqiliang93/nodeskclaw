@@ -38,6 +38,8 @@ async def enqueue(
     priority: Priority = Priority.NORMAL,
     scheduled_at: datetime | None = None,
 ) -> MessageQueueItem:
+    import json
+
     item = MessageQueueItem(
         target_node_id=target_node_id,
         workspace_id=workspace_id,
@@ -48,6 +50,13 @@ async def enqueue(
     )
     db.add(item)
     await db.flush()
+
+    try:
+        payload = json.dumps({"target_node_id": target_node_id})
+        await db.execute(text(f"SELECT pg_notify('message_enqueued', :payload)"), {"payload": payload})
+    except Exception:
+        pass
+
     return item
 
 

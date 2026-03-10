@@ -284,6 +284,8 @@ class AgentTransportAdapter:
             latency_ms=int((time.monotonic() - start) * 1000),
         )
 
+    MAX_COLLABORATION_DEPTH = 5
+
     async def _handle_delegation(
         self,
         action: str,
@@ -299,7 +301,16 @@ class AgentTransportAdapter:
             MessageSender,
             SenderType,
         )
-        from app.services.runtime.messaging.message_bus import get_message_bus
+
+        prev_visited = (
+            original_envelope.data.routing.visited if original_envelope.data else []
+        )
+        if len(prev_visited) >= self.MAX_COLLABORATION_DEPTH:
+            logger.warning(
+                "Collaboration depth limit (%d) reached, refusing %s from %s",
+                self.MAX_COLLABORATION_DEPTH, action, source_node_id,
+            )
+            return
 
         if action == "escalate":
             from app.models.node_card import NodeCard
@@ -313,6 +324,8 @@ class AgentTransportAdapter:
             human_card = result.scalar_one_or_none()
             if human_card:
                 target_name = human_card.node_id
+
+        new_visited = list(prev_visited) + [source_node_id]
 
         new_envelope = MessageEnvelope(
             source=f"agent/{source_node_id}",
@@ -335,9 +348,10 @@ class AgentTransportAdapter:
         )
         new_envelope.data.routing.target = target_name
         new_envelope.data.routing.targets = [target_name]
+        new_envelope.data.routing.visited = new_visited
 
-        bus = get_message_bus()
-        await bus.publish(new_envelope, workspace_id=workspace_id, db=db)
+        from app.services.runtime.messaging.bus import message_bus
+        await message_bus.publish(new_envelope, db=db)
 
     async def health_check(self, target_node_id: str) -> bool:
         return target_node_id in self._healthy_agents
@@ -345,6 +359,42 @@ class AgentTransportAdapter:
     async def on_agent_joined(self, instance_id: str) -> None:
         self._healthy_agents.add(instance_id)
         logger.info("AgentTransport: agent joined: %s", instance_id)
+
+        try:
+            await self._replay_pending_messages(instance_id)
+        except Exception as e:
+            logger.warning("AgentTransport: offline replay failed for %s: %s", instance_id, e)
+
+    async def _replay_pending_messages(self, instance_id: str) -> None:
+        """Dequeue and deliver all pending messages for a reconnected agent."""
+        from app.core.deps import async_session_factory
+        from app.services.runtime.messaging.queue import dequeue
+
+        async with async_session_factory() as db:
+            items = await dequeue(db, target_node_id=instance_id, batch_size=50)
+            if not items:
+                return
+
+            logger.info(
+                "AgentTransport: replaying %d offline messages for %s",
+                len(items), instance_id,
+            )
+            for item in items:
+                try:
+                    envelope = MessageEnvelope.from_dict(item.envelope or {})
+                    workspace_id = item.workspace_id or envelope.workspaceid
+                    result = await self._do_deliver(
+                        envelope, instance_id, workspace_id, db, time.monotonic(),
+                    )
+                    if result.success:
+                        from app.services.runtime.messaging.queue import ack
+                        await ack(db, str(item.id))
+                    else:
+                        from app.services.runtime.messaging.queue import nack
+                        await nack(db, str(item.id), result.error or "replay_failed")
+                except Exception as e:
+                    logger.warning("Replay delivery failed for item %s: %s", item.id, e)
+            await db.commit()
 
     async def on_agent_left(self, instance_id: str) -> None:
         self._healthy_agents.discard(instance_id)
