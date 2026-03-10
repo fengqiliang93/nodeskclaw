@@ -144,6 +144,10 @@ prefix_output() {
   sed -u "s/^/${color}[${label}]${RESET} /"
 }
 
+# ── 数据库迁移 ────────────────────────────────────────────
+log "执行数据库迁移 (alembic upgrade head)..."
+(cd "$BACKEND_DIR" && uv run alembic upgrade head)
+
 # ── 启动服务 ──────────────────────────────────────────────
 log "启动服务..."
 
