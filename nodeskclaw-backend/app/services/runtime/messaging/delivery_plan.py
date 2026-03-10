@@ -19,6 +19,7 @@ class DeliveryPlan:
     resolved_targets: list[DeliveryTarget] = field(default_factory=list)
     mode: str = "multicast"
     workspace_id: str = ""
+    topology_version: int = 0
     paths: list[list[str]] = field(default_factory=list)
     ignore_topology: bool = False
     needs_topology_resolution: bool = False

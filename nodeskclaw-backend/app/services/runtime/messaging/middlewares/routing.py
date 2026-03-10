@@ -165,11 +165,13 @@ class RoutingMiddleware(MessageMiddleware):
             sender_id = data.sender.instance_id or data.sender.id
             resolved = [t for t in resolved if t.node_id != sender_id]
 
+            topo_version = route_table.get_version(ctx.workspace_id)
             ctx.delivery_plan = DeliveryPlan(
                 targets=[],
                 resolved_targets=resolved,
                 mode="broadcast",
                 workspace_id=ctx.workspace_id,
+                topology_version=topo_version,
             )
 
         if ctx.delivery_plan.resolved_targets and db is not None:

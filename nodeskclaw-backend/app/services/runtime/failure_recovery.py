@@ -20,15 +20,46 @@ logger = logging.getLogger(__name__)
 SCAN_INTERVAL_S = 30
 
 
+async def _update_agent_health(db) -> None:
+    """Dual-layer health check: combine heartbeat scan with RuntimeAdapter probes."""
+    try:
+        from app.models.base import not_deleted
+        from app.models.node_card import NodeCard
+        from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+        from app.services.runtime.transport.agent_transport import agent_transport
+        from sqlalchemy import select
+
+        result = await db.execute(
+            select(NodeCard).where(
+                NodeCard.node_type == "agent",
+                NodeCard.status.in_(["active", "idle", "unhealthy"]),
+                not_deleted(NodeCard),
+            )
+        )
+        cards = result.scalars().all()
+        for card in cards:
+            is_healthy = await agent_transport.health_check(card.node_id)
+            new_status = "active" if is_healthy else "unhealthy"
+            if card.status != new_status:
+                card.status = new_status
+                logger.info("Agent %s health updated: %s -> %s", card.node_id, card.status, new_status)
+        await db.flush()
+    except Exception as e:
+        logger.warning("Agent health update failed: %s", e)
+
+
 async def run_heartbeat_scanner(session_factory: Any) -> None:
-    """Long-running coroutine that periodically cleans up stale SSE connections."""
+    """Long-running coroutine that periodically cleans up stale SSE connections and checks agent health."""
     logger.info("Heartbeat scanner started (interval=%ds)", SCAN_INTERVAL_S)
     while True:
         try:
             await asyncio.sleep(SCAN_INTERVAL_S)
             async with session_factory() as db:
                 cleaned = await sse_registry.cleanup_stale_connections(db)
+                await _update_agent_health(db)
                 if cleaned:
+                    await db.commit()
+                else:
                     await db.commit()
         except asyncio.CancelledError:
             logger.info("Heartbeat scanner cancelled")

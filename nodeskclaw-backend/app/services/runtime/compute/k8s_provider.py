@@ -121,7 +121,53 @@ class K8sComputeProvider:
         self, handle: ComputeHandle, config: InstanceComputeConfig,
     ) -> ComputeHandle:
         logger.info(
-            "K8sComputeProvider.update_instance: %s in %s",
+            "K8sComputeProvider.update_instance: %s in %s (rolling update)",
             handle.instance_id, handle.namespace,
         )
-        return handle
+        try:
+            from app.services.k8s.client_manager import k8s_manager
+
+            clients = k8s_manager.get_all_clients()
+            for client in clients:
+                try:
+                    image = config.image if hasattr(config, "image") else ""
+                    if image:
+                        deploy_name = f"deskclaw-{handle.instance_id}"
+                        body = {
+                            "spec": {
+                                "template": {
+                                    "spec": {
+                                        "containers": [{
+                                            "name": "deskclaw",
+                                            "image": image,
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                        await client.patch_namespaced_deployment(
+                            deploy_name, handle.namespace, body,
+                        )
+                        logger.info("Rolling update triggered for %s", handle.instance_id)
+                    break
+                except Exception as e:
+                    logger.warning("K8s update_instance via client failed: %s", e)
+                    continue
+        except Exception as e:
+            logger.error("K8s update_instance failed: %s", e)
+
+        return ComputeHandle(
+            provider=self.provider_id,
+            instance_id=handle.instance_id,
+            namespace=handle.namespace,
+            endpoint=handle.endpoint,
+            status="updating",
+        )
+
+    async def health_check(self, handle: ComputeHandle) -> bool:
+        """Check if the K8s pod is Running and Ready."""
+        try:
+            status = await self.get_status(handle)
+            return status == "running"
+        except Exception:
+            return False

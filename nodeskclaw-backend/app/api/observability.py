@@ -243,6 +243,75 @@ async def list_events(
     return _ok(events)
 
 
+@router.get("/{workspace_id}/messages/{message_id}/reconstruct")
+async def reconstruct_message_state(
+    workspace_id: str, message_id: str,
+    org_ctx=Depends(get_current_org), db: AsyncSession = Depends(get_db),
+):
+    """Reconstruct full message lifecycle from event log."""
+    user, org = org_ctx
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    result = await db.execute(
+        select(EventLog)
+        .where(
+            EventLog.message_id == message_id,
+            EventLog.workspace_id == workspace_id,
+        )
+        .order_by(EventLog.created_at.asc())
+    )
+    events = result.scalars().all()
+
+    timeline = []
+    state = {
+        "message_id": message_id,
+        "current_status": "unknown",
+        "created_at": None,
+        "delivered_to": [],
+        "failed_targets": [],
+        "retried_targets": [],
+        "dead_lettered_targets": [],
+    }
+
+    for e in events:
+        entry = {
+            "event_type": e.event_type,
+            "timestamp": e.created_at.isoformat() if e.created_at else None,
+            "data": e.data,
+        }
+        timeline.append(entry)
+
+        if e.event_type == "message_created":
+            state["current_status"] = "created"
+            state["created_at"] = e.created_at.isoformat() if e.created_at else None
+        elif e.event_type == "message_routed":
+            state["current_status"] = "routed"
+        elif e.event_type == "message_delivering":
+            state["current_status"] = "delivering"
+        elif e.event_type == "message_delivered":
+            state["current_status"] = "delivered"
+            if e.data and e.data.get("delivered_to"):
+                state["delivered_to"].extend(e.data["delivered_to"])
+        elif e.event_type == "message_delivery_failed":
+            state["current_status"] = "failed"
+            if e.data and e.data.get("failed_targets"):
+                state["failed_targets"].extend(e.data["failed_targets"])
+        elif e.event_type == "message_retried":
+            if e.data and e.data.get("target_node_id"):
+                state["retried_targets"].append(e.data["target_node_id"])
+        elif e.event_type == "message_dead_lettered":
+            if e.data and e.data.get("target_node_id"):
+                state["dead_lettered_targets"].append(e.data["target_node_id"])
+        elif e.event_type == "message_pipeline_error":
+            state["current_status"] = "error"
+
+    return _ok({
+        "state": state,
+        "timeline": timeline,
+        "event_count": len(timeline),
+    })
+
+
 @router.get("/{workspace_id}/messages/queue-stats")
 async def get_queue_stats(
     workspace_id: str,

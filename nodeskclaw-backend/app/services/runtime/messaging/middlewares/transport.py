@@ -84,6 +84,15 @@ class TransportMiddleware(MessageMiddleware):
             await ctx.db.flush()
 
         failed = [r for r in ctx.delivery_results if not r.success]
+        if failed and ctx.delivery_plan and ctx.delivery_plan.topology_version > 0:
+            from app.services.runtime.route_cache import route_table
+            if route_table.is_stale(ctx.workspace_id, ctx.delivery_plan.topology_version):
+                logger.info(
+                    "Topology changed since plan v%d, marking failures for re-route",
+                    ctx.delivery_plan.topology_version,
+                )
+                ctx.extra["topology_stale"] = True
+
         if failed:
             await self._handle_failures(ctx, failed)
 

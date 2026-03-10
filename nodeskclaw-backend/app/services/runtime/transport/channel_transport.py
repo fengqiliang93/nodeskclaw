@@ -33,6 +33,14 @@ class ChannelStrategy(Protocol):
         channel_config: dict,
     ) -> bool: ...
 
+    async def receive_webhook(self, payload: dict, headers: dict) -> dict | None:
+        """Process an inbound webhook from the channel. Returns parsed message dict or None."""
+        ...
+
+    async def verify_signature(self, payload: bytes, headers: dict, secret: str) -> bool:
+        """Verify webhook signature. Returns True if valid."""
+        ...
+
 
 class SSEChannelStrategy:
     channel_id = "sse"
@@ -58,6 +66,55 @@ class SSEChannelStrategy:
             "delivered_via": "sse",
             "trace_id": envelope.traceid,
         })
+        return True
+
+    async def receive_webhook(self, payload: dict, headers: dict) -> dict | None:
+        return None
+
+    async def verify_signature(self, payload: bytes, headers: dict, secret: str) -> bool:
+        return True
+
+
+class OfflineQueueStrategy:
+    """Fallback: enqueue message for later delivery when all channels fail."""
+
+    channel_id = "offline_queue"
+
+    async def deliver(
+        self,
+        *,
+        workspace_id: str,
+        target_node_id: str,
+        user_id: str,
+        source_name: str,
+        content: str,
+        envelope: MessageEnvelope,
+        channel_config: dict,
+    ) -> bool:
+        try:
+            from app.core.deps import async_session_factory
+            from app.services.runtime.messaging.envelope import Priority
+            from app.services.runtime.messaging.queue import enqueue
+
+            async with async_session_factory() as db:
+                await enqueue(
+                    db,
+                    target_node_id=target_node_id,
+                    workspace_id=workspace_id,
+                    priority=Priority.NORMAL,
+                    envelope=envelope.to_dict(),
+                )
+                await db.commit()
+            logger.info("Message enqueued to offline queue for %s", target_node_id)
+            return True
+        except Exception as e:
+            logger.error("Offline queue enqueue failed: %s", e)
+            return False
+
+    async def receive_webhook(self, payload: dict, headers: dict) -> dict | None:
+        return None
+
+    async def verify_signature(self, payload: bytes, headers: dict, secret: str) -> bool:
         return True
 
 
@@ -140,6 +197,32 @@ class FeishuChannelStrategy:
             logger.error("Feishu delivery failed: %s", e)
             return False
 
+    async def receive_webhook(self, payload: dict, headers: dict) -> dict | None:
+        encrypt = payload.get("encrypt")
+        if encrypt:
+            logger.debug("Feishu webhook received (encrypted, needs decryption)")
+            return None
+        event = payload.get("event", {})
+        msg = event.get("message", {})
+        return {
+            "message_id": msg.get("message_id"),
+            "content": msg.get("content", ""),
+            "sender_id": event.get("sender", {}).get("sender_id", {}).get("open_id", ""),
+        } if msg else None
+
+    async def verify_signature(self, payload: bytes, headers: dict, secret: str) -> bool:
+        import hashlib
+        import hmac
+
+        timestamp = headers.get("X-Lark-Request-Timestamp", "")
+        nonce = headers.get("X-Lark-Request-Nonce", "")
+        signature = headers.get("X-Lark-Signature", "")
+        if not all([timestamp, nonce, signature]):
+            return False
+        body = f"{timestamp}{nonce}{secret}".encode() + payload
+        expected = hashlib.sha256(body).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
 
 class ChannelTransportAdapter:
     """Delivers messages to human nodes via channel strategies (Feishu, SSE, etc.)."""
@@ -150,6 +233,7 @@ class ChannelTransportAdapter:
         self._strategies: dict[str, ChannelStrategy] = {}
         self.register_channel(SSEChannelStrategy())
         self.register_channel(FeishuChannelStrategy())
+        self.register_channel(OfflineQueueStrategy())
 
     def register_channel(self, strategy: ChannelStrategy) -> None:
         self._strategies[strategy.channel_id] = strategy
@@ -244,12 +328,13 @@ class ChannelTransportAdapter:
         )
 
     def _build_fallback_order(self, primary: str) -> list[str]:
-        """Build fallback chain: primary channel -> SSE (always last resort)."""
+        """Build fallback chain: Feishu private -> Feishu group -> SSE -> offline queue."""
         order = []
-        if primary and primary != "sse" and primary in self._strategies:
+        if primary and primary not in ("sse", "offline_queue") and primary in self._strategies:
             order.append(primary)
         if "sse" not in order:
             order.append("sse")
+        order.append("offline_queue")
         return order
 
     async def health_check(self, target_node_id: str) -> bool:

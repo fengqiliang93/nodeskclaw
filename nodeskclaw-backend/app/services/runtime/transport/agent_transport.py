@@ -26,6 +26,17 @@ def _get_instance_connection(inst) -> tuple[str, str]:
     return base_url, token
 
 
+def _parse_delegation(response: str) -> tuple[str, str] | None:
+    """Parse delegate:/escalate: prefixes from agent responses."""
+    stripped = response.strip()
+    for prefix in ("delegate:", "escalate:"):
+        if stripped.lower().startswith(prefix):
+            target = stripped[len(prefix):].strip().split()[0] if stripped[len(prefix):].strip() else ""
+            if target:
+                return (prefix.rstrip(":"), target)
+    return None
+
+
 class AgentTransportAdapter:
     """Delivers messages to agent nodes by resolving the runtime adapter from the registry."""
 
@@ -234,6 +245,17 @@ class AgentTransportAdapter:
                 "content": buffer, "trace_id": envelope.traceid,
             })
 
+        delegation = _parse_delegation(full_response)
+        if delegation:
+            action, delegate_target = delegation
+            logger.info("Agent %s issued %s to %s", agent_name, action, delegate_target)
+            try:
+                await self._handle_delegation(
+                    action, delegate_target, envelope, target_node_id, workspace_id, db,
+                )
+            except Exception as e:
+                logger.warning("Delegation %s->%s failed: %s", action, delegate_target, e)
+
         if full_response and not msg_service.is_no_reply(full_response.strip()):
             broadcast_event(workspace_id, "agent:done", {
                 "instance_id": target_node_id,
@@ -261,6 +283,61 @@ class AgentTransportAdapter:
             transport=self.transport_id,
             latency_ms=int((time.monotonic() - start) * 1000),
         )
+
+    async def _handle_delegation(
+        self,
+        action: str,
+        target_name: str,
+        original_envelope: MessageEnvelope,
+        source_node_id: str,
+        workspace_id: str,
+        db: AsyncSession,
+    ) -> None:
+        from app.services.runtime.messaging.envelope import (
+            IntentType,
+            MessageData,
+            MessageSender,
+            SenderType,
+        )
+        from app.services.runtime.messaging.message_bus import get_message_bus
+
+        if action == "escalate":
+            from app.models.node_card import NodeCard
+            result = await db.execute(
+                select(NodeCard).where(
+                    NodeCard.workspace_id == workspace_id,
+                    NodeCard.node_type == "human",
+                    not_deleted(NodeCard),
+                ).limit(1)
+            )
+            human_card = result.scalar_one_or_none()
+            if human_card:
+                target_name = human_card.node_id
+
+        new_envelope = MessageEnvelope(
+            source=f"agent/{source_node_id}",
+            type="deskclaw.msg.v1.chat",
+            workspaceid=workspace_id,
+            causationid=original_envelope.id,
+            correlationid=original_envelope.correlationid or original_envelope.id,
+            traceid=original_envelope.traceid,
+            data=MessageData(
+                sender=MessageSender(
+                    id=source_node_id,
+                    type=SenderType.AGENT,
+                    name=f"agent:{source_node_id}",
+                    instance_id=source_node_id,
+                ),
+                intent=IntentType.COLLABORATE,
+                content=original_envelope.data.content if original_envelope.data else "",
+                extensions={"delegation_action": action, "delegation_from": source_node_id},
+            ),
+        )
+        new_envelope.data.routing.target = target_name
+        new_envelope.data.routing.targets = [target_name]
+
+        bus = get_message_bus()
+        await bus.publish(new_envelope, workspace_id=workspace_id, db=db)
 
     async def health_check(self, target_node_id: str) -> bool:
         return target_node_id in self._healthy_agents
