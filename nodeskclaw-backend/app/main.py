@@ -357,7 +357,7 @@ async def lifespan(app: FastAPI):
             _raw_conn = None
 
         from app.services.runtime.failure_recovery import run_heartbeat_scanner
-        _heartbeat_task = asyncio.create_task(run_heartbeat_scanner(engine))
+        _heartbeat_task = asyncio.create_task(run_heartbeat_scanner(async_session_factory))
         logger.info("Runtime v2: SSE 心跳扫描已启动")
 
         from app.services.runtime.messaging.queue_consumer import start_consumer
@@ -395,7 +395,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
         from app.services.runtime.failure_recovery import shutdown_cleanup
-        await shutdown_cleanup(engine)
+        await shutdown_cleanup(async_session_factory)
         logger.info("Runtime v2: 已清理")
     except Exception as e:
         logger.warning("Runtime v2 关闭部分失败: %s", e)
