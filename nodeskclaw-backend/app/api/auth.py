@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_db, require_feature, require_super_admin_dep
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_user_unchecked
 from app.models.user import User
 from app.schemas.auth import (
     AccountLoginRequest,
@@ -83,7 +83,7 @@ async def refresh(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db))
 
 @router.get("/me", response_model=ApiResponse[UserInfo])
 async def me(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unchecked),
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户信息（含管理平台角色和组织成员角色）。"""
@@ -116,7 +116,7 @@ async def me(
 @router.put("/me/password", response_model=ApiResponse)
 async def change_password(
     body: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unchecked),
     db: AsyncSession = Depends(get_db),
 ):
     await auth_service.change_password(
@@ -126,7 +126,7 @@ async def change_password(
 
 
 @router.post("/logout", response_model=ApiResponse)
-async def logout(current_user: User = Depends(get_current_user)):
+async def logout(current_user: User = Depends(get_current_user_unchecked)):
     """登出（客户端清除 Token 即可，服务端无需额外操作）。"""
     return ApiResponse(message="已登出")
 

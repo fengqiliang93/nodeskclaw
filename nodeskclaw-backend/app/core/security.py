@@ -131,7 +131,41 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract and validate JWT from Authorization header, return User."""
+    """Extract and validate JWT from Authorization header, return User.
+
+    Raises 403 when user.must_change_password is True.
+    Auth-whitelist routes should use get_current_user_unchecked instead.
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error_code": 40100,
+                "message_key": "errors.auth.credentials_missing",
+                "message": "未提供认证信息",
+            },
+        )
+    user = await _get_user_by_token(credentials.credentials, db)
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error_code": 40350,
+                "message_key": "errors.auth.password_change_required",
+                "message": "请先修改密码",
+            },
+        )
+    return user
+
+
+async def get_current_user_unchecked(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Same as get_current_user but allows must_change_password users through.
+
+    Used by /auth/me, /auth/me/password, /auth/logout.
+    """
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
