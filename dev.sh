@@ -7,13 +7,13 @@ BACKEND_DIR="$SCRIPT_DIR/nodeskclaw-backend"
 PORTAL_DIR="$SCRIPT_DIR/nodeskclaw-portal"
 ADMIN_DIR="$EE_DIR/nodeskclaw-frontend"
 
-BLUE='\033[0;34m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-RESET='\033[0m'
+BLUE=$'\033[0;34m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[0;33m'
+RED=$'\033[0;31m'
+CYAN=$'\033[0;36m'
+BOLD=$'\033[1m'
+RESET=$'\033[0m'
 
 PIDS=()
 FRESH=false
@@ -39,8 +39,8 @@ EOF
   exit 0
 }
 
-log() { echo -e "${CYAN}[dev]${RESET} $*"; }
-err() { echo -e "${RED}[dev] ERROR:${RESET} $*" >&2; }
+log() { echo "${CYAN}[dev]${RESET} $*"; }
+err() { echo "${RED}[dev] ERROR:${RESET} $*" >&2; }
 
 cleanup() {
   echo ""
@@ -171,16 +171,17 @@ sleep 2
 
 # ── 打印摘要 ──────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}========================================${RESET}"
-echo -e "${BOLD} NoDeskClaw 本地开发环境 (${MODE^^})${RESET}"
-echo -e "${BOLD}========================================${RESET}"
-echo -e "  ${BLUE}Backend${RESET}  http://localhost:8000"
-echo -e "  ${GREEN}Portal${RESET}   http://localhost:5174"
+MODE_UPPER=$(echo "$MODE" | tr '[:lower:]' '[:upper:]')
+echo "${BOLD}========================================${RESET}"
+echo "${BOLD} NoDeskClaw 本地开发环境 (${MODE_UPPER})${RESET}"
+echo "${BOLD}========================================${RESET}"
+echo "  ${BLUE}Backend${RESET}  http://localhost:8000"
+echo "  ${GREEN}Portal${RESET}   http://localhost:5174"
 if [ "$MODE" = "ee" ]; then
-  echo -e "  ${YELLOW}Admin${RESET}    http://localhost:5173"
+  echo "  ${YELLOW}Admin${RESET}    http://localhost:5173"
 fi
-echo -e "${BOLD}========================================${RESET}"
-echo -e "  Ctrl+C 停止所有服务"
+echo "${BOLD}========================================${RESET}"
+echo "  Ctrl+C 停止所有服务"
 echo ""
 
 # ── 等待子进程 ────────────────────────────────────────────
