@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,5 +19,6 @@ class DeadLetter(BaseModel):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_error: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     envelope: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    recoverable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
     recovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recovered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)

@@ -124,6 +124,9 @@ class TransportMiddleware(MessageMiddleware):
         if db is None:
             return
 
+        retried_targets: list[str] = ctx.extra.setdefault("retried_targets", [])
+        dead_lettered_targets: list[str] = ctx.extra.setdefault("dead_lettered_targets", [])
+
         for result in failed:
             retry_count = ctx.extra.get(f"retry:{result.target_node_id}", 0)
             if retry_count < MAX_RETRY:
@@ -139,6 +142,7 @@ class TransportMiddleware(MessageMiddleware):
                         priority=priority,
                         envelope=ctx.envelope.to_dict(),
                     )
+                    retried_targets.append(result.target_node_id)
                     logger.info(
                         "Enqueued retry %d for %s -> %s",
                         retry_count + 1, ctx.envelope.id, result.target_node_id,
@@ -150,15 +154,17 @@ class TransportMiddleware(MessageMiddleware):
                     from app.models.dead_letter import DeadLetter
 
                     dl = DeadLetter(
-                        envelope_id=ctx.envelope.id,
+                        message_id=ctx.envelope.id,
                         target_node_id=result.target_node_id,
                         workspace_id=ctx.workspace_id,
-                        payload=ctx.envelope.to_dict(),
-                        error=result.error,
-                        retry_count=retry_count,
+                        envelope=ctx.envelope.to_dict(),
+                        last_error=result.error or "",
+                        attempt_count=retry_count,
+                        recoverable=True,
                     )
                     db.add(dl)
                     await db.flush()
+                    dead_lettered_targets.append(result.target_node_id)
                     logger.warning(
                         "Moved to DLQ: %s -> %s after %d retries",
                         ctx.envelope.id, result.target_node_id, retry_count,

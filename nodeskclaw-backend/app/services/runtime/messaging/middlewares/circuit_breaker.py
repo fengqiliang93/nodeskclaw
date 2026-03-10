@@ -48,6 +48,45 @@ async def get_or_create_circuit(
     return cs
 
 
+async def _recover_dead_letters(
+    db: AsyncSession, node_id: str, workspace_id: str,
+) -> None:
+    """Re-enqueue recoverable dead letters when a circuit breaker closes."""
+    try:
+        from app.models.dead_letter import DeadLetter
+        from app.models.message_queue import MessageQueueItem
+
+        result = await db.execute(
+            select(DeadLetter).where(
+                DeadLetter.target_node_id == node_id,
+                DeadLetter.workspace_id == workspace_id,
+                DeadLetter.recoverable.is_(True),
+                DeadLetter.recovered_at.is_(None),
+                not_deleted(DeadLetter),
+            )
+        )
+        dead_letters = result.scalars().all()
+        for dl in dead_letters:
+            new_item = MessageQueueItem(
+                target_node_id=dl.target_node_id,
+                workspace_id=dl.workspace_id,
+                priority=dl.original_priority,
+                status="pending",
+                envelope=dl.envelope,
+                attempt_count=0,
+            )
+            db.add(new_item)
+            dl.recovered_at = datetime.now(timezone.utc)
+            dl.recovered_by = "circuit_breaker_auto"
+        if dead_letters:
+            logger.info(
+                "Auto-recovered %d dead letters for node %s (circuit closed)",
+                len(dead_letters), node_id,
+            )
+    except Exception as e:
+        logger.warning("Failed to auto-recover dead letters: %s", e)
+
+
 async def record_success(
     db: AsyncSession, node_id: str, workspace_id: str,
 ) -> None:
@@ -59,6 +98,7 @@ async def record_success(
         cs.state = "closed"
         cs.failure_count = 0
         logger.info("Circuit closed for node %s in workspace %s", node_id, workspace_id)
+        await _recover_dead_letters(db, node_id, workspace_id)
 
     await db.flush()
 

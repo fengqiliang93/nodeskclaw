@@ -51,11 +51,19 @@ class NodeTypeRegistry:
     def all_types(self) -> list[NodeTypeDefinitionSpec]:
         return list(self._types.values())
 
-    def all_terminal_roles(self) -> list[NodeTypeDefinitionSpec]:
-        return [t for t in self._types.values() if t.consumes and not t.propagates]
+    def all_terminal_roles(self) -> list[str]:
+        return [t.type_id for t in self._types.values() if t.consumes and not t.propagates]
 
-    def all_relay_roles(self) -> list[NodeTypeDefinitionSpec]:
-        return [t for t in self._types.values() if t.propagates]
+    def all_relay_roles(self) -> list[str]:
+        return [t.type_id for t in self._types.values() if t.propagates]
+
+    def get_transport(self, type_id: str) -> str | None:
+        spec = self._types.get(type_id)
+        return spec.transport if spec else None
+
+    def get_hooks(self, type_id: str) -> list[str]:
+        spec = self._types.get(type_id)
+        return list(spec.hooks) if spec else []
 
     def is_registered(self, type_id: str) -> bool:
         return type_id in self._types

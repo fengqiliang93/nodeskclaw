@@ -1,4 +1,15 @@
-"""AuditMiddleware — records all message operations to the event sourcing log."""
+"""AuditMiddleware — records full message lifecycle events to the event sourcing log.
+
+Event types:
+  - message_created      — Pipeline entry
+  - message_routed       — DeliveryPlan generated
+  - message_delivering   — Transport starting delivery
+  - message_delivered    — Successful delivery
+  - message_delivery_failed — All targets failed
+  - message_retried      — Enqueued for retry
+  - message_dead_lettered — Moved to DLQ
+  - message_pipeline_error — Pipeline-level error
+"""
 
 from __future__ import annotations
 
@@ -9,7 +20,7 @@ from app.services.runtime.messaging.pipeline import MessageMiddleware, NextFn, P
 logger = logging.getLogger(__name__)
 
 
-async def _record_event(ctx: PipelineContext, event_type: str, data: dict | None = None) -> None:
+async def record_audit_event(ctx: PipelineContext, event_type: str, data: dict | None = None) -> None:
     db = ctx.db
     if db is None:
         return
@@ -29,28 +40,56 @@ async def _record_event(ctx: PipelineContext, event_type: str, data: dict | None
         db.add(log)
         await db.flush()
     except Exception as e:
-        logger.warning("AuditMiddleware: failed to record event: %s", e)
+        logger.warning("AuditMiddleware: failed to record event '%s': %s", event_type, e)
 
 
 class AuditMiddleware(MessageMiddleware):
     async def process(self, ctx: PipelineContext, next_fn: NextFn) -> None:
+        await record_audit_event(ctx, "message_created", {
+            "intent": ctx.envelope.data.intent.value if ctx.envelope.data else None,
+            "sender_type": ctx.envelope.data.sender.type.value if ctx.envelope.data and ctx.envelope.data.sender else None,
+        })
+
         await next_fn(ctx)
+
+        if ctx.delivery_plan:
+            await record_audit_event(ctx, "message_routed", {
+                "mode": ctx.delivery_plan.mode,
+                "target_count": len(ctx.delivery_plan.resolved_targets),
+            })
+
+        if ctx.delivery_results:
+            await record_audit_event(ctx, "message_delivering", {
+                "target_count": len(ctx.delivery_results),
+            })
 
         delivered = [r for r in ctx.delivery_results if r.success]
         failed = [r for r in ctx.delivery_results if not r.success]
 
         if ctx.error:
-            await _record_event(ctx, "message_pipeline_error", {
+            await record_audit_event(ctx, "message_pipeline_error", {
                 "error": ctx.error,
             })
         elif failed and not delivered:
-            await _record_event(ctx, "message_delivery_failed", {
+            await record_audit_event(ctx, "message_delivery_failed", {
                 "failed_targets": [r.target_node_id for r in failed],
                 "errors": [r.error for r in failed],
             })
-        else:
-            await _record_event(ctx, "message_delivered", {
+        elif delivered:
+            await record_audit_event(ctx, "message_delivered", {
                 "delivered_to": [r.target_node_id for r in delivered],
                 "failed_targets": [r.target_node_id for r in failed] if failed else [],
                 "mode": ctx.delivery_plan.mode if ctx.delivery_plan else "unknown",
+            })
+
+        retried = ctx.extra.get("retried_targets", [])
+        for target_id in retried:
+            await record_audit_event(ctx, "message_retried", {
+                "target_node_id": target_id,
+            })
+
+        dead_lettered = ctx.extra.get("dead_lettered_targets", [])
+        for target_id in dead_lettered:
+            await record_audit_event(ctx, "message_dead_lettered", {
+                "target_node_id": target_id,
             })

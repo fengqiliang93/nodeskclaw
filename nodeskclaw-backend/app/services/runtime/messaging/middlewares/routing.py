@@ -180,6 +180,11 @@ class RoutingMiddleware(MessageMiddleware):
                 db,
             )
 
+            ctx.delivery_plan.resolved_targets = await self._apply_backpressure(
+                ctx.delivery_plan.resolved_targets, data.priority, db,
+            )
+
+        ctx.extra["backpressure_dropped"] = ctx.extra.get("backpressure_dropped", [])
         ctx.extra["hooks_to_fire"] = []
         if ctx.delivery_plan.mode == "broadcast" and db is not None:
             try:
@@ -218,3 +223,27 @@ class RoutingMiddleware(MessageMiddleware):
         )
 
         await next_fn(ctx)
+
+    @staticmethod
+    async def _apply_backpressure(
+        targets: list[DeliveryTarget],
+        msg_priority,
+        db,
+    ) -> list[DeliveryTarget]:
+        from app.services.runtime.messaging.envelope import Priority
+        from app.services.runtime.messaging.queue import get_backpressure_level, get_queue_depth
+
+        kept: list[DeliveryTarget] = []
+        for t in targets:
+            depth = await get_queue_depth(db, t.node_id)
+            level = get_backpressure_level(depth)
+
+            if level == "FULL":
+                kept.append(t)
+            elif level == "NORMAL_ONLY":
+                if msg_priority != Priority.BACKGROUND:
+                    kept.append(t)
+            elif level == "CRITICAL_ONLY":
+                if msg_priority == Priority.CRITICAL:
+                    kept.append(t)
+        return kept
