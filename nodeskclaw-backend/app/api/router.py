@@ -20,6 +20,7 @@ from app.api.storage import router as storage_router
 from app.api.corridors import router as corridor_router
 from app.api.channel_configs import router as channel_config_router
 from app.api.observability import router as observability_router
+from app.api.runtime_admin import router as runtime_admin_router
 from app.api.mcp import router as mcp_router
 from app.api.trust import router as trust_router
 from app.api.webhooks import router as webhook_router
@@ -142,4 +143,7 @@ admin_router.include_router(llm_keys_router,
     dependencies=[Depends(require_org_role("admin"))])
 admin_router.include_router(registry_router, prefix="/registry",
     tags=["Admin - 镜像仓库"],
+    dependencies=[Depends(require_org_role("admin"))])
+admin_router.include_router(runtime_admin_router, prefix="/runtime",
+    tags=["Admin - 运行时平台"],
     dependencies=[Depends(require_org_role("admin"))])
