@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from app.services.runtime.messaging.envelope import MessageEnvelope
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +20,11 @@ NextFn = Callable[["PipelineContext"], Coroutine[Any, Any, None]]
 class PipelineContext:
     envelope: MessageEnvelope
     workspace_id: str = ""
+    db: AsyncSession | None = None
     topology_cache: dict = field(default_factory=dict)
     metrics: dict = field(default_factory=dict)
     delivery_plan: Any = None
+    delivery_results: list = field(default_factory=list)
     short_circuited: bool = False
     error: str | None = None
     extra: dict = field(default_factory=dict)

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import not_deleted
 from app.models.circuit_state import CircuitState
+from app.services.runtime.messaging.pipeline import MessageMiddleware, NextFn, PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -109,3 +110,31 @@ async def try_half_open(
             logger.info("Circuit half-open for node %s in workspace %s", node_id, workspace_id)
             return True
     return False
+
+
+class CircuitBreakerMiddleware(MessageMiddleware):
+    """Filter out targets whose circuit breaker is OPEN; allow HALF_OPEN probes."""
+
+    async def process(self, ctx: PipelineContext, next_fn: NextFn) -> None:
+        plan = ctx.delivery_plan
+        db = ctx.db
+
+        if plan is None or not plan.resolved_targets or db is None:
+            await next_fn(ctx)
+            return
+
+        allowed: list = []
+        for target in plan.resolved_targets:
+            cs = await get_circuit_state(db, target.node_id, ctx.workspace_id)
+            if cs is None or should_allow_request(cs):
+                if cs and cs.state == "open":
+                    await try_half_open(db, target.node_id, ctx.workspace_id)
+                allowed.append(target)
+            else:
+                logger.info(
+                    "CircuitBreaker: skipping target %s (state=%s)",
+                    target.node_id, cs.state,
+                )
+
+        plan.resolved_targets = allowed
+        await next_fn(ctx)
