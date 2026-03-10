@@ -1212,6 +1212,35 @@ def broadcast_event(workspace_id: str, event_type: str, data: dict):
     for q in queues:
         q.put_nowait({"event": event_type, "data": data})
 
+    asyncio.ensure_future(_cross_instance_push(workspace_id, event_type, data))
+
+
+async def _cross_instance_push(workspace_id: str, event_type: str, data: dict):
+    """Forward SSE events to other backend instances via PG NOTIFY."""
+    try:
+        from app.core.deps import async_session_factory
+        from app.services.runtime.pg_notify import PGNotifyService
+        from app.services.runtime.sse_registry import (
+            BACKEND_INSTANCE_ID,
+            get_remote_instances_for_workspace,
+        )
+
+        async with async_session_factory() as db:
+            remote_ids = await get_remote_instances_for_workspace(db, workspace_id)
+            if not remote_ids:
+                return
+
+            payload = {
+                "workspace_id": workspace_id,
+                "event_type": event_type,
+                "data": data,
+            }
+            for inst_id in remote_ids:
+                await PGNotifyService.notify_sse_push(db, inst_id, payload)
+            await db.commit()
+    except Exception as e:
+        logger.warning("Cross-instance SSE push failed: %s", e)
+
 
 def _broadcast_system_info(workspace_id: str, content: str) -> None:
     """Broadcast a system:info event with full fields expected by the frontend."""
@@ -1241,6 +1270,22 @@ async def workspace_events(
         _workspace_queues[workspace_id] = set()
     _workspace_queues[workspace_id].add(queue)
 
+    import uuid as _uuid
+    conn_id = str(_uuid.uuid4())
+    try:
+        from app.services.runtime import sse_registry
+        await sse_registry.register_connection(
+            db,
+            connection_id=conn_id,
+            instance_id=conn_id,
+            target_type="workspace",
+            target_id=workspace_id,
+            workspace_id=workspace_id,
+        )
+        await db.commit()
+    except Exception as e:
+        logger.warning("Failed to register SSE connection: %s", e)
+
     async def stream():
         try:
             yield f"data: {json.dumps({'event': 'connected'})}\n\n"
@@ -1256,6 +1301,14 @@ async def workspace_events(
             pass
         finally:
             _workspace_queues.get(workspace_id, set()).discard(queue)
+            try:
+                from app.core.deps import async_session_factory
+                from app.services.runtime import sse_registry
+                async with async_session_factory() as cleanup_db:
+                    await sse_registry.unregister_connection(cleanup_db, conn_id)
+                    await cleanup_db.commit()
+            except Exception:
+                pass
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

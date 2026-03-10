@@ -1592,12 +1592,36 @@ async def lifespan(app: FastAPI):
                 route_table.invalidate_all()
 
         _pg_notify_service.subscribe("topology_changed", _on_topology_changed)
-        _pg_notify_channels = ["topology_changed"]
+
+        from app.services.runtime.sse_registry import BACKEND_INSTANCE_ID
+        _sse_push_channel = f"sse_push:{BACKEND_INSTANCE_ID}"
+
+        async def _on_sse_push(channel: str, payload: str):
+            from app.api.workspaces import _workspace_queues
+            try:
+                import json as _json
+                msg = _json.loads(payload) if payload else {}
+                ws_id = msg.get("workspace_id", "")
+                event_type = msg.get("event_type", "")
+                data = msg.get("data", {})
+                if ws_id and event_type:
+                    queues = _workspace_queues.get(ws_id, set())
+                    for q in queues:
+                        q.put_nowait({"event": event_type, "data": data})
+            except Exception as e:
+                logger.warning("_on_sse_push handler failed: %s", e)
+
+        _pg_notify_service.subscribe(_sse_push_channel, _on_sse_push)
+
+        _pg_notify_channels = ["topology_changed", _sse_push_channel]
         try:
             _raw_conn = await engine.raw_connection()
             _asyncpg_conn = _raw_conn.connection._connection
             await _pg_notify_service.start_listening(_asyncpg_conn, _pg_notify_channels)
-            logger.info("Runtime v2: PG LISTEN/NOTIFY 已启动 (channels=%s)", _pg_notify_channels)
+            logger.info(
+                "Runtime v2: PG LISTEN/NOTIFY 已启动 (channels=%s, backend=%s)",
+                _pg_notify_channels, BACKEND_INSTANCE_ID,
+            )
         except Exception as e:
             logger.warning("Runtime v2: PG LISTEN/NOTIFY 启动失败（非致命）: %s", e)
             _raw_conn = None
@@ -1621,8 +1645,18 @@ async def lifespan(app: FastAPI):
     try:
         if _heartbeat_task and not _heartbeat_task.done():
             _heartbeat_task.cancel()
-        if _pg_notify_service:
-            await _pg_notify_service.stop_listening()
+        if _pg_notify_service and _raw_conn:
+            try:
+                await _pg_notify_service.stop_listening(_asyncpg_conn, _pg_notify_channels)
+            except Exception:
+                pass
+        try:
+            async with async_session_factory() as _shutdown_db:
+                from app.services.runtime import sse_registry
+                await sse_registry.cleanup_backend_connections(_shutdown_db)
+                await _shutdown_db.commit()
+        except Exception:
+            pass
         from app.services.runtime.failure_recovery import shutdown_cleanup
         await shutdown_cleanup(engine)
         logger.info("Runtime v2: 已清理")

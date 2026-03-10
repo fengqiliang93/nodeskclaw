@@ -145,6 +145,26 @@ async def cleanup_stale_connections(db: AsyncSession) -> int:
     return count
 
 
+async def get_remote_instances_for_workspace(
+    db: AsyncSession,
+    workspace_id: str,
+    *,
+    exclude_self: bool = True,
+) -> list[str]:
+    """Return distinct backend_instance_ids that have SSE connections for a workspace, excluding self."""
+    from sqlalchemy import distinct
+
+    stmt = select(distinct(SSEConnection.backend_instance_id)).where(
+        SSEConnection.workspace_id == workspace_id,
+        not_deleted(SSEConnection),
+    )
+    if exclude_self:
+        stmt = stmt.where(SSEConnection.backend_instance_id != BACKEND_INSTANCE_ID)
+
+    result = await db.execute(stmt)
+    return [row[0] for row in result.all()]
+
+
 async def cleanup_backend_connections(db: AsyncSession, backend_id: str | None = None) -> int:
     """Remove all connections belonging to a specific backend instance (e.g. on shutdown)."""
     bid = backend_id or BACKEND_INSTANCE_ID
