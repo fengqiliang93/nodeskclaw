@@ -13,6 +13,7 @@ class SenderType(str, Enum):
     AGENT = "agent"
     SYSTEM = "system"
     CRON = "cron"
+    EXTERNAL = "external"
 
 
 class IntentType(str, Enum):
@@ -20,7 +21,7 @@ class IntentType(str, Enum):
     COLLABORATE = "collaborate"
     NOTIFY = "notify"
     COMMAND = "command"
-    BROADCAST = "broadcast"
+    ACK = "ack"
 
 
 class Priority(str, Enum):
@@ -46,6 +47,7 @@ class Urgency(str, Enum):
     IMMEDIATE = "immediate"
     NORMAL = "normal"
     DEFERRED = "deferred"
+    SCHEDULED = "scheduled"
 
 
 @dataclass
@@ -59,9 +61,13 @@ class MessageSender:
 @dataclass
 class MessageRouting:
     mode: str = "multicast"
+    target: str = ""
     targets: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     max_hops: int = 5
+    ttl: int = 0
+    visited: list[str] = field(default_factory=list)
+    priority: Priority | None = None
 
 
 @dataclass
@@ -69,6 +75,7 @@ class MessageScheduling:
     delivery_mode: DeliveryMode = DeliveryMode.ASYNC
     urgency: Urgency = Urgency.NORMAL
     delay_seconds: int = 0
+    deadline: str | None = None
 
 
 @dataclass
@@ -133,14 +140,18 @@ class MessageEnvelope:
                 "priority": self.data.priority.value,
                 "routing": {
                     "mode": self.data.routing.mode,
+                    "target": self.data.routing.target,
                     "targets": self.data.routing.targets,
                     "exclude": self.data.routing.exclude,
                     "max_hops": self.data.routing.max_hops,
+                    "ttl": self.data.routing.ttl,
+                    "visited": self.data.routing.visited,
                 },
                 "scheduling": {
                     "delivery_mode": self.data.scheduling.delivery_mode.value,
                     "urgency": self.data.scheduling.urgency.value,
                     "delay_seconds": self.data.scheduling.delay_seconds,
+                    "deadline": self.data.scheduling.deadline,
                 },
             }
         return result
@@ -168,15 +179,19 @@ class MessageEnvelope:
             routing_d = data_dict.get("routing", {})
             msg_data.routing = MessageRouting(
                 mode=routing_d.get("mode", "multicast"),
+                target=routing_d.get("target", ""),
                 targets=routing_d.get("targets", []),
                 exclude=routing_d.get("exclude", []),
                 max_hops=routing_d.get("max_hops", 5),
+                ttl=routing_d.get("ttl", 0),
+                visited=routing_d.get("visited", []),
             )
             scheduling_d = data_dict.get("scheduling", {})
             msg_data.scheduling = MessageScheduling(
                 delivery_mode=DeliveryMode(scheduling_d.get("delivery_mode", "async")),
                 urgency=Urgency(scheduling_d.get("urgency", "normal")),
                 delay_seconds=scheduling_d.get("delay_seconds", 0),
+                deadline=scheduling_d.get("deadline"),
             )
 
         return cls(

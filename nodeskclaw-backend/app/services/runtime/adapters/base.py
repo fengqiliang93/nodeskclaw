@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import AsyncIterator, Protocol
 
 
@@ -19,10 +20,12 @@ class RuntimeSession:
 
 @dataclass
 class ResponseChunk:
+    type: str = "text"
     content: str = ""
     is_done: bool = False
     is_error: bool = False
     error_message: str = ""
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw: dict = field(default_factory=dict)
 
 

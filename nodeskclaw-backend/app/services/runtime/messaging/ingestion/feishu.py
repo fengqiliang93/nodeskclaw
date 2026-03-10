@@ -27,7 +27,7 @@ def build_feishu_envelope(
         data=MessageData(
             sender=MessageSender(
                 id=user_id,
-                type=SenderType.USER,
+                type=SenderType.EXTERNAL,
                 name=user_name,
             ),
             intent=IntentType.CHAT,
