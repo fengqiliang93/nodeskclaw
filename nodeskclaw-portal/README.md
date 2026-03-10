@@ -32,9 +32,11 @@ nodeskclaw-portal/
 │       ├── InstanceList.vue        # 实例列表
 │       ├── InstanceDetail.vue      # 实例详情
 │       ├── OrgMembers.vue          # 组织成员管理（org-settings 子视图）
-│       ├── OrgSettings.vue         # 组织设置（Tab 布局：人类成员 + 默认工作基因 + 邮件配置）
+│       ├── OrgSettings.vue         # 组织设置（Tab 布局：集群 + 人类成员 + 默认工作基因 + 邮件配置）
+│       ├── OrgSettingsClusters.vue # 集群管理（org-settings 子视图）
 │       ├── OrgSettingsGenes.vue    # 默认工作基因配置（org-settings 子视图）
 │       ├── OrgSettingsSmtp.vue     # SMTP 邮件配置（org-settings 子视图）
+│       ├── ClusterDetail.vue       # 集群详情（资源概览 + 节点列表 + IngressClass + StorageClass）
 │       ├── GeneMarket.vue          # 基因市场
 │       ├── EnterpriseFiles.vue     # 企业空间 — Agent 列表
 │       ├── EnterpriseFileBrowser.vue  # 企业空间 — 文件浏览器
@@ -65,12 +67,28 @@ vue-tsc -b       # 类型检查
 | `/settings` | 个人设置 | 用户信息、密码管理 |
 | `/usage` | 用量 | 组织用量统计 |
 | `/gene-market` | 基因市场 | 浏览安装基因 |
-| `/org-settings` | 组织设置 | Tab 布局：人类成员 + 默认工作基因 + 邮件配置（仅 org admin） |
+| `/org-settings` | 组织设置 | Tab 布局：集群 + 人类成员 + 默认工作基因 + 邮件配置（仅 org admin） |
+| `/org-settings/clusters` | 集群管理 | K8s 集群配置（org-settings 子路由，默认页） |
 | `/org-settings/genes` | 默认工作基因 | 默认工作基因配置（org-settings 子路由） |
 | `/org-settings/smtp` | 邮件配置 | 组织 SMTP 服务器配置（org-settings 子路由） |
+| `/clusters/:id` | 集群详情 | 资源概览、节点列表、IngressClass、StorageClass |
 | `/members` | (重定向) | 重定向到 `/org-settings` |
 | `/enterprise-files` | 企业空间 | Agent 文件浏览（仅 org admin） |
 | `/enterprise-files/:instanceId` | 文件浏览器 | 单个 Agent 的文件列表和预览 |
+
+## 集群管理
+
+组织管理员可在"组织设置 > 集群"页面配置 Kubernetes 集群连接。
+
+- 底层按多集群设计，数据模型和 Store 支持多集群
+- FeatureGate `multi_cluster` 未开启时，后端限制最多 1 个集群（ConflictError）
+- 前端通过 `useFeature("multi_cluster")` 静默切换显示模式：
+  - `multi_cluster` 开启 → 多集群列表 + 添加按钮
+  - 未开启但集群数 > 1（EE 降级兼容）→ 多集群列表，无添加按钮
+  - 未开启且集群数 = 1 → 单集群摘要卡片
+  - 集群数 = 0 → 配置向导
+- 集群详情页（`/clusters/:id`）：资源概览、节点列表、IngressClass 选择、StorageClass 列表
+- 所有用户可见文案不出现 CE/EE/升级 等字眼
 
 ## 组织设置
 
