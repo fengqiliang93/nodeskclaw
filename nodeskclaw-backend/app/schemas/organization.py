@@ -52,6 +52,7 @@ class MemberInfo(BaseModel):
     user_id: str
     org_id: str
     role: str
+    is_super_admin: bool = False
     user_name: str | None = None
     user_email: str | None = None
     user_avatar_url: str | None = None

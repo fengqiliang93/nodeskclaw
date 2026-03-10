@@ -586,6 +586,7 @@ const zhCN = {
     searchPlaceholder: "搜索成员...",
     memberCount: "共 {count} 位成员",
     unknownUser: "未知用户",
+    roleSuperAdmin: "超级管理员",
     roleAdmin: "管理员",
     roleMember: "成员",
     updateRoleFailed: "修改角色失败",

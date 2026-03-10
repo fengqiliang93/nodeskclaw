@@ -24,6 +24,7 @@ export interface MemberInfo {
   user_id: string
   org_id: string
   role: string
+  is_super_admin: boolean
   user_name: string | null
   user_email: string | null
   user_avatar_url: string | null
