@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import time
 from datetime import datetime, timezone
@@ -452,23 +453,22 @@ async def change_password(
 # ── 统一认证 ─────────────────────────────────────────────
 
 
-def _detect_account_type(account: str) -> Literal["email", "phone"]:
-    return "email" if "@" in account else "phone"
+def _detect_account_type(account: str) -> Literal["email", "phone", "username"]:
+    if "@" in account:
+        return "email"
+    if re.match(r"^\+?\d{7,15}$", account):
+        return "phone"
+    return "username"
 
 
-async def login_with_account(
-    account: str, password: str, db: AsyncSession
+async def _login_by_field(
+    field_value: str, password: str, db: AsyncSession,
+    *, where_clause,
 ) -> LoginResponse:
-    """Unified account+password login. Auto-detects email vs phone."""
-    account_type = _detect_account_type(account)
-
-    if account_type == "email":
-        return await login_with_email(account, password, db)
-
     result = await db.execute(
         select(User)
         .options(selectinload(User.oauth_connections))
-        .where(User.phone == account, User.deleted_at.is_(None))
+        .where(where_clause, User.deleted_at.is_(None))
     )
     user = result.scalar_one_or_none()
     if user is None or not user.password_hash:
@@ -504,9 +504,34 @@ async def login_with_account(
     return await _issue_tokens(user, db)
 
 
+async def login_with_account(
+    account: str, password: str, db: AsyncSession
+) -> LoginResponse:
+    """Unified account+password login. Auto-detects email vs phone vs username."""
+    account_type = _detect_account_type(account)
+
+    if account_type == "email":
+        return await login_with_email(account, password, db)
+
+    if account_type == "phone":
+        return await _login_by_field(account, password, db, where_clause=User.phone == account)
+
+    return await _login_by_field(account, password, db, where_clause=User.username == account)
+
+
 async def send_verification_code(account: str, db: AsyncSession) -> dict:
     """Send verification code. Email -> SMTP; phone -> SMS mock."""
     account_type = _detect_account_type(account)
+
+    if account_type == "username":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": 40026,
+                "message_key": "errors.auth.verification_code_requires_email_or_phone",
+                "message": "验证码登录仅支持邮箱或手机号",
+            },
+        )
 
     if account_type == "phone":
         return await send_sms_code(account)
@@ -564,6 +589,16 @@ async def login_with_verification_code(
 ) -> LoginResponse:
     """Unified verification-code login. Phone auto-registers; email requires existing account."""
     account_type = _detect_account_type(account)
+
+    if account_type == "username":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": 40026,
+                "message_key": "errors.auth.verification_code_requires_email_or_phone",
+                "message": "验证码登录仅支持邮箱或手机号",
+            },
+        )
 
     if account_type == "phone":
         return await login_with_phone(account, code, db)
