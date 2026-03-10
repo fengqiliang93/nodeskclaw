@@ -223,18 +223,54 @@ API 路由同时挂载在两个前缀下：
   → TransportAdapter（Agent/Channel）投递到目标节点
 ```
 
+### Envelope 协议
+
+MessageEnvelope 遵循 CloudEvents 1.0 规范，扩展字段：
+
+- **SenderType**: user / agent / system / cron / external
+- **IntentType**: chat / collaborate / notify / command / ack
+- **Priority**: critical / normal / background（WFQ 权重 8:4:1）
+- **Urgency**: immediate / normal / deferred / scheduled
+- **MessageRouting**: mode / target / targets / exclude / max_hops / ttl / visited / priority
+- **MessageScheduling**: delivery_mode / urgency / delay_seconds / deadline
+- **ResponseChunk**: type / content / is_done / is_error / timestamp
+
 ### 中间件管道
 
 | 中间件 | 职责 |
 |--------|------|
 | MetricsMiddleware | OpenTelemetry 埋点（PRODUCER span + 计数器） |
-| ValidationMiddleware | Schema 校验 + 幂等检查 + 工作区隔离 |
-| RateLimitMiddleware | 令牌桶限流 |
-| SemanticMiddleware | 语义标注（消息分类 + 紧急度） |
-| RoutingMiddleware | 拓扑解析（BFS + 语义评分）→ 生成 DeliveryPlan |
-| CircuitBreakerMiddleware | 熔断保护（OPEN 节点自动跳过） |
-| TransportMiddleware | 执行投递 + 失败重试/DLQ |
-| AuditMiddleware | EventLog 写入（事件溯源） |
+| ValidationMiddleware | Schema 校验 + 幂等性（INSERT ON CONFLICT）+ 工作区隔离 |
+| RateLimitMiddleware | 发送方令牌桶限流 |
+| SemanticMiddleware | 规则链：mention→CRITICAL/IMMEDIATE, delay→SCHEDULED, collaborate→NORMAL |
+| RoutingMiddleware | BFS 拓扑解析 + 语义评分 + 背压过滤 + hook 收集 + 拓扑版本追踪 |
+| CircuitBreakerMiddleware | 熔断保护（OPEN 跳过，HALF_OPEN 探测），恢复时自动重投 recoverable 死信 |
+| TransportMiddleware | 投递 + 接收方速率限制 + 熔断状态更新 + 拓扑版本检测 + 失败重试/DLQ |
+| AuditMiddleware | 8 种事件全生命周期记录（created/routed/delivering/delivered/failed/retried/dead_lettered/error） |
+
+### 可靠性
+
+- **PGMQ**: PostgreSQL 消息队列 + WFQ 虚拟时间调度防饥饿
+- **ACK/Retry/DLQ**: 指数退避重试（max 3 次），死信标记 recoverable
+- **熔断器**: 三态（CLOSED/OPEN/HALF_OPEN），恢复时自动重投可恢复死信
+- **背压**: 按队列深度分级（FULL/NORMAL_ONLY/CRITICAL_ONLY/NONE）
+- **幂等**: INSERT ON CONFLICT DO NOTHING 原子去重
+- **拓扑版本**: 路由缓存带版本号，投递失败时检测版本变更
+
+### SSE 跨实例推送
+
+- 每个后端实例启动时生成 `BACKEND_INSTANCE_ID`
+- SSE 连接注册到 `sse_connections` 表
+- `broadcast_event` 本地直推 + PG NOTIFY `sse_push:{instance_id}` 跨实例转发
+- 远端订阅者收到通知后推入本地 `_workspace_queues`
+
+### delegate/escalate 协议
+
+Agent 响应以 `delegate:<target>` 或 `escalate:<target>` 开头时，自动构建新 envelope 转发给目标 Agent 或 Human。
+
+### Channel 降级链
+
+Feishu 私聊 → Feishu 群聊 → SSE → 离线队列（enqueue）。每级失败自动尝试下一级。
 
 ### 计算环境
 
@@ -242,13 +278,19 @@ deploy_service 根据 Instance.compute_provider 字段分发部署：
 
 | compute_provider | 实现 | 场景 |
 |------------------|------|------|
-| k8s（默认） | 内置 K8s 部署管道 | 生产环境 |
+| k8s（默认） | 内置 K8s 部署管道 + rolling update | 生产环境 |
 | docker | DockerComputeProvider | 本地开发/测试 |
 | process | ProcessComputeProvider | 单机调试 |
 
+### Agent 生命周期
+
+- 双层健检：心跳扫描 + RuntimeAdapter.health_check → 更新 NodeCard.status
+- 热切换：K8sComputeProvider.update_instance 触发 rolling update
+- 状态重建：`/messages/{id}/reconstruct` 从 EventLog 重建消息生命周期
+
 ### 启动时初始化
 
-lifespan 中依次初始化：OpenTelemetry → NodeType 同步到 DB → NodeHook 注册 → PG LISTEN/NOTIFY 订阅 → 心跳扫描 → 数据迁移。
+lifespan 中依次初始化：OpenTelemetry → NodeType 同步到 DB → NodeHook 注册 → PG LISTEN/NOTIFY 订阅（topology_changed + sse_push）→ 心跳扫描（含 Agent 健康检查）→ 数据迁移。
 
 ## 本地开发
 
