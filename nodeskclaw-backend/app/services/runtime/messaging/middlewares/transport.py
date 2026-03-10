@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from app.services.runtime.messaging.pipeline import MessageMiddleware, NextFn, PipelineContext
+from app.services.runtime.transport.base import DeliveryResult
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRY = 3
 
 
 class TransportMiddleware(MessageMiddleware):
@@ -17,10 +21,123 @@ class TransportMiddleware(MessageMiddleware):
             await next_fn(ctx)
             return
 
+        resolved = plan.resolved_targets
+        if not resolved:
+            logger.info(
+                "TransportMiddleware: no resolved targets for envelope %s (mode=%s)",
+                ctx.envelope.id, plan.mode,
+            )
+            await next_fn(ctx)
+            return
+
         logger.debug(
             "TransportMiddleware: delivering envelope %s to %d targets (mode=%s)",
-            ctx.envelope.id, len(plan.targets), plan.mode,
+            ctx.envelope.id, len(resolved), plan.mode,
         )
+
+        from app.services.runtime.registries.transport_registry import TRANSPORT_REGISTRY
+
+        tasks = []
+        for target in resolved:
+            transport_id = target.transport or "agent"
+            spec = TRANSPORT_REGISTRY.get(transport_id)
+            if spec is None or spec.adapter is None:
+                logger.warning(
+                    "TransportMiddleware: no adapter for transport '%s', skipping target %s",
+                    transport_id, target.node_id,
+                )
+                ctx.delivery_results.append(DeliveryResult(
+                    success=False, target_node_id=target.node_id,
+                    transport=transport_id, error="transport_not_found",
+                ))
+                continue
+
+            tasks.append(self._deliver_one(
+                spec.adapter, ctx, target.node_id, transport_id,
+            ))
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.error("TransportMiddleware: delivery exception: %s", r)
+                    ctx.delivery_results.append(DeliveryResult(
+                        success=False, target_node_id="unknown",
+                        error=str(r),
+                    ))
+                elif isinstance(r, DeliveryResult):
+                    ctx.delivery_results.append(r)
+
+        failed = [r for r in ctx.delivery_results if not r.success]
+        if failed:
+            await self._handle_failures(ctx, failed)
 
         ctx.extra["delivered"] = True
         await next_fn(ctx)
+
+    async def _deliver_one(
+        self, adapter, ctx: PipelineContext, target_node_id: str, transport_id: str,
+    ) -> DeliveryResult:
+        try:
+            return await adapter.deliver(
+                ctx.envelope,
+                target_node_id,
+                workspace_id=ctx.workspace_id,
+                db=ctx.db,
+            )
+        except TypeError:
+            return await adapter.deliver(
+                ctx.envelope,
+                target_node_id,
+                workspace_id=ctx.workspace_id,
+            )
+
+    async def _handle_failures(
+        self, ctx: PipelineContext, failed: list[DeliveryResult],
+    ) -> None:
+        """Enqueue failed deliveries for retry or move to DLQ."""
+        db = ctx.db
+        if db is None:
+            return
+
+        for result in failed:
+            retry_count = ctx.extra.get(f"retry:{result.target_node_id}", 0)
+            if retry_count < MAX_RETRY:
+                try:
+                    from app.services.runtime.messaging.envelope import Priority
+                    from app.services.runtime.messaging.queue import enqueue
+
+                    priority = ctx.envelope.data.priority if ctx.envelope.data else Priority.NORMAL
+                    await enqueue(
+                        db,
+                        target_node_id=result.target_node_id,
+                        workspace_id=ctx.workspace_id,
+                        priority=priority,
+                        envelope=ctx.envelope.to_dict(),
+                    )
+                    logger.info(
+                        "Enqueued retry %d for %s -> %s",
+                        retry_count + 1, ctx.envelope.id, result.target_node_id,
+                    )
+                except Exception as e:
+                    logger.error("Failed to enqueue retry: %s", e)
+            else:
+                try:
+                    from app.models.dead_letter import DeadLetter
+
+                    dl = DeadLetter(
+                        envelope_id=ctx.envelope.id,
+                        target_node_id=result.target_node_id,
+                        workspace_id=ctx.workspace_id,
+                        payload=ctx.envelope.to_dict(),
+                        error=result.error,
+                        retry_count=retry_count,
+                    )
+                    db.add(dl)
+                    await db.flush()
+                    logger.warning(
+                        "Moved to DLQ: %s -> %s after %d retries",
+                        ctx.envelope.id, result.target_node_id, retry_count,
+                    )
+                except Exception as e:
+                    logger.error("Failed to write dead letter: %s", e)
