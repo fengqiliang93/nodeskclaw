@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useOrgStore } from '@/stores/org'
 import { useEdition } from '@/composables/useFeature'
-import { Settings, Users, Dna, FolderOpen, Mail, BarChart3, Server, Building2 } from 'lucide-vue-next'
+import { Settings, Users, Dna, FolderOpen, Mail, Server, Building2 } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -27,7 +27,6 @@ const allNavItems: NavItem[] = [
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },
   { name: 'OrgSettingsSmtp', label: () => t('orgSettings.smtpTitle'), icon: Mail, ceOnly: true },
   { name: 'OrgEnterpriseFiles', label: () => t('enterpriseFiles.title'), icon: FolderOpen, matchPrefix: '/org-settings/files' },
-  { name: 'OrgUsage', label: () => t('common.usage'), icon: BarChart3 },
 ]
 
 const navItems = computed(() =>

@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrgStore } from '@/stores/org'
 import { useToast } from '@/composables/useToast'
+import { useEdition, useFeature } from '@/composables/useFeature'
 import { resolveApiErrorMessage } from '@/i18n/error'
-import { Pencil, Check, X, Loader2 } from 'lucide-vue-next'
+import { Pencil, Check, X, Loader2, Box, Cpu, HardDrive, Database } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const orgStore = useOrgStore()
 const toast = useToast()
+const { isEE } = useEdition()
+const { isEnabled: hasBilling } = useFeature('billing')
 
 const loading = ref(true)
 const editing = ref(false)
@@ -49,8 +52,94 @@ function formatDate(iso: string | undefined): string {
   })
 }
 
+// ── 用量 helpers ──
+
+function parseResource(val: string | undefined | null): number {
+  if (!val) return 0
+  const s = String(val)
+  if (s.endsWith('m')) return parseInt(s) / 1000
+  if (s.endsWith('Mi')) return parseInt(s)
+  if (s.endsWith('Gi')) return parseInt(s) * 1024
+  return parseFloat(s) || 0
+}
+
+function parseStorage(val: string | undefined | null): number {
+  if (!val) return 0
+  const s = String(val)
+  if (s.endsWith('Ti')) return parseFloat(s) * 1024
+  if (s.endsWith('Gi')) return parseFloat(s)
+  if (s.endsWith('Mi')) return parseFloat(s) / 1024
+  return parseFloat(s) || 0
+}
+
+function formatCpuValue(val: string | undefined | null): string {
+  if (!val) return '0'
+  const s = String(val)
+  if (s.endsWith('m')) {
+    const cores = parseInt(s.slice(0, -1), 10) / 1000
+    return Number.isInteger(cores) ? `${cores}` : `${cores.toFixed(2)}`
+  }
+  return s
+}
+
+function formatMemory(val: string | undefined | null): string {
+  if (!val) return '0'
+  const s = String(val)
+  if (s.endsWith('Mi')) {
+    const mi = parseInt(s)
+    if (mi >= 1024) {
+      const gi = mi / 1024
+      return Number.isInteger(gi) ? `${gi} Gi` : `${gi.toFixed(1)} Gi`
+    }
+    return `${mi} Mi`
+  }
+  if (s.endsWith('Gi')) return `${parseInt(s)} Gi`
+  if (s.endsWith('Ti')) return `${parseInt(s)} Ti`
+  return s
+}
+
+function barColor(percent: number): string {
+  if (percent >= 90) return 'bg-red-500'
+  if (percent >= 70) return 'bg-amber-500'
+  return 'bg-primary'
+}
+
+const instancePercent = computed(() => {
+  if (!orgStore.usage) return 0
+  const { instance_count, instance_limit } = orgStore.usage
+  if (!instance_limit) return 0
+  return Math.min(100, Math.round((instance_count / instance_limit) * 100))
+})
+
+const cpuPercent = computed(() => {
+  if (!orgStore.usage) return 0
+  const used = parseResource(orgStore.usage.cpu_used)
+  const limit = parseResource(orgStore.usage.cpu_limit)
+  if (!limit) return 0
+  return Math.min(100, Math.round((used / limit) * 100))
+})
+
+const memPercent = computed(() => {
+  if (!orgStore.usage) return 0
+  const used = parseResource(orgStore.usage.mem_used)
+  const limit = parseResource(orgStore.usage.mem_limit)
+  if (!limit) return 0
+  return Math.min(100, Math.round((used / limit) * 100))
+})
+
+const storagePercent = computed(() => {
+  if (!orgStore.usage) return 0
+  const used = parseStorage(orgStore.usage.storage_used)
+  const limit = parseStorage(orgStore.usage.storage_limit)
+  if (!limit) return 0
+  return Math.min(100, Math.round((used / limit) * 100))
+})
+
 onMounted(async () => {
   await orgStore.fetchCurrentOrg()
+  if (hasBilling.value) {
+    await orgStore.fetchUsage()
+  }
   loading.value = false
 })
 </script>
@@ -111,36 +200,15 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- 配额信息 -->
-    <section class="rounded-xl border border-border bg-card p-5">
-      <h2 class="text-sm font-semibold text-muted-foreground mb-4">{{ t('orgSettings.quotaInfo') }}</h2>
-      <div class="grid grid-cols-[140px_1fr] gap-y-4 items-center text-sm">
-        <span class="text-muted-foreground">{{ t('orgSettings.plan') }}</span>
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary w-fit">
-          {{ orgStore.currentOrg.plan }}
-        </span>
-
-        <span class="text-muted-foreground">{{ t('orgSettings.maxInstances') }}</span>
-        <span>{{ orgStore.currentOrg.max_instances }}</span>
-
-        <span class="text-muted-foreground">{{ t('orgSettings.maxCpu') }}</span>
-        <span>{{ orgStore.currentOrg.max_cpu_total }}</span>
-
-        <span class="text-muted-foreground">{{ t('orgSettings.maxMem') }}</span>
-        <span>{{ orgStore.currentOrg.max_mem_total }}</span>
-
-        <span class="text-muted-foreground">{{ t('orgSettings.maxStorage') }}</span>
-        <span>{{ orgStore.currentOrg.max_storage_total }}</span>
-      </div>
-    </section>
-
     <!-- 关联信息 -->
     <section class="rounded-xl border border-border bg-card p-5">
       <h2 class="text-sm font-semibold text-muted-foreground mb-4">{{ t('orgSettings.relatedInfo') }}</h2>
       <div class="grid grid-cols-[140px_1fr] gap-y-4 items-center text-sm">
-        <span class="text-muted-foreground">{{ t('orgSettings.clusterName') }}</span>
-        <span v-if="orgStore.currentOrg.cluster_name">{{ orgStore.currentOrg.cluster_name }}</span>
-        <span v-else class="text-muted-foreground/60 italic">{{ t('orgSettings.clusterNone') }}</span>
+        <template v-if="!isEE">
+          <span class="text-muted-foreground">{{ t('orgSettings.clusterName') }}</span>
+          <span v-if="orgStore.currentOrg.cluster_name">{{ orgStore.currentOrg.cluster_name }}</span>
+          <span v-else class="text-muted-foreground/60 italic">{{ t('orgSettings.clusterNone') }}</span>
+        </template>
 
         <span class="text-muted-foreground">{{ t('orgSettings.memberCount') }}</span>
         <span>{{ orgStore.currentOrg.member_count }}</span>
@@ -152,6 +220,88 @@ onMounted(async () => {
         >
           {{ orgStore.currentOrg.is_active ? t('orgSettings.active') : t('orgSettings.inactive') }}
         </span>
+      </div>
+    </section>
+
+    <!-- 资源用量（仅 billing 启用时） -->
+    <section v-if="hasBilling" class="rounded-xl border border-border bg-card p-5">
+      <h2 class="text-sm font-semibold text-muted-foreground mb-4">{{ t('orgUsage.title') }}</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg border border-border bg-background space-y-3">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Box class="w-4 h-4 text-blue-400" />
+            {{ t('orgUsage.instances') }}
+          </div>
+          <div class="flex items-baseline gap-1">
+            <span class="text-2xl font-bold">{{ orgStore.usage?.instance_count ?? 0 }}</span>
+            <span class="text-sm text-muted-foreground">/ {{ orgStore.usage?.instance_limit ?? 0 }}</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500"
+              :class="barColor(instancePercent)"
+              :style="{ width: instancePercent + '%' }"
+            />
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t('orgUsage.usedPercent', { percent: instancePercent }) }}</p>
+        </div>
+
+        <div class="p-4 rounded-lg border border-border bg-background space-y-3">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Cpu class="w-4 h-4 text-green-400" />
+            {{ t('orgUsage.cpu') }}
+          </div>
+          <div class="flex items-baseline gap-1 whitespace-nowrap">
+            <span class="text-2xl font-bold">{{ formatCpuValue(orgStore.usage?.cpu_used) }}</span>
+            <span class="text-sm text-muted-foreground">/ {{ formatCpuValue(orgStore.usage?.cpu_limit) }} {{ t('orgUsage.cpuUnit') }}</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500"
+              :class="barColor(cpuPercent)"
+              :style="{ width: cpuPercent + '%' }"
+            />
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t('orgUsage.usedPercent', { percent: cpuPercent }) }}</p>
+        </div>
+
+        <div class="p-4 rounded-lg border border-border bg-background space-y-3">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <HardDrive class="w-4 h-4 text-purple-400" />
+            {{ t('orgUsage.memory') }}
+          </div>
+          <div class="flex items-baseline gap-1">
+            <span class="text-2xl font-bold">{{ formatMemory(orgStore.usage?.mem_used) }}</span>
+            <span class="text-sm text-muted-foreground">/ {{ formatMemory(orgStore.usage?.mem_limit) }}</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500"
+              :class="barColor(memPercent)"
+              :style="{ width: memPercent + '%' }"
+            />
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t('orgUsage.usedPercent', { percent: memPercent }) }}</p>
+        </div>
+
+        <div class="p-4 rounded-lg border border-border bg-background space-y-3">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Database class="w-4 h-4 text-orange-400" />
+            {{ t('orgUsage.storage') }}
+          </div>
+          <div class="flex items-baseline gap-1">
+            <span class="text-2xl font-bold">{{ orgStore.usage?.storage_used ?? '0' }}</span>
+            <span class="text-sm text-muted-foreground">/ {{ orgStore.usage?.storage_limit ?? '0' }}</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500"
+              :class="barColor(storagePercent)"
+              :style="{ width: storagePercent + '%' }"
+            />
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t('orgUsage.usedPercent', { percent: storagePercent }) }}</p>
+        </div>
       </div>
     </section>
   </div>
