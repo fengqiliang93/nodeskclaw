@@ -6,6 +6,8 @@ import { Plus, Loader2, Server, RefreshCw, Package, Dna, X } from 'lucide-vue-ne
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useGeneStore } from '@/stores/gene'
+import { useClusterStore } from '@/stores/cluster'
+import BaseTooltip from '@/components/shared/BaseTooltip.vue'
 import type { TemplateItem } from '@/stores/gene'
 
 interface InstanceInfo {
@@ -41,6 +43,9 @@ function getRoleLabel(role: string | null): string {
 const router = useRouter()
 const { t, locale } = useI18n()
 const geneStore = useGeneStore()
+const clusterStore = useClusterStore()
+
+const hasCluster = computed(() => clusterStore.clusters.length > 0)
 const loading = ref(true)
 const instances = ref<InstanceInfo[]>([])
 const error = ref('')
@@ -117,7 +122,10 @@ function formatTime(iso: string) {
   })
 }
 
-onMounted(fetchInstances)
+onMounted(() => {
+  fetchInstances()
+  clusterStore.fetchClusters()
+})
 </script>
 
 <template>
@@ -136,20 +144,26 @@ onMounted(fetchInstances)
           <RefreshCw class="w-4 h-4" />
           {{ t('instanceList.refresh') }}
         </button>
-        <button
-          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-          @click="router.push('/instances/create')"
-        >
-          <Plus class="w-4 h-4" />
-          {{ t('instanceList.createInstance') }}
-        </button>
-        <button
-          class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          @click="openTemplateSelector"
-        >
-          <Package class="w-4 h-4" />
-          {{ t('instanceList.createFromTemplate') }}
-        </button>
+        <BaseTooltip :text="!hasCluster ? t('instanceList.noClusterHint') : ''">
+          <button
+            class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            :disabled="!hasCluster"
+            @click="router.push('/instances/create')"
+          >
+            <Plus class="w-4 h-4" />
+            {{ t('instanceList.createInstance') }}
+          </button>
+        </BaseTooltip>
+        <BaseTooltip :text="!hasCluster ? t('instanceList.noClusterHint') : ''">
+          <button
+            class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            :disabled="!hasCluster"
+            @click="openTemplateSelector"
+          >
+            <Package class="w-4 h-4" />
+            {{ t('instanceList.createFromTemplate') }}
+          </button>
+        </BaseTooltip>
       </div>
     </div>
 
@@ -224,12 +238,15 @@ onMounted(fetchInstances)
       <p class="text-sm text-muted-foreground max-w-sm mx-auto">
         {{ t('instanceList.emptyDescription') }}
       </p>
-      <button
-        class="mt-4 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-        @click="router.push('/instances/create')"
-      >
-        {{ t('instanceList.createFirst') }}
-      </button>
+      <BaseTooltip :text="!hasCluster ? t('instanceList.noClusterHint') : ''">
+        <button
+          class="mt-4 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+          :disabled="!hasCluster"
+          @click="router.push('/instances/create')"
+        >
+          {{ t('instanceList.createFirst') }}
+        </button>
+      </BaseTooltip>
     </div>
 
     <!-- Instance table -->

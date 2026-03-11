@@ -552,6 +552,7 @@ const enUS = {
     tableCreatedAt: "Created At",
     tableRole: "My Role",
     createFromTemplate: "Create from Template",
+    noClusterHint: "No cluster deployed",
   },
   instanceMembers: {
     title: "Member Management",

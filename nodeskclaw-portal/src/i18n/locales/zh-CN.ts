@@ -552,6 +552,7 @@ const zhCN = {
     tableCreatedAt: "创建时间",
     tableRole: "我的角色",
     createFromTemplate: "通过模板创建",
+    noClusterHint: "当前集群未部署",
   },
   instanceMembers: {
     title: "成员管理",
