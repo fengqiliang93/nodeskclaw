@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     TOS_KEY_PREFIX: str = ""
 
     # ── CORS ─────────────────────────────────────────────
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    CORS_ORIGINS: list[str] = ["http://localhost:4517", "http://localhost:4518"]
 
 
 settings = Settings()

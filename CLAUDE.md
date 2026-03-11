@@ -44,14 +44,14 @@ uv run ruff check --fix . # 自动修复
 # 管理前端（EE-only）
 cd ee/nodeskclaw-frontend
 npm install
-npm run dev               # 开发服务器 http://localhost:5173
+npm run dev               # 开发服务器 http://localhost:4518
 npm run build             # 构建生产版本
 npm run lint              # ESLint 检查
 
 # 用户门户
 cd nodeskclaw-portal
 npm install
-npm run dev               # 开发服务器 http://localhost:5174
+npm run dev               # 开发服务器 http://localhost:4517
 npm run build
 npm run test              # 运行测试（vitest）
 npm run test -- --run src/components/xxx.spec.ts  # 运行单个测试
