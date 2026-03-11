@@ -84,8 +84,9 @@ const ceRoutes: RouteRecordRaw[] = [
   {
     path: '/org-settings',
     component: () => import('@/views/OrgSettings.vue'),
-    redirect: { name: 'OrgSettingsClusters' },
+    redirect: { name: 'OrgInfo' },
     children: [
+      { path: 'info', name: 'OrgInfo', component: () => import('@/views/OrgInfo.vue') },
       { path: 'clusters', name: 'OrgSettingsClusters', component: () => import('@/views/OrgSettingsClusters.vue') },
       { path: 'genes', name: 'OrgSettingsGenes', component: () => import('@/views/OrgSettingsGenes.vue') },
       { path: 'smtp', name: 'OrgSettingsSmtp', component: () => import('@/views/OrgSettingsSmtp.vue'), meta: { ceOnly: true } },
