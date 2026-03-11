@@ -125,7 +125,10 @@ kubectl get deploy -n <namespace> --context <context-name>
 - `.cursor/rules/*.mdc` 禁止包含 IP、域名、Token、密钥等敏感信息
 - 代码中发现真人信息必须立即替换并提交
 
-### Git 提交规范
+### Git 规范
+
+- **分支命名**：`<type>/<kebab-case-description>`（如 `feat/operation-audit`、`fix/deploy-env-serialize`），禁止无意义名称和纯日期名称
+- **PR 标题**：与 commit message 格式一致 `<type>(<scope>): <中文描述>`，概括整个 PR 的变更目标
 
 ```
 <type>(<scope>): <subject>
