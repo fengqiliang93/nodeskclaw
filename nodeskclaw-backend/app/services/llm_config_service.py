@@ -901,7 +901,11 @@ async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
 
     Strategy: try graceful SIGTERM first; if exec fails (pod crashed / not ready),
     fall back to Deployment rolling restart.
+    Docker: delegate to DockerComputeProvider.restart_instance.
     """
+    if instance.compute_provider == "docker":
+        return await _restart_openclaw_docker(instance)
+
     k8s = await _get_k8s_client(instance, db)
     if k8s is None:
         return {"status": "error", "message": "集群不可用"}
@@ -944,6 +948,20 @@ async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
                     return {"status": "ok", "message": "重启完成"}
 
     return {"status": "timeout", "message": "重启超时（60s），请检查实例状态"}
+
+
+async def _restart_openclaw_docker(instance: Instance) -> dict:
+    """Restart an OpenClaw Docker container."""
+    from app.services.instance_service import _build_docker_handle, _get_docker_provider
+    try:
+        provider = _get_docker_provider()
+        handle = _build_docker_handle(instance)
+        await provider.restart_instance(handle)
+        logger.info("Docker 实例 %s OpenClaw 重启完成", instance.name)
+        return {"status": "ok", "message": "重启完成"}
+    except Exception as e:
+        logger.error("Docker 实例 %s 重启失败: %s", instance.name, e)
+        return {"status": "error", "message": f"Docker 重启失败: {e}"}
 
 
 async def repair_channel_account_urls(db: AsyncSession) -> dict:

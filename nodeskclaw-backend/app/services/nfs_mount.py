@@ -304,6 +304,7 @@ class DockerFS:
 
     def __init__(self, slug: str):
         from app.services.docker_constants import DOCKER_DATA_DIR
+        self._slug = slug
         self._base = DOCKER_DATA_DIR / slug / "data"
         import os
         os.makedirs(str(self._base), exist_ok=True)
@@ -367,6 +368,19 @@ class DockerFS:
                 "has_skill_md": skill_md.exists(),
             })
         return results
+
+    async def exec_command(self, cmd: list[str]) -> str:
+        """Run a command inside the Docker container via docker exec."""
+        import asyncio
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "exec", self._slug, *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode != 0:
+            raise NFSMountError(f"docker exec 失败 (rc={proc.returncode}): {stdout.decode()[:500]}")
+        return stdout.decode() if stdout else ""
 
 
 RemoteFS = PodFS | DockerFS
