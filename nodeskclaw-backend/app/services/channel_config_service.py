@@ -14,7 +14,7 @@ from app.services.llm_config_service import (
     _write_config_file,
     restart_openclaw,
 )
-from app.services.nfs_mount import PodFS, remote_fs
+from app.services.nfs_mount import RemoteFS, remote_fs
 
 logger = logging.getLogger(__name__)
 
