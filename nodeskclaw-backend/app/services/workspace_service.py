@@ -378,14 +378,15 @@ async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, 
                 await db.commit()
                 raise ValueError(f"基因 {slug} 安装失败: {e}") from e
 
-    await _deploy_channel_plugin(inst, db, workspace_id)
-
-    has_topo = await corridor_router.has_any_connections(workspace_id, db)
-    if has_topo:
-        await _notify_topology_status(workspace_id, _agent_for_broadcast(inst, wa), connected)
-
-    await _broadcast_join_message(workspace_id, _agent_for_broadcast(inst, wa))
-    _fire_task(_send_welcome_message(workspace_id, inst))
+    try:
+        await _deploy_channel_plugin(inst, db, workspace_id)
+        has_topo = await corridor_router.has_any_connections(workspace_id, db)
+        if has_topo:
+            await _notify_topology_status(workspace_id, _agent_for_broadcast(inst, wa), connected)
+        await _broadcast_join_message(workspace_id, _agent_for_broadcast(inst, wa))
+        _fire_task(_send_welcome_message(workspace_id, inst))
+    except Exception as e:
+        logger.error("add_agent post-commit steps failed (non-fatal): %s", e, exc_info=True)
 
     return _agent_brief(inst, wa)
 
