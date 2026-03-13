@@ -10,6 +10,7 @@ nodeskclaw-portal/
 nodeskclaw-llm-proxy/
 openclaw-channel-learning/
 ee/
+!ee/backend/
 nodeskclaw-backend/.venv
 nodeskclaw-backend/__pycache__
 nodeskclaw-backend/.env
