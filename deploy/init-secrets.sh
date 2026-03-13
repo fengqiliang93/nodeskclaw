@@ -21,6 +21,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/nodeskclaw-backend/.env"
 KUBE_CONTEXT=""
+REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>"
+[[ -f "$SCRIPT_DIR/.env.local" ]] && source "$SCRIPT_DIR/.env.local"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -102,7 +104,8 @@ ok "Secret $SECRET_NAME 已创建/更新 ($ENV_COUNT 个变量)"
 log "应用 K8s 部署清单（Deployment + Service）..."
 for f in backend.yaml admin.yaml portal.yaml; do
   if [[ -f "$SCRIPT_DIR/k8s/$f" ]]; then
-    $KUBECTL -n "$NAMESPACE" apply -f "$SCRIPT_DIR/k8s/$f"
+    sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$SCRIPT_DIR/k8s/$f" \
+      | $KUBECTL -n "$NAMESPACE" apply -f -
     ok "$f"
   fi
 done

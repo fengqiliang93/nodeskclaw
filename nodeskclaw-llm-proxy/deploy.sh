@@ -115,7 +115,8 @@ fi
 if [[ "$BUILD_ONLY" != true ]]; then
   if ! $KUBECTL -n "$NAMESPACE" get deployment "$DEPLOYMENT" &>/dev/null; then
     warn "Deployment 不存在，执行首次部署..."
-    $KUBECTL -n "$NAMESPACE" apply -f "$SCRIPT_DIR/deploy/deployment.yaml"
+    sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$SCRIPT_DIR/deploy/deployment.yaml" \
+      | $KUBECTL -n "$NAMESPACE" apply -f -
     $KUBECTL -n "$NAMESPACE" apply -f "$SCRIPT_DIR/deploy/service.yaml"
   fi
 

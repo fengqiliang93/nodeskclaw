@@ -238,7 +238,8 @@ deploy_to_k8s() {
 
   if ! $KUBECTL -n "$NAMESPACE" get deployment "$deployment" &>/dev/null; then
     warn "[$component] Deployment 不存在，执行首次部署..."
-    $KUBECTL -n "$NAMESPACE" apply -f "$SCRIPT_DIR/k8s/${component}.yaml"
+    sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$SCRIPT_DIR/k8s/${component}.yaml" \
+      | $KUBECTL -n "$NAMESPACE" apply -f -
   fi
 
   $KUBECTL -n "$NAMESPACE" set image "deployment/$deployment" "$container=$image"
