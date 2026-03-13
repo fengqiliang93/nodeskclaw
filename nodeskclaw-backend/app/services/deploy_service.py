@@ -148,6 +148,7 @@ async def cancel_deploy(deploy_id: str) -> str:
 
         # 3. 清理资源（K8s namespace 或 Docker container）
         ns_cleaned = False
+        cluster = None
         try:
             if instance.compute_provider == "docker":
                 from app.services.runtime.registries.compute_registry import COMPUTE_REGISTRY
@@ -180,6 +181,19 @@ async def cancel_deploy(deploy_id: str) -> str:
                     _schedule_pv_cleanup(k8s, instance.namespace)
         except Exception:
             logger.warning("取消部署，清理资源失败: %s", instance.namespace)
+
+        if cluster and cluster.proxy_endpoint:
+            try:
+                from app.services.k8s.client_manager import GATEWAY_NS
+                gateway_api = await k8s_manager.get_gateway_client()
+                gateway_k8s = K8sClient(gateway_api)
+                k8s_name = instance.slug or instance.name
+                await gateway_k8s.networking.delete_namespaced_ingress(
+                    f"proxy-{k8s_name}", GATEWAY_NS,
+                )
+                logger.info("取消部署，已清理网关代理 Ingress: proxy-%s", k8s_name)
+            except Exception:
+                logger.warning("取消部署，清理网关代理 Ingress proxy-%s 失败", instance.slug or instance.name)
 
         # 4. 更新 DB：标记失败 + 软删除
         record.status = DeployStatus.failed

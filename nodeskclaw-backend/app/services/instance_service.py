@@ -352,13 +352,13 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
                         from app.services.k8s.client_manager import GATEWAY_NS
                         gateway_api = await k8s_manager.get_gateway_client()
                         gateway_k8s = K8sClient(gateway_api)
-                        inst_name = instance.name
+                        inst_name = _k8s_name(instance)
                         await gateway_k8s.networking.delete_namespaced_ingress(
                             f"proxy-{inst_name}", GATEWAY_NS,
                         )
                         logger.info("已清理网关代理 Ingress: proxy-%s", inst_name)
                     except Exception:
-                        logger.debug("清理网关代理 Ingress 失败（可能不存在）")
+                        logger.warning("清理网关代理 Ingress proxy-%s 失败", _k8s_name(instance))
 
     # 逻辑删除实例
     instance.soft_delete()
