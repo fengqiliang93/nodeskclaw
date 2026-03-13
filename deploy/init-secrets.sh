@@ -77,7 +77,7 @@ trap 'rm -f "$CLEAN_ENV"' EXIT
 
 while IFS= read -r line; do
   stripped="${line%%#*}"
-  stripped="$(echo "$stripped" | xargs)"
+  stripped="$(printf '%s' "$stripped" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [[ -z "$stripped" || "$stripped" != *"="* ]] && continue
   echo "$stripped"
 done < "$ENV_FILE" > "$CLEAN_ENV"
