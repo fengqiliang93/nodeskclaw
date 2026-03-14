@@ -32,6 +32,7 @@ from app.core.feature_gate import feature_gate
 from app.core.config import settings
 
 from app.api.security_ws import router as security_ws_router
+from app.api.tunnel import router as tunnel_router
 from app.api.engines import router as engine_router
 from app.api.invitations import invite_router, invite_public_router
 from app.api.portal.instances import router as portal_instance_router
@@ -99,6 +100,7 @@ api_router.include_router(engine_router, prefix="/engines", tags=["工作引擎"
 api_router.include_router(invite_router, prefix="/orgs", tags=["邀请"])
 api_router.include_router(invite_public_router, prefix="/invite", tags=["邀请（公开）"])
 api_router.include_router(security_ws_router, tags=["安全评估"])
+api_router.include_router(tunnel_router, tags=["Agent Tunnel"])
 
 # ── 管理平台 Admin API（/api/v1/admin）─────────────────────
 # Admin 使用原有路由模块，通过 dependencies 注入角色检查。
@@ -153,4 +155,6 @@ admin_router.include_router(registry_router, prefix="/registry",
     dependencies=[Depends(require_org_role("admin"))])
 admin_router.include_router(runtime_admin_router, prefix="/runtime",
     tags=["Admin - 运行时平台"],
+    dependencies=[Depends(require_org_role("admin"))])
+admin_router.include_router(tunnel_router, tags=["Admin - Agent Tunnel"],
     dependencies=[Depends(require_org_role("admin"))])

@@ -42,13 +42,9 @@ RUNTIME_REGISTRY = RuntimeRegistry()
 
 
 def _register_builtins() -> None:
-    from app.services.runtime.adapters.nanobot import NanobotRuntimeAdapter
-    from app.services.runtime.adapters.openclaw import OpenClawRuntimeAdapter
-    from app.services.runtime.adapters.zeroclaw import ZeroClawRuntimeAdapter
-
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="openclaw",
-        adapter=OpenClawRuntimeAdapter(),
+        adapter=None,
         description="OpenClaw runtime -- primary DeskClaw agent kernel.",
         requires_companion=False,
         display_name="全能工作引擎",
@@ -59,7 +55,7 @@ def _register_builtins() -> None:
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="zeroclaw",
-        adapter=ZeroClawRuntimeAdapter(),
+        adapter=None,
         description="ZeroClaw runtime -- high-performance Rust-based agent kernel.",
         requires_companion=False,
         display_name="高性能工作引擎",
@@ -70,7 +66,7 @@ def _register_builtins() -> None:
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
-        adapter=NanobotRuntimeAdapter(),
+        adapter=None,
         description="Nanobot runtime -- ultra-lightweight Python-based agent.",
         requires_companion=False,
         display_name="轻量工作引擎",

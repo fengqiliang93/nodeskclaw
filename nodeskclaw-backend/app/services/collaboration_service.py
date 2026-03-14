@@ -1,4 +1,4 @@
-"""Collaboration message handling — shared by SSE listener and (legacy) webhook."""
+"""Collaboration message handling — shared by tunnel and (legacy) webhook."""
 
 import asyncio
 import json
@@ -27,6 +27,17 @@ def _fire_task(coro: Coroutine) -> asyncio.Task:
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+async def handle_collaboration_event(instance_id: str, payload: dict) -> None:
+    """Entry point for tunnel-originated collaboration messages."""
+    await handle_collaboration_message(
+        workspace_id=payload.get("workspace_id", ""),
+        source_instance_id=payload.get("source_instance_id", instance_id),
+        target=payload.get("target", ""),
+        text=payload.get("text", ""),
+        depth=payload.get("depth", 0),
+    )
 
 
 async def handle_collaboration_message(
@@ -308,13 +319,17 @@ async def _invoke_target_agent(
     message: str,
     depth: int,
 ) -> bool:
-    """Invoke a target agent with a collaboration message. Returns True on success."""
-    import httpx
-
+    """Invoke a target agent with a collaboration message via tunnel. Returns True on success."""
     from app.api.workspaces import broadcast_event
+    from app.services.tunnel import tunnel_adapter
+    from app.services.tunnel.protocol import TunnelMessageType
 
     agent_name = target_instance.agent_display_name or target_instance.name
     instance_id = target_instance.id
+
+    if instance_id not in tunnel_adapter.connected_instances:
+        logger.warning("Target agent %s not connected via tunnel", agent_name)
+        return False
 
     async with async_session_factory() as db:
         ws_info = await workspace_service.get_workspace(db, workspace_id)
@@ -343,15 +358,6 @@ async def _invoke_target_agent(
         {"role": "user", "content": f"[{source_name} -> you]: {message}"},
     ]
 
-    env_vars = json.loads(target_instance.env_vars or "{}")
-    token = env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
-    domain = target_instance.ingress_domain or ""
-    base_url = f"https://{domain}" if domain else ""
-
-    if not base_url or not token:
-        logger.warning("Target agent %s missing connection info", agent_name)
-        return False
-
     broadcast_event(workspace_id, "agent:typing", {
         "instance_id": instance_id,
         "agent_name": agent_name,
@@ -362,68 +368,49 @@ async def _invoke_target_agent(
     flushed = False
 
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-            timeout=120,
-        ) as client:
-            async with client.stream(
-                "POST",
-                f"{base_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "X-OpenClaw-Session-Key": f"workspace:{workspace_id}",
-                },
-                json={"model": "gpt-4", "messages": messages_payload, "stream": True},
-            ) as resp:
-                if resp.status_code != 200:
-                    logger.error(
-                        "Target agent %s API returned %d, expected 200",
-                        agent_name, resp.status_code,
-                    )
-                    broadcast_event(workspace_id, "agent:done", {
-                        "instance_id": instance_id,
-                        "agent_name": agent_name,
-                    })
-                    return False
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    chunk_data = line[6:]
-                    if chunk_data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(chunk_data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                    except json.JSONDecodeError:
-                        continue
-                    if not content:
-                        continue
+        chat_stream = await tunnel_adapter.send_chat_request(
+            instance_id, messages_payload,
+            workspace_id=workspace_id,
+            stream=True,
+        )
+        async for chunk_msg in chat_stream:
+            if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
+                logger.error("Target agent %s returned error: %s", agent_name, chunk_msg.payload.get("error"))
+                broadcast_event(workspace_id, "agent:error", {
+                    "instance_id": instance_id,
+                    "agent_name": agent_name,
+                    "error": chunk_msg.payload.get("error", "unknown"),
+                })
+                return False
+            if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
+                break
+            content = chunk_msg.payload.get("content", "")
+            if not content:
+                continue
 
-                    full_response += content
+            full_response += content
 
-                    if not flushed:
-                        buffer += content
-                        if len(buffer) > 20:
-                            if msg_service.is_no_reply(buffer.strip()):
-                                broadcast_event(workspace_id, "agent:done", {
-                                    "instance_id": instance_id,
-                                    "agent_name": agent_name,
-                                })
-                                return True
-                            broadcast_event(workspace_id, "agent:chunk", {
-                                "instance_id": instance_id,
-                                "agent_name": agent_name,
-                                "content": buffer,
-                            })
-                            flushed = True
-                    else:
-                        broadcast_event(workspace_id, "agent:chunk", {
+            if not flushed:
+                buffer += content
+                if len(buffer) > 20:
+                    if msg_service.is_no_reply(buffer.strip()):
+                        broadcast_event(workspace_id, "agent:done", {
                             "instance_id": instance_id,
                             "agent_name": agent_name,
-                            "content": content,
                         })
+                        return True
+                    broadcast_event(workspace_id, "agent:chunk", {
+                        "instance_id": instance_id,
+                        "agent_name": agent_name,
+                        "content": buffer,
+                    })
+                    flushed = True
+            else:
+                broadcast_event(workspace_id, "agent:chunk", {
+                    "instance_id": instance_id,
+                    "agent_name": agent_name,
+                    "content": content,
+                })
     except Exception as e:
         logger.error("Target agent %s streaming failed: %s", agent_name, e)
         broadcast_event(workspace_id, "agent:error", {

@@ -34,10 +34,15 @@ def on_queue_notify(channel: str, payload: str) -> None:
 
 
 async def _consume_loop(session_factory) -> None:
-    """Main consumer loop: wake on NOTIFY or every POLL_INTERVAL_S."""
+    """Main consumer loop: wake on NOTIFY or every POLL_INTERVAL_S.
+
+    Only processes messages for instances connected to this Pod via tunnel.
+    Messages for instances on other Pods are skipped, allowing the correct
+    Pod's consumer to pick them up.
+    """
     from app.services.runtime.messaging.envelope import MessageEnvelope
     from app.services.runtime.messaging.queue import ack, dequeue, nack
-    from app.services.runtime.transport.agent_transport import agent_transport
+    from app.services.tunnel import tunnel_adapter
 
     logger.info("QueueConsumer: started")
 
@@ -54,8 +59,11 @@ async def _consume_loop(session_factory) -> None:
         try:
             async with session_factory() as db:
                 target_hint = _target_node_hint
+                local_instances = tunnel_adapter.connected_instances
 
                 if target_hint:
+                    if target_hint not in local_instances:
+                        continue
                     items = await dequeue(db, target_node_id=target_hint, batch_size=CONSUMER_BATCH_SIZE)
                 else:
                     from sqlalchemy import select
@@ -75,6 +83,8 @@ async def _consume_loop(session_factory) -> None:
                     node_ids = [row[0] for row in pending_q.all()]
                     items = []
                     for nid in node_ids:
+                        if nid not in local_instances:
+                            continue
                         batch = await dequeue(db, target_node_id=nid, batch_size=CONSUMER_BATCH_SIZE)
                         items.extend(batch)
 
@@ -86,7 +96,7 @@ async def _consume_loop(session_factory) -> None:
                         envelope = MessageEnvelope.from_dict(item.envelope or {})
                         workspace_id = item.workspace_id or envelope.workspaceid
 
-                        result = await agent_transport.deliver(
+                        result = await tunnel_adapter.deliver(
                             envelope, item.target_node_id,
                             workspace_id=workspace_id, db=db,
                         )

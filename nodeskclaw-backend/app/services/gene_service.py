@@ -1474,33 +1474,19 @@ async def _send_learning_task(
             ig.config_snapshot = _json_dumps({"force_deep_learn": True})
             await db.commit()
 
-        plugin_url = _get_learning_plugin_url(instance)
-        if not plugin_url:
-            logger.warning("No learning plugin URL for instance %s, falling back to direct install", instance.id)
+        from app.services.tunnel import tunnel_adapter
+
+        if instance.id not in tunnel_adapter.connected_instances:
+            logger.warning("Instance %s not connected via tunnel, falling back to direct install", instance.id)
             await _direct_install(instance.id, gene.id, ig.id)
             return
 
         try:
-            async with httpx.AsyncClient(
-                transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-                timeout=30,
-            ) as client:
-                resp = await client.post(f"{plugin_url}/webhook", json=payload)
-                resp.raise_for_status()
+            await tunnel_adapter.send_learning_task(instance.id, payload)
             logger.info("Learning task sent for gene %s on %s", gene.slug, instance.id)
         except Exception as e:
-            logger.error("Failed to send learning task: %s, falling back to direct install", e)
+            logger.error("Failed to send learning task via tunnel: %s, falling back to direct install", e)
             await _direct_install(instance.id, gene.id, ig.id)
-
-
-def _get_learning_plugin_url(instance: Instance) -> str | None:
-    domain = instance.ingress_domain
-    if not domain:
-        return None
-    base = domain.rstrip("/")
-    if not base.startswith("http"):
-        base = f"https://{base}"
-    return f"{base}/extensions/learning"
 
 
 async def _write_skill_file(
@@ -2074,17 +2060,13 @@ async def trigger_gene_creation(
         "callback_url": callback_url,
     }
 
-    plugin_url = _get_learning_plugin_url(instance)
-    if not plugin_url:
-        raise BadRequestError("实例未配置 Learning Plugin")
+    from app.services.tunnel import tunnel_adapter
+
+    if instance.id not in tunnel_adapter.connected_instances:
+        raise BadRequestError("实例未通过隧道连接")
 
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-            timeout=30,
-        ) as client:
-            resp = await client.post(f"{plugin_url}/webhook", json=payload)
-            resp.raise_for_status()
+        await tunnel_adapter.send_learning_task(instance.id, payload)
     except Exception as e:
         raise AppException(code=50001, message=f"发送创造任务失败: {e}", status_code=500)
 
@@ -2370,22 +2352,18 @@ async def _send_forgetting_task(
             "callback_url": callback_url,
         }
 
-        plugin_url = _get_learning_plugin_url(instance)
-        if not plugin_url:
-            logger.warning("No learning plugin URL for instance %s, falling back to direct uninstall", instance.id)
+        from app.services.tunnel import tunnel_adapter
+
+        if instance.id not in tunnel_adapter.connected_instances:
+            logger.warning("Instance %s not connected via tunnel, falling back to direct uninstall", instance.id)
             await _direct_uninstall(instance.id, gene.id, ig.id)
             return
 
         try:
-            async with httpx.AsyncClient(
-                transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-                timeout=30,
-            ) as client:
-                resp = await client.post(f"{plugin_url}/webhook", json=payload)
-                resp.raise_for_status()
+            await tunnel_adapter.send_learning_task(instance.id, payload)
             logger.info("Forgetting task sent for gene %s on %s", gene.slug, instance.id)
         except Exception as e:
-            logger.error("Failed to send forgetting task: %s, falling back to direct uninstall", e)
+            logger.error("Failed to send forgetting task via tunnel: %s, falling back to direct uninstall", e)
             await _direct_uninstall(instance.id, gene.id, ig.id)
 
 

@@ -551,7 +551,7 @@ PLUGIN_FILES = [
     "src/channel.ts",
     "src/runtime.ts",
     "src/types.ts",
-    "src/sse-server.ts",
+    "src/tunnel-client.ts",
     "src/tools.ts",
 ]
 
@@ -609,6 +609,8 @@ def _inject_channel_config(
     if "channels" not in config:
         config["channels"] = {}
     ch = config["channels"].setdefault("nodeskclaw", {})
+    if settings.TUNNEL_BASE_URL:
+        ch["tunnelUrl"] = settings.TUNNEL_BASE_URL
     accounts = ch.setdefault("accounts", {})
     entry = _make_account_entry(instance, workspace_id)
     accounts[workspace_id] = entry

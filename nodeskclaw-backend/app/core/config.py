@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     # ── Agent API（AI 员工 Pod 回调后端的内网地址）────────
     AGENT_API_BASE_URL: str = "http://localhost:8000/api/v1"
 
+    # ── Agent Tunnel（实例通过 WebSocket 主动连接后端的地址）────
+    TUNNEL_BASE_URL: str = ""
+
     # ── 出站代理（用于访问 OpenAI/Anthropic 等外部 API）────
     HTTPS_PROXY: str = ""
 

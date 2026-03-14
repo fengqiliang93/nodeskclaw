@@ -2,7 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 import { nodeskclawPlugin } from "./src/channel.js";
 import { setNoDeskClawRuntime } from "./src/runtime.js";
-import { startSSEServer } from "./src/sse-server.js";
+import { startTunnelClient } from "./src/tunnel-client.js";
 import { createNoDeskClawTools } from "./src/tools.js";
 
 const WORKSPACE_SESSION_PREFIX = "workspace:";
@@ -15,7 +15,16 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     setNoDeskClawRuntime(api.runtime);
     api.registerChannel({ plugin: nodeskclawPlugin });
-    startSSEServer();
+
+    const tunnelClient = startTunnelClient(api.config);
+
+    try {
+      const { handleWebhook } = require("openclaw-channel-learning/src/channel.js");
+      tunnelClient.setLearningHandler(handleWebhook);
+    } catch {
+      console.warn("[nodeskclaw] Learning channel not available for tunnel injection");
+    }
+
     api.registerTool((ctx: { sessionKey?: string }) => {
       const wsId = ctx.sessionKey?.startsWith(WORKSPACE_SESSION_PREFIX)
         ? ctx.sessionKey.slice(WORKSPACE_SESSION_PREFIX.length)

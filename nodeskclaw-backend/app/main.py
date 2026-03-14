@@ -280,54 +280,23 @@ async def lifespan(app: FastAPI):
     if feishu_ws_clients:
         logger.info("已启动 %d 个飞书 WebSocket 长链接", len(feishu_ws_clients))
 
-    # ── 恢复工作区 SSE 连接 ──
-    from app.models.workspace_agent import WorkspaceAgent
-    from app.services.sse_listener import sse_listener_manager
-
+    # ── 修复卡死实例状态 ──
     async with async_session_factory() as db:
         from app.models.instance import Instance
         ws_agents = await db.execute(
             select(Instance).where(
-                Instance.status.in_(["running", "restarting", "learning"]),
-                Instance.ingress_domain.isnot(None),
+                Instance.status.in_(["restarting", "learning"]),
                 Instance.deleted_at.is_(None),
             )
         )
         instances = ws_agents.scalars().all()
-
         for inst in instances:
-            if inst.status in ("restarting", "learning"):
-                inst.status = "running"
-                logger.info("修复卡死状态: %s %s -> running", inst.name, inst.status)
+            inst.status = "running"
+            logger.info("修复卡死状态: %s %s -> running", inst.name, inst.status)
         if instances:
             await db.commit()
 
-        wa_result = await db.execute(
-            select(WorkspaceAgent).where(
-                WorkspaceAgent.instance_id.in_([i.id for i in instances]),
-                WorkspaceAgent.deleted_at.is_(None),
-            )
-        )
-        inst_to_workspaces: dict[str, list[str]] = {}
-        for wa in wa_result.scalars().all():
-            inst_to_workspaces.setdefault(wa.instance_id, []).append(wa.workspace_id)
-
-        for inst in instances:
-            workspace_ids = inst_to_workspaces.get(inst.id)
-            if not workspace_ids and inst.workspace_id:
-                workspace_ids = [inst.workspace_id]
-            if not workspace_ids:
-                continue
-            for i, ws_id in enumerate(workspace_ids):
-                await sse_listener_manager.connect(
-                    inst.id, inst.ingress_domain,
-                    workspace_id=ws_id,
-                    delay=10 if i == 0 else 0,
-                )
-    logger.info(
-        "已恢复 %d 个工作区 SSE 连接",
-        len(sse_listener_manager.connected_instances),
-    )
+    logger.info("Agent Tunnel 已就绪，等待实例主动连接")
 
     # ── Runtime Platform v2 Startup ──────────────────
     _pg_notify_service = None
@@ -498,8 +467,7 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ─────────────────────────────────────
     for ws_client in feishu_ws_clients:
         ws_client.stop()
-    await sse_listener_manager.disconnect_all()
-    logger.info("已关闭所有 SSE 连接")
+    logger.info("Agent Tunnel 连接将随进程退出自动关闭")
     await summary_job.stop()
     await schedule_runner.stop()
     await health_checker.stop()

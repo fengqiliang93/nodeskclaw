@@ -1,0 +1,743 @@
+"""TunnelAdapter — unified WebSocket tunnel for backend <-> instance communication.
+
+Replaces SSEListenerManager + AgentTransportAdapter + runtime HTTP adapters
+with a single bidirectional WebSocket channel per instance.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+import uuid
+from typing import Any
+
+from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
+
+from app.services.runtime.messaging.envelope import MessageEnvelope
+from app.services.runtime.transport.base import DeliveryResult
+from app.services.tunnel.protocol import TunnelMessage, TunnelMessageType
+
+logger = logging.getLogger(__name__)
+
+NO_REPLY_BUFFER_SIZE = 30
+MAX_COLLABORATION_DEPTH = 5
+AUTH_TIMEOUT_S = 10
+PING_INTERVAL_S = 30
+PING_TIMEOUT_S = 45
+
+
+def _parse_delegation(response: str) -> tuple[str, str] | None:
+    stripped = response.strip()
+    for prefix in ("delegate:", "escalate:"):
+        if stripped.lower().startswith(prefix):
+            target = stripped[len(prefix):].strip().split()[0] if stripped[len(prefix):].strip() else ""
+            if target:
+                return (prefix.rstrip(":"), target)
+    return None
+
+
+class _InstanceConnection:
+    """Tracks a single WebSocket tunnel connection to an instance."""
+
+    __slots__ = ("ws", "instance_id", "connected_at", "last_pong", "msg_count_in", "msg_count_out", "_pending_responses")
+
+    def __init__(self, ws: WebSocket, instance_id: str) -> None:
+        self.ws = ws
+        self.instance_id = instance_id
+        self.connected_at = time.monotonic()
+        self.last_pong = time.monotonic()
+        self.msg_count_in = 0
+        self.msg_count_out = 0
+        self._pending_responses: dict[str, asyncio.Future[TunnelMessage]] = {}
+
+    def create_response_future(self, request_id: str) -> asyncio.Future[TunnelMessage]:
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[TunnelMessage] = loop.create_future()
+        self._pending_responses[request_id] = fut
+        return fut
+
+    def resolve_response(self, reply_to: str, msg: TunnelMessage) -> bool:
+        fut = self._pending_responses.pop(reply_to, None)
+        if fut and not fut.done():
+            fut.set_result(msg)
+            return True
+        return False
+
+    def cancel_all(self) -> None:
+        for fut in self._pending_responses.values():
+            if not fut.done():
+                fut.cancel()
+        self._pending_responses.clear()
+
+
+class TunnelAdapter:
+    """Unified tunnel adapter — manages WS connections and implements TransportAdapter."""
+
+    transport_id = "agent"
+
+    def __init__(self) -> None:
+        self._connections: dict[str, _InstanceConnection] = {}
+        self._ping_tasks: dict[str, asyncio.Task] = {}
+        self._stats = {"total_connections": 0, "total_messages_in": 0, "total_messages_out": 0}
+
+    @property
+    def connected_instances(self) -> set[str]:
+        return set(self._connections.keys())
+
+    def get_connection(self, instance_id: str) -> WebSocket | None:
+        conn = self._connections.get(instance_id)
+        return conn.ws if conn else None
+
+    # ── WebSocket lifecycle ──────────────────────────────────
+
+    async def handle_websocket(self, ws: WebSocket) -> None:
+        await ws.accept()
+
+        try:
+            raw = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_TIMEOUT_S)
+        except (asyncio.TimeoutError, WebSocketDisconnect, Exception) as e:
+            logger.warning("Tunnel auth timeout or error: %s", e)
+            try:
+                await ws.close(code=4001, reason="auth_timeout")
+            except Exception:
+                pass
+            return
+
+        auth_msg = TunnelMessage.from_dict(raw)
+        if auth_msg.type != TunnelMessageType.AUTH:
+            await self._send(ws, TunnelMessage(
+                type=TunnelMessageType.AUTH_ERROR,
+                payload={"reason": "expected_auth_message"},
+            ))
+            await ws.close(code=4002, reason="expected_auth")
+            return
+
+        instance_id = auth_msg.payload.get("instance_id", "")
+        token = auth_msg.payload.get("token", "")
+
+        if not instance_id or not token:
+            await self._send(ws, TunnelMessage(
+                type=TunnelMessageType.AUTH_ERROR,
+                payload={"reason": "missing_credentials"},
+            ))
+            await ws.close(code=4003, reason="missing_credentials")
+            return
+
+        if not await self._verify_token(instance_id, token):
+            await self._send(ws, TunnelMessage(
+                type=TunnelMessageType.AUTH_ERROR,
+                payload={"reason": "invalid_token"},
+            ))
+            await ws.close(code=4004, reason="invalid_token")
+            return
+
+        old_conn = self._connections.get(instance_id)
+        if old_conn:
+            logger.info("Tunnel: kicking previous connection for %s", instance_id)
+            old_conn.cancel_all()
+            try:
+                await old_conn.ws.close(code=4010, reason="replaced")
+            except Exception:
+                pass
+            self._cleanup_instance(instance_id)
+
+        conn = _InstanceConnection(ws, instance_id)
+        self._connections[instance_id] = conn
+        self._stats["total_connections"] += 1
+
+        await self._send(ws, TunnelMessage(type=TunnelMessageType.AUTH_OK))
+        logger.info("Tunnel: instance %s connected", instance_id)
+
+        self._broadcast_connection_event(instance_id, connected=True)
+
+        ping_task = asyncio.create_task(self._ping_loop(instance_id))
+        self._ping_tasks[instance_id] = ping_task
+
+        try:
+            await self._replay_pending_messages(instance_id)
+        except Exception as e:
+            logger.warning("Tunnel: offline replay failed for %s: %s", instance_id, e)
+
+        try:
+            await self._message_loop(conn)
+        except WebSocketDisconnect:
+            logger.info("Tunnel: instance %s disconnected", instance_id)
+        except Exception as e:
+            logger.error("Tunnel: message loop error for %s: %s", instance_id, e)
+        finally:
+            self._cleanup_instance(instance_id)
+            self._broadcast_connection_event(instance_id, connected=False)
+
+    async def _message_loop(self, conn: _InstanceConnection) -> None:
+        while True:
+            raw = await conn.ws.receive_json()
+            msg = TunnelMessage.from_dict(raw)
+            conn.msg_count_in += 1
+            self._stats["total_messages_in"] += 1
+
+            logger.debug(
+                "[%s] tunnel recv type=%s instance=%s",
+                msg.trace_id or "-", msg.type, conn.instance_id,
+            )
+
+            if msg.type == TunnelMessageType.PONG:
+                conn.last_pong = time.monotonic()
+            elif msg.type == TunnelMessageType.COLLABORATION_MESSAGE:
+                asyncio.create_task(self._on_collaboration_message(conn.instance_id, msg))
+            elif msg.type in (
+                TunnelMessageType.CHAT_RESPONSE_CHUNK,
+                TunnelMessageType.CHAT_RESPONSE_DONE,
+                TunnelMessageType.CHAT_RESPONSE_ERROR,
+            ):
+                self._on_chat_response(conn, msg)
+            elif msg.type == TunnelMessageType.STATUS_REPORT:
+                logger.info("Tunnel: status report from %s: %s", conn.instance_id, msg.payload)
+            else:
+                logger.warning("Tunnel: unknown message type %s from %s", msg.type, conn.instance_id)
+
+    def _on_chat_response(self, conn: _InstanceConnection, msg: TunnelMessage) -> None:
+        if msg.reply_to:
+            conn.resolve_response(msg.reply_to, msg)
+
+    async def _on_collaboration_message(self, instance_id: str, msg: TunnelMessage) -> None:
+        try:
+            from app.services.collaboration_service import handle_collaboration_event
+            await handle_collaboration_event(instance_id, msg.payload)
+        except Exception as e:
+            logger.error("Tunnel: collaboration message handling failed for %s: %s", instance_id, e)
+
+    # ── Send to instance ─────────────────────────────────────
+
+    async def send_chat_request(
+        self,
+        instance_id: str,
+        messages: list[dict],
+        *,
+        workspace_id: str = "",
+        trace_id: str = "",
+        stream: bool = True,
+    ) -> AsyncChatStream:
+        conn = self._connections.get(instance_id)
+        if not conn:
+            raise ConnectionError(f"Instance {instance_id} not connected via tunnel")
+
+        request_id = str(uuid.uuid4())
+        msg = TunnelMessage(
+            id=request_id,
+            type=TunnelMessageType.CHAT_REQUEST,
+            trace_id=trace_id,
+            payload={
+                "messages": messages,
+                "stream": stream,
+                "workspace_id": workspace_id,
+            },
+        )
+        await self._send(conn.ws, msg)
+        return AsyncChatStream(conn, request_id, trace_id)
+
+    async def send_learning_task(self, instance_id: str, task: dict) -> None:
+        conn = self._connections.get(instance_id)
+        if not conn:
+            raise ConnectionError(f"Instance {instance_id} not connected via tunnel")
+
+        msg = TunnelMessage(
+            type=TunnelMessageType.LEARNING_TASK,
+            trace_id=str(uuid.uuid4()),
+            payload=task,
+        )
+        await self._send(conn.ws, msg)
+        logger.info("Tunnel: learning task sent to %s (mode=%s)", instance_id, task.get("mode", "?"))
+
+    async def send_ping(self, instance_id: str) -> bool:
+        conn = self._connections.get(instance_id)
+        if not conn:
+            return False
+        try:
+            await self._send(conn.ws, TunnelMessage(type=TunnelMessageType.PING))
+            return True
+        except Exception:
+            return False
+
+    # ── TransportAdapter protocol ────────────────────────────
+
+    async def deliver(
+        self,
+        envelope: MessageEnvelope,
+        target_node_id: str,
+        *,
+        workspace_id: str = "",
+        db: Any = None,
+    ) -> DeliveryResult:
+        start = time.monotonic()
+        logger.debug("TunnelAdapter.deliver: envelope=%s target=%s", envelope.id, target_node_id)
+
+        if target_node_id not in self._connections:
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error="instance_not_connected_locally",
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        if db is None:
+            from app.core.deps import async_session_factory
+            async with async_session_factory() as db:
+                return await self._do_deliver(envelope, target_node_id, workspace_id, db, start)
+        return await self._do_deliver(envelope, target_node_id, workspace_id, db, start)
+
+    async def _do_deliver(
+        self,
+        envelope: MessageEnvelope,
+        target_node_id: str,
+        workspace_id: str,
+        db: Any,
+        start: float,
+    ) -> DeliveryResult:
+        from sqlalchemy import select
+
+        from app.models.base import not_deleted
+        from app.models.instance import Instance
+        from app.models.node_card import NodeCard
+
+        card_result = await db.execute(
+            select(NodeCard).where(
+                NodeCard.node_id == target_node_id,
+                NodeCard.workspace_id == workspace_id,
+                not_deleted(NodeCard),
+            )
+        )
+        card = card_result.scalar_one_or_none()
+        if card is None:
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error="node_card_not_found",
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        inst_result = await db.execute(
+            select(Instance).where(Instance.id == target_node_id, not_deleted(Instance))
+        )
+        inst = inst_result.scalar_one_or_none()
+        if inst is None:
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error="instance_not_found",
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        agent_name = card.name or inst.name
+        data = envelope.data
+        if data is None:
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error="no_envelope_data",
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        from app.services import workspace_message_service as msg_service
+
+        context_prompt = msg_service.build_context_prompt(
+            workspace_name="",
+            agent_display_name=agent_name,
+            current_instance_id=target_node_id,
+            members=[],
+            recent_messages=[],
+            workspace_id=workspace_id,
+        )
+
+        user_content = f"[{data.sender.name}]: {data.content}"
+        messages = [
+            {"role": "system", "content": context_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
+        from app.api.workspaces import broadcast_event
+
+        broadcast_event(workspace_id, "agent:typing", {
+            "instance_id": target_node_id,
+            "agent_name": agent_name,
+        })
+
+        try:
+            chat_stream = await self.send_chat_request(
+                target_node_id, messages,
+                workspace_id=workspace_id,
+                trace_id=envelope.traceid,
+                stream=True,
+            )
+        except ConnectionError as e:
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error=str(e),
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        buffer = ""
+        flushed = False
+        full_response = ""
+        error_msg: str | None = None
+
+        try:
+            async for chunk_msg in chat_stream:
+                if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
+                    error_msg = chunk_msg.payload.get("error", "unknown_error")
+                    break
+                if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
+                    break
+
+                content = chunk_msg.payload.get("content", "")
+                if not content:
+                    continue
+
+                full_response += content
+                if not flushed:
+                    buffer += content
+                    if len(buffer) > NO_REPLY_BUFFER_SIZE:
+                        if msg_service.is_no_reply(buffer.strip()):
+                            logger.info("Agent %s replied NO_REPLY", agent_name)
+                            broadcast_event(workspace_id, "agent:done", {
+                                "instance_id": target_node_id, "agent_name": agent_name,
+                            })
+                            return DeliveryResult(
+                                success=True, target_node_id=target_node_id,
+                                transport=self.transport_id,
+                                latency_ms=int((time.monotonic() - start) * 1000),
+                                extra={"no_reply": True},
+                            )
+                        broadcast_event(workspace_id, "agent:chunk", {
+                            "instance_id": target_node_id,
+                            "agent_name": agent_name,
+                            "content": buffer,
+                            "trace_id": envelope.traceid,
+                        })
+                        flushed = True
+                else:
+                    broadcast_event(workspace_id, "agent:chunk", {
+                        "instance_id": target_node_id,
+                        "agent_name": agent_name,
+                        "content": content,
+                        "trace_id": envelope.traceid,
+                    })
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("Agent %s streaming failed: %s", agent_name, e)
+
+        if error_msg:
+            broadcast_event(workspace_id, "agent:error", {
+                "instance_id": target_node_id, "agent_name": agent_name, "error": error_msg,
+            })
+            return DeliveryResult(
+                success=False, target_node_id=target_node_id,
+                transport=self.transport_id, error=error_msg,
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        if not flushed and buffer:
+            if msg_service.is_no_reply(buffer.strip()):
+                broadcast_event(workspace_id, "agent:done", {
+                    "instance_id": target_node_id, "agent_name": agent_name,
+                })
+                return DeliveryResult(
+                    success=True, target_node_id=target_node_id,
+                    transport=self.transport_id,
+                    latency_ms=int((time.monotonic() - start) * 1000),
+                    extra={"no_reply": True},
+                )
+            broadcast_event(workspace_id, "agent:chunk", {
+                "instance_id": target_node_id, "agent_name": agent_name,
+                "content": buffer, "trace_id": envelope.traceid,
+            })
+
+        delegation = _parse_delegation(full_response)
+        if delegation:
+            action, delegate_target = delegation
+            logger.info("Agent %s issued %s to %s", agent_name, action, delegate_target)
+            try:
+                await self._handle_delegation(
+                    action, delegate_target, envelope, target_node_id, workspace_id, db,
+                )
+            except Exception as e:
+                logger.warning("Delegation %s->%s failed: %s", action, delegate_target, e)
+
+        if full_response and not msg_service.is_no_reply(full_response.strip()):
+            broadcast_event(workspace_id, "agent:done", {
+                "instance_id": target_node_id,
+                "agent_name": agent_name,
+                "full_content": full_response,
+                "trace_id": envelope.traceid,
+            })
+            from app.core.deps import async_session_factory
+            async with async_session_factory() as save_db:
+                await msg_service.record_message(
+                    save_db,
+                    workspace_id=workspace_id,
+                    sender_type="agent",
+                    sender_id=target_node_id,
+                    sender_name=agent_name,
+                    content=full_response,
+                )
+        else:
+            broadcast_event(workspace_id, "agent:done", {
+                "instance_id": target_node_id, "agent_name": agent_name,
+            })
+
+        return DeliveryResult(
+            success=True, target_node_id=target_node_id,
+            transport=self.transport_id,
+            latency_ms=int((time.monotonic() - start) * 1000),
+        )
+
+    async def _handle_delegation(
+        self,
+        action: str,
+        target_name: str,
+        original_envelope: MessageEnvelope,
+        source_node_id: str,
+        workspace_id: str,
+        db: Any,
+    ) -> None:
+        from sqlalchemy import select
+
+        from app.models.base import not_deleted
+        from app.services.runtime.messaging.envelope import (
+            IntentType,
+            MessageData,
+            MessageSender,
+            SenderType,
+        )
+
+        prev_visited = (
+            original_envelope.data.routing.visited if original_envelope.data else []
+        )
+        if len(prev_visited) >= MAX_COLLABORATION_DEPTH:
+            logger.warning(
+                "Collaboration depth limit (%d) reached, refusing %s from %s",
+                MAX_COLLABORATION_DEPTH, action, source_node_id,
+            )
+            return
+
+        if action == "escalate":
+            from app.models.node_card import NodeCard
+            result = await db.execute(
+                select(NodeCard).where(
+                    NodeCard.workspace_id == workspace_id,
+                    NodeCard.node_type == "human",
+                    not_deleted(NodeCard),
+                ).limit(1)
+            )
+            human_card = result.scalar_one_or_none()
+            if human_card:
+                target_name = human_card.node_id
+
+        new_visited = list(prev_visited) + [source_node_id]
+
+        new_envelope = MessageEnvelope(
+            source=f"agent/{source_node_id}",
+            type="deskclaw.msg.v1.chat",
+            workspaceid=workspace_id,
+            causationid=original_envelope.id,
+            correlationid=original_envelope.correlationid or original_envelope.id,
+            traceid=original_envelope.traceid,
+            data=MessageData(
+                sender=MessageSender(
+                    id=source_node_id,
+                    type=SenderType.AGENT,
+                    name=f"agent:{source_node_id}",
+                    instance_id=source_node_id,
+                ),
+                intent=IntentType.COLLABORATE,
+                content=original_envelope.data.content if original_envelope.data else "",
+                extensions={"delegation_action": action, "delegation_from": source_node_id},
+            ),
+        )
+        new_envelope.data.routing.target = target_name
+        new_envelope.data.routing.targets = [target_name]
+        new_envelope.data.routing.visited = new_visited
+
+        from app.services.runtime.messaging.bus import message_bus
+        await message_bus.publish(new_envelope, db=db)
+
+    async def health_check(self, target_node_id: str) -> bool:
+        return target_node_id in self._connections
+
+    # ── Offline message replay ───────────────────────────────
+
+    async def _replay_pending_messages(self, instance_id: str) -> None:
+        from app.core.deps import async_session_factory
+        from app.services.runtime.messaging.queue import ack, dequeue, nack
+
+        async with async_session_factory() as db:
+            items = await dequeue(db, target_node_id=instance_id, batch_size=50)
+            if not items:
+                return
+
+            logger.info("Tunnel: replaying %d offline messages for %s", len(items), instance_id)
+            for item in items:
+                try:
+                    envelope = MessageEnvelope.from_dict(item.envelope or {})
+                    workspace_id = item.workspace_id or envelope.workspaceid
+                    result = await self._do_deliver(
+                        envelope, instance_id, workspace_id, db, time.monotonic(),
+                    )
+                    if result.success:
+                        await ack(db, str(item.id))
+                    else:
+                        await nack(db, str(item.id), result.error or "replay_failed")
+                except Exception as e:
+                    logger.warning("Tunnel: replay delivery failed for item %s: %s", item.id, e)
+            await db.commit()
+
+    # ── Ping/Pong ────────────────────────────────────────────
+
+    async def _ping_loop(self, instance_id: str) -> None:
+        try:
+            while instance_id in self._connections:
+                await asyncio.sleep(PING_INTERVAL_S)
+                conn = self._connections.get(instance_id)
+                if not conn:
+                    break
+                if time.monotonic() - conn.last_pong > PING_TIMEOUT_S:
+                    logger.warning("Tunnel: instance %s ping timeout, closing", instance_id)
+                    try:
+                        await conn.ws.close(code=4020, reason="ping_timeout")
+                    except Exception:
+                        pass
+                    break
+                try:
+                    await self._send(conn.ws, TunnelMessage(type=TunnelMessageType.PING))
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    # ── Internal helpers ─────────────────────────────────────
+
+    async def _verify_token(self, instance_id: str, token: str) -> bool:
+        from app.core.deps import async_session_factory
+        from sqlalchemy import select
+
+        from app.models.base import not_deleted
+        from app.models.instance import Instance
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Instance).where(Instance.id == instance_id, not_deleted(Instance))
+            )
+            inst = result.scalar_one_or_none()
+            if inst is None:
+                return False
+            env_vars = json.loads(inst.env_vars or "{}")
+            expected_token = env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
+            return bool(expected_token and token == expected_token)
+
+    async def _send(self, ws: WebSocket, msg: TunnelMessage) -> None:
+        if ws.client_state == WebSocketState.CONNECTED:
+            await ws.send_json(msg.to_dict())
+            self._stats["total_messages_out"] += 1
+            logger.debug(
+                "[%s] tunnel send type=%s", msg.trace_id or "-", msg.type,
+            )
+
+    def _cleanup_instance(self, instance_id: str) -> None:
+        conn = self._connections.pop(instance_id, None)
+        if conn:
+            conn.cancel_all()
+        task = self._ping_tasks.pop(instance_id, None)
+        if task and not task.done():
+            task.cancel()
+        logger.info("Tunnel: instance %s cleaned up", instance_id)
+
+    def _broadcast_connection_event(self, instance_id: str, *, connected: bool) -> None:
+        try:
+            from app.core.deps import async_session_factory
+            from app.models.workspace_agent import WorkspaceAgent
+            from app.models.base import not_deleted
+
+            async def _do_broadcast():
+                from sqlalchemy import select
+                async with async_session_factory() as db:
+                    result = await db.execute(
+                        select(WorkspaceAgent.workspace_id).where(
+                            WorkspaceAgent.instance_id == instance_id,
+                            not_deleted(WorkspaceAgent),
+                        )
+                    )
+                    ws_ids = [r[0] for r in result.all()]
+
+                from app.api.workspaces import broadcast_event
+                event_name = "agent:tunnel_connected" if connected else "agent:tunnel_disconnected"
+                for ws_id in ws_ids:
+                    broadcast_event(ws_id, event_name, {"instance_id": instance_id})
+
+            asyncio.create_task(_do_broadcast())
+        except Exception as e:
+            logger.warning("Tunnel: broadcast connection event failed: %s", e)
+
+    # ── Observability ────────────────────────────────────────
+
+    def get_status(self) -> dict[str, Any]:
+        now = time.monotonic()
+        instances = []
+        for iid, conn in self._connections.items():
+            instances.append({
+                "instance_id": iid,
+                "connected_seconds": int(now - conn.connected_at),
+                "last_pong_seconds_ago": int(now - conn.last_pong),
+                "messages_in": conn.msg_count_in,
+                "messages_out": conn.msg_count_out,
+            })
+        return {
+            "connected_count": len(self._connections),
+            "instances": instances,
+            **self._stats,
+        }
+
+
+class AsyncChatStream:
+    """Async iterator that yields TunnelMessage chunks for a chat request."""
+
+    def __init__(self, conn: _InstanceConnection, request_id: str, trace_id: str) -> None:
+        self._conn = conn
+        self._request_id = request_id
+        self._trace_id = trace_id
+        self._queue: asyncio.Queue[TunnelMessage] = asyncio.Queue()
+        self._done = False
+        self._original_resolve = conn.resolve_response
+
+        conn._pending_responses[request_id] = None  # type: ignore[assignment]
+        self._setup_streaming()
+
+    def _setup_streaming(self) -> None:
+        original = self._conn.resolve_response
+
+        def _streaming_resolve(reply_to: str, msg: TunnelMessage) -> bool:
+            if reply_to == self._request_id:
+                self._queue.put_nowait(msg)
+                if msg.type in (TunnelMessageType.CHAT_RESPONSE_DONE, TunnelMessageType.CHAT_RESPONSE_ERROR):
+                    self._done = True
+                return True
+            return original(reply_to, msg)
+
+        self._conn.resolve_response = _streaming_resolve  # type: ignore[assignment]
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> TunnelMessage:
+        if self._done and self._queue.empty():
+            self._restore()
+            raise StopAsyncIteration
+        try:
+            msg = await asyncio.wait_for(self._queue.get(), timeout=120)
+            if msg.type in (TunnelMessageType.CHAT_RESPONSE_DONE, TunnelMessageType.CHAT_RESPONSE_ERROR):
+                self._restore()
+            return msg
+        except asyncio.TimeoutError:
+            self._restore()
+            raise StopAsyncIteration
+
+    def _restore(self) -> None:
+        self._conn._pending_responses.pop(self._request_id, None)
+        if hasattr(self, "_original_resolve"):
+            self._conn.resolve_response = self._original_resolve  # type: ignore[assignment]

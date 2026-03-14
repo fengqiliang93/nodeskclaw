@@ -5,7 +5,7 @@ import type {
   CollaborationPayload,
 } from "./types.js";
 import { getNoDeskClawRuntime } from "./runtime.js";
-import { broadcast } from "./sse-server.js";
+import { getTunnelClient } from "./tunnel-client.js";
 
 const CHANNEL_KEY = "nodeskclaw";
 const DEFAULT_ACCOUNT_ID = "default";
@@ -122,7 +122,7 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
         depth: 0,
       };
 
-      broadcast(payload);
+      getTunnelClient().sendCollaboration(payload);
 
       getNoDeskClawRuntime().channel.activity.record({
         channel: CHANNEL_KEY,
@@ -145,7 +145,7 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
         depth: 0,
       };
 
-      broadcast(payload);
+      getTunnelClient().sendCollaboration(payload);
 
       getNoDeskClawRuntime().channel.activity.record({
         channel: CHANNEL_KEY,

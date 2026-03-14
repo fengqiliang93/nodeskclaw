@@ -80,8 +80,8 @@ nodeskclaw-backend/
 │   │   ├── health_checker.py     # 集群健康巡检
 │   │   ├── workspace_service.py  # 工作区 CRUD + Agent 管理
 │   │   ├── workspace_message_service.py  # 群聊消息记录 + 上下文构建
-│   │   ├── collaboration_service.py      # 协作消息处理（由 SSE 监听器调用）
-│   │   ├── sse_listener.py               # DeskClaw 实例 SSE 长连接（按 Ingress 域名）
+│   │   ├── collaboration_service.py      # 协作消息处理（由 Tunnel 调用）
+│   │   ├── tunnel/                       # Agent Tunnel（WebSocket 隧道，替代 SSE + HTTP 直连）
 │   │   ├── llm_config_service.py # DeskClaw LLM 配置 + 系统 Channel plugin 分发
 │   │   ├── channel_config_service.py # Channel 发现、配置读写、Schema 注册、自定义部署
 │   │   ├── enterprise_file_service.py # 企业空间文件浏览（PodFS 只读）

@@ -21,12 +21,11 @@ SCAN_INTERVAL_S = 30
 
 
 async def _update_agent_health(db) -> None:
-    """Dual-layer health check: combine heartbeat scan with RuntimeAdapter probes."""
+    """Dual-layer health check: combine heartbeat scan with tunnel connection probes."""
     try:
         from app.models.base import not_deleted
         from app.models.node_card import NodeCard
-        from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
-        from app.services.runtime.transport.agent_transport import agent_transport
+        from app.services.tunnel import tunnel_adapter
         from sqlalchemy import select
 
         result = await db.execute(
@@ -38,7 +37,7 @@ async def _update_agent_health(db) -> None:
         )
         cards = result.scalars().all()
         for card in cards:
-            is_healthy = await agent_transport.health_check(card.node_id)
+            is_healthy = await tunnel_adapter.health_check(card.node_id)
             new_status = "active" if is_healthy else "unhealthy"
             if card.status != new_status:
                 card.status = new_status

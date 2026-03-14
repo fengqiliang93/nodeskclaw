@@ -315,9 +315,6 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
         )
 
     ws_ids = await _get_instance_workspace_ids(db, instance_id)
-    if ws_ids:
-        from app.services.sse_listener import sse_listener_manager
-        await sse_listener_manager.disconnect(instance_id)
 
     if delete_k8s:
         if instance.compute_provider == "docker":

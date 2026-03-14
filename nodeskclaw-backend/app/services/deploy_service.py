@@ -399,6 +399,8 @@ async def deploy_instance(
 
     env_vars.setdefault("NODESKCLAW_API_URL", settings.AGENT_API_BASE_URL)
     env_vars.setdefault("NODESKCLAW_TOKEN", gateway_token)
+    if settings.TUNNEL_BASE_URL:
+        env_vars.setdefault("NODESKCLAW_TUNNEL_URL", settings.TUNNEL_BASE_URL)
 
     if docker_host_port is not None:
         env_vars["DOCKER_HOST_PORT"] = str(docker_host_port)
@@ -819,7 +821,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 await db.commit()
                 await adapter.setup_proxy(ctx, ingress_host)
             else:
-                logger.warning("未配置 ingress_base_domain，跳过 Ingress 创建")
+                logger.info("未配置 ingress_base_domain，跳过 Ingress 创建（Tunnel 模式无需 Ingress）")
 
             # Step 8: 配置网络策略（多租户隔离）
             _publish(8, steps[7])

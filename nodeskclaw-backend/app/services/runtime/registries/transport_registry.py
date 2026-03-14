@@ -36,13 +36,13 @@ TRANSPORT_REGISTRY = TransportRegistry()
 
 
 def _register_builtins() -> None:
-    from app.services.runtime.transport.agent_transport import agent_transport
+    from app.services.tunnel import tunnel_adapter
     from app.services.runtime.transport.channel_transport import channel_transport
 
     TRANSPORT_REGISTRY.register(TransportSpec(
         transport_id="agent",
-        adapter=agent_transport,
-        description="Agent-side transport via RuntimeAdapter (SSE/HTTP to agent runtime).",
+        adapter=tunnel_adapter,
+        description="Agent-side transport via WebSocket tunnel to agent runtime.",
     ))
     TRANSPORT_REGISTRY.register(TransportSpec(
         transport_id="channel",

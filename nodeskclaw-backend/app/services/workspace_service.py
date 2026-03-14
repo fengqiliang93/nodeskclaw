@@ -58,7 +58,7 @@ def _agent_for_broadcast(inst: Instance, wa: WorkspaceAgent):
 
 
 def _agent_brief(inst: Instance, wa: WorkspaceAgent) -> AgentBrief:
-    from app.services.sse_listener import sse_listener_manager
+    from app.services.tunnel import tunnel_adapter
     return AgentBrief(
         instance_id=inst.id,
         name=inst.name,
@@ -68,7 +68,7 @@ def _agent_brief(inst: Instance, wa: WorkspaceAgent) -> AgentBrief:
         status=inst.status,
         hex_q=wa.hex_q,
         hex_r=wa.hex_r,
-        sse_connected=inst.id in sse_listener_manager.healthy_instances,
+        sse_connected=inst.id in tunnel_adapter.connected_instances,
         theme_color=wa.theme_color,
     )
 
@@ -529,20 +529,10 @@ async def _deploy_channel_plugin(inst: Instance, db: AsyncSession, workspace_id:
     except Exception as e:
         logger.warning("重启实例失败（非致命）: instance=%s error=%s", inst.name, e)
 
-    if inst.ingress_domain:
-        from app.services.sse_listener import sse_listener_manager
-        await sse_listener_manager.connect(
-            inst.id,
-            inst.ingress_domain,
-            delay=15,
-            workspace_id=workspace_id,
-        )
 
 
 async def _remove_channel_plugin(inst: Instance, db: AsyncSession, workspace_id: str) -> None:
-    """Disconnect SSE + remove channel plugin config for this workspace (or full cleanup if last)."""
-    from app.services.sse_listener import sse_listener_manager
-
+    """Remove channel plugin config for this workspace (or full cleanup if last)."""
     remaining = await db.execute(
         select(func.count()).select_from(WorkspaceAgent).where(
             WorkspaceAgent.instance_id == inst.id,
@@ -553,14 +543,12 @@ async def _remove_channel_plugin(inst: Instance, db: AsyncSession, workspace_id:
     remaining_count = remaining.scalar() or 0
 
     if remaining_count == 0:
-        await sse_listener_manager.disconnect(inst.id)
         try:
             from app.services.llm_config_service import remove_nodeskclaw_channel_plugin
             await remove_nodeskclaw_channel_plugin(inst, db)
         except Exception as e:
             logger.error("移除 channel plugin 失败（非致命）: instance=%s error=%s", inst.name, e)
     else:
-        sse_listener_manager.remove_workspace(inst.id, workspace_id)
         try:
             from app.services.llm_config_service import remove_workspace_channel_account
             await remove_workspace_channel_account(inst, db, workspace_id)
@@ -686,28 +674,24 @@ async def _broadcast_leave_message(workspace_id: str, inst: Instance) -> None:
 
 
 async def _send_welcome_message(workspace_id: str, inst: Instance) -> None:
-    """Wait for the instance to be ready, then trigger Agent self-introduction."""
+    """Wait for the instance to be ready via tunnel, then trigger Agent self-introduction."""
     agent_name = inst.agent_display_name or inst.name
 
-    from app.services.sse_listener import sse_listener_manager
-    has_sse_task = inst.id in sse_listener_manager.connected_instances
+    from app.services.tunnel import tunnel_adapter
 
-    if has_sse_task:
-        elapsed = 0
-        while elapsed < WELCOME_READY_TIMEOUT:
-            if inst.id in sse_listener_manager.healthy_instances:
-                break
-            await asyncio.sleep(WELCOME_POLL_INTERVAL)
-            elapsed += WELCOME_POLL_INTERVAL
-        else:
-            logger.warning(
-                "Agent %s 在 %ds 内未就绪，放弃自我介绍",
-                agent_name, WELCOME_READY_TIMEOUT,
-            )
-            return
-        await asyncio.sleep(3)
+    elapsed = 0
+    while elapsed < WELCOME_READY_TIMEOUT:
+        if inst.id in tunnel_adapter.connected_instances:
+            break
+        await asyncio.sleep(WELCOME_POLL_INTERVAL)
+        elapsed += WELCOME_POLL_INTERVAL
     else:
-        await asyncio.sleep(WELCOME_FALLBACK_DELAY)
+        logger.warning(
+            "Agent %s 在 %ds 内未通过隧道连接，放弃自我介绍",
+            agent_name, WELCOME_READY_TIMEOUT,
+        )
+        return
+    await asyncio.sleep(3)
 
     try:
         from app.services.collaboration_service import _invoke_target_agent

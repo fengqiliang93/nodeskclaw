@@ -1162,41 +1162,32 @@ async def agent_chat(
         {"role": "user", "content": data.message},
     ]
 
-    base_url, token = _get_instance_connection(inst)
-    if not base_url or not token:
-        raise _error(400, 40033, "errors.workspace.agent_connection_missing", "AI 员工实例缺少访问地址或 Token")
+    from app.services.tunnel import tunnel_adapter
+    if instance_id not in tunnel_adapter.connected_instances:
+        raise _error(400, 40033, "errors.workspace.agent_connection_missing", "AI 员工实例未通过隧道连接")
 
     async def stream():
         full_response = ""
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-            timeout=120,
-        ) as client:
-            async with client.stream(
-                "POST",
-                f"{base_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "X-OpenClaw-Session-Key": f"workspace:{workspace_id}",
-                },
-                json={"model": "gpt-4", "messages": messages, "stream": True},
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        chunk_data = line[6:]
-                        if chunk_data == "[DONE]":
-                            yield "data: [DONE]\n\n"
-                            break
-                        try:
-                            chunk = json.loads(chunk_data)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_response += content
-                                yield f"data: {json.dumps({'content': content})}\n\n"
-                        except json.JSONDecodeError:
-                            pass
+        try:
+            chat_stream = await tunnel_adapter.send_chat_request(
+                instance_id, messages,
+                workspace_id=workspace_id,
+                stream=True,
+            )
+            async for chunk_msg in chat_stream:
+                from app.services.tunnel.protocol import TunnelMessageType
+                if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
+                    yield f"data: {json.dumps({'error': chunk_msg.payload.get('error', 'unknown')})}\n\n"
+                    break
+                if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
+                    yield "data: [DONE]\n\n"
+                    break
+                content = chunk_msg.payload.get("content", "")
+                if content:
+                    full_response += content
+                    yield f"data: {json.dumps({'content': content})}\n\n"
+        except ConnectionError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
         if full_response and not msg_service.is_no_reply(full_response):
             async with async_session_factory() as save_db:
@@ -1324,8 +1315,8 @@ async def workspace_events(
 
 
 async def _build_agent_status_snapshot(workspace_id: str, db: AsyncSession) -> dict | None:
-    """Build a snapshot of all agents' SSE connection status for the workspace."""
-    from app.services.sse_listener import sse_listener_manager
+    """Build a snapshot of all agents' tunnel connection status for the workspace."""
+    from app.services.tunnel import tunnel_adapter
 
     result = await db.execute(
         sa_select(WorkspaceAgent.instance_id).where(
@@ -1337,10 +1328,10 @@ async def _build_agent_status_snapshot(workspace_id: str, db: AsyncSession) -> d
     if not instance_ids:
         return None
 
-    healthy = sse_listener_manager.healthy_instances
+    connected = tunnel_adapter.connected_instances
     return {
         "agents": [
-            {"instance_id": iid, "sse_connected": iid in healthy}
+            {"instance_id": iid, "sse_connected": iid in connected}
             for iid in instance_ids
         ],
     }
@@ -1377,14 +1368,6 @@ async def _get_running_agents(db: AsyncSession, workspace_id: str) -> list[tuple
         )
     )
     return list(result.all())
-
-
-def _get_instance_connection(inst: Instance) -> tuple[str, str]:
-    env_vars = json.loads(inst.env_vars or "{}")
-    token = env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
-    domain = inst.ingress_domain or ""
-    base_url = f"https://{domain}" if domain else ""
-    return base_url, token
 
 
 def _build_members_list(ws_info, user) -> list[dict]:
@@ -1452,9 +1435,11 @@ async def _stream_agent_response(
         {"role": "user", "content": user_content},
     ]
 
-    base_url, token = _get_instance_connection(instance)
-    if not base_url or not token:
-        logger.warning("Agent %s (%s) 缺少连接信息，跳过", agent_name, instance_id)
+    from app.services.tunnel import tunnel_adapter
+    from app.services.tunnel.protocol import TunnelMessageType
+
+    if instance_id not in tunnel_adapter.connected_instances:
+        logger.warning("Agent %s (%s) not connected via tunnel, skipping", agent_name, instance_id)
         return
 
     broadcast_event(workspace_id, "agent:typing", {
@@ -1467,69 +1452,50 @@ async def _stream_agent_response(
     full_response = ""
 
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(verify=False, local_address="0.0.0.0"),
-            timeout=120,
-        ) as client:
-            async with client.stream(
-                "POST",
-                f"{base_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "X-OpenClaw-Session-Key": f"workspace:{workspace_id}",
-                },
-                json={"model": "gpt-4", "messages": messages, "stream": True},
-            ) as resp:
-                if resp.status_code != 200:
-                    logger.error(
-                        "Agent %s API returned %d, expected 200",
-                        agent_name, resp.status_code,
-                    )
-                    broadcast_event(workspace_id, "agent:done", {
-                        "instance_id": instance_id,
-                        "agent_name": agent_name,
-                    })
-                    return
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    chunk_data = line[6:]
-                    if chunk_data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(chunk_data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                    except json.JSONDecodeError:
-                        continue
-                    if not content:
-                        continue
+        chat_stream = await tunnel_adapter.send_chat_request(
+            instance_id, messages,
+            workspace_id=workspace_id,
+            stream=True,
+        )
+        async for chunk_msg in chat_stream:
+            if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
+                logger.error("Agent %s returned error: %s", agent_name, chunk_msg.payload.get("error"))
+                broadcast_event(workspace_id, "agent:error", {
+                    "instance_id": instance_id,
+                    "agent_name": agent_name,
+                    "error": chunk_msg.payload.get("error", "unknown"),
+                })
+                return
+            if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
+                break
+            content = chunk_msg.payload.get("content", "")
+            if not content:
+                continue
 
-                    full_response += content
+            full_response += content
 
-                    if not flushed:
-                        buffer += content
-                        if len(buffer) > NO_REPLY_BUFFER_SIZE:
-                            if msg_service.is_no_reply(buffer.strip()):
-                                logger.info("Agent %s replied NO_REPLY, discarding", agent_name)
-                                broadcast_event(workspace_id, "agent:done", {
-                                    "instance_id": instance_id,
-                                    "agent_name": agent_name,
-                                })
-                                return
-                            broadcast_event(workspace_id, "agent:chunk", {
-                                "instance_id": instance_id,
-                                "agent_name": agent_name,
-                                "content": buffer,
-                            })
-                            flushed = True
-                    else:
-                        broadcast_event(workspace_id, "agent:chunk", {
+            if not flushed:
+                buffer += content
+                if len(buffer) > NO_REPLY_BUFFER_SIZE:
+                    if msg_service.is_no_reply(buffer.strip()):
+                        logger.info("Agent %s replied NO_REPLY, discarding", agent_name)
+                        broadcast_event(workspace_id, "agent:done", {
                             "instance_id": instance_id,
                             "agent_name": agent_name,
-                            "content": content,
                         })
+                        return
+                    broadcast_event(workspace_id, "agent:chunk", {
+                        "instance_id": instance_id,
+                        "agent_name": agent_name,
+                        "content": buffer,
+                    })
+                    flushed = True
+            else:
+                broadcast_event(workspace_id, "agent:chunk", {
+                    "instance_id": instance_id,
+                    "agent_name": agent_name,
+                    "content": content,
+                })
     except Exception as e:
         logger.error("Agent %s streaming failed: %s", agent_name, e)
         broadcast_event(workspace_id, "agent:error", {
