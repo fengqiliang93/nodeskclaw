@@ -150,10 +150,24 @@ async def lifespan(app: FastAPI):
         from alembic import command
 
         def _run():
+            root_log = logging.getLogger()
+            saved_handlers = root_log.handlers[:]
+            saved_level = root_log.level
+
             backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             cfg = Config(os.path.join(backend_root, "alembic.ini"))
             cfg.set_main_option("script_location", os.path.join(backend_root, "alembic"))
             command.upgrade(cfg, "head")
+
+            # alembic.ini 的 [loggers] 节会通过 fileConfig() 覆盖 root logger，
+            # 将级别设为 WARNING 并替换所有 handler，导致后续 INFO 日志全部丢失。
+            # 此处恢复应用自身的日志配置。
+            root_log.handlers = saved_handlers
+            root_log.level = saved_level
+            for name in logging.Logger.manager.loggerDict:
+                obj = logging.Logger.manager.loggerDict[name]
+                if isinstance(obj, logging.Logger) and obj.disabled:
+                    obj.disabled = False
 
         await asyncio.to_thread(_run)
 
