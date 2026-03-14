@@ -24,17 +24,28 @@ export function getTunnelClient(): TunnelClient {
   return _instance;
 }
 
+function deriveTunnelUrl(apiUrl: string): string {
+  const wsUrl = apiUrl
+    .replace(/^https:\/\//, "wss://")
+    .replace(/^http:\/\//, "ws://")
+    .replace(/\/+$/, "");
+  return `${wsUrl}/tunnel/connect`;
+}
+
 export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
   const section = (cfg as Record<string, unknown>).channels?.["nodeskclaw"] as
     | Record<string, unknown>
     | undefined;
 
-  const tunnelUrl = (section?.tunnelUrl as string) ?? "";
   const accounts = (section?.accounts ?? {}) as Record<
     string,
-    { instanceId?: string; apiToken?: string }
+    { instanceId?: string; apiToken?: string; apiUrl?: string }
   >;
   const defaultAccount = accounts["default"];
+
+  const explicitUrl = (section?.tunnelUrl as string) ?? "";
+  const apiUrl = defaultAccount?.apiUrl ?? "";
+  const tunnelUrl = explicitUrl || (apiUrl ? deriveTunnelUrl(apiUrl) : "");
 
   const instanceId = defaultAccount?.instanceId ?? "";
   const token = defaultAccount?.apiToken ?? "";
@@ -48,6 +59,10 @@ export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
     );
     _instance = new TunnelClient(tunnelUrl, instanceId, token);
     return _instance;
+  }
+
+  if (!explicitUrl) {
+    console.log("[tunnel] Derived tunnelUrl from apiUrl: %s", tunnelUrl);
   }
 
   _instance = new TunnelClient(tunnelUrl, instanceId, token);
