@@ -72,6 +72,11 @@ logging.getLogger("sqlalchemy.engine").setLevel(
     logging.INFO if settings.LOG_SQL else logging.WARNING
 )
 
+for _uv_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    _uv_logger = logging.getLogger(_uv_name)
+    _uv_logger.handlers.clear()
+    _uv_logger.propagate = True
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -520,6 +525,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── API Cache-Control ────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request as _StarletteRequest
+from starlette.responses import Response as _StarletteResponse
+
+
+class _NoCacheAPIMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: _StarletteRequest, call_next: RequestResponseEndpoint) -> _StarletteResponse:
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
+
+app.add_middleware(_NoCacheAPIMiddleware)
 
 # ── Exception handlers ───────────────────────────────
 register_exception_handlers(app)
