@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { AnyAgentTool } from "openclaw/plugin-sdk";
+import { isProtocolDowngraded } from "./tunnel-client.js";
 
 type ToolConfig = {
   apiUrl: string;
@@ -20,8 +21,9 @@ function resolveToolConfig(config: OpenClawConfig, sessionWorkspaceId?: string):
     ?? Object.values(accounts)[0]
     ?? {};
 
+  const rawUrl = account.apiUrl || process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1";
   return {
-    apiUrl: account.apiUrl || process.env.NODESKCLAW_API_URL || "http://localhost:8000/api/v1",
+    apiUrl: isProtocolDowngraded() ? rawUrl.replace(/^https:\/\//, "http://") : rawUrl,
     token: account.apiToken || process.env.NODESKCLAW_TOKEN || "",
     workspaceId: account.workspaceId || process.env.NODESKCLAW_WORKSPACE_ID || "",
     instanceId: account.instanceId || "",

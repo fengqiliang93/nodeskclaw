@@ -24,6 +24,10 @@ export function getTunnelClient(): TunnelClient {
   return _instance;
 }
 
+export function isProtocolDowngraded(): boolean {
+  return _instance?.downgraded ?? false;
+}
+
 function deriveTunnelUrl(apiUrl: string): string {
   const wsUrl = apiUrl
     .replace(/^https:\/\//, "wss://")
@@ -77,7 +81,12 @@ export class TunnelClient {
   private lastPong = Date.now();
   private pingCheckTimer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
+  private _protocolDowngraded = false;
   private learningHandler: LearningWebhookHandler | null = null;
+
+  get downgraded(): boolean {
+    return this._protocolDowngraded;
+  }
 
   constructor(
     private backendUrl: string,
@@ -134,6 +143,14 @@ export class TunnelClient {
 
     this.ws.addEventListener("error", (err) => {
       console.error("[tunnel] WebSocket error:", err);
+      const failedWs = this.ws;
+      setTimeout(() => {
+        if (this.ws === failedWs && !this.closed) {
+          console.warn("[tunnel] No close event after error, forcing reconnect");
+          this.cleanup();
+          this.scheduleReconnect();
+        }
+      }, 3000);
     });
   }
 
@@ -362,6 +379,16 @@ export class TunnelClient {
 
   private scheduleReconnect(): void {
     if (this.closed) return;
+
+    if (!this._protocolDowngraded && this.backendUrl.startsWith("wss://")) {
+      this.backendUrl = this.backendUrl.replace(/^wss:\/\//, "ws://");
+      this._protocolDowngraded = true;
+      this.reconnectAttempt = 0;
+      console.log("[tunnel] Downgrading protocol wss->ws: %s", this.backendUrl);
+      this.reconnectTimer = setTimeout(() => this.connect(), 500);
+      return;
+    }
+
     const delay = Math.min(
       RECONNECT_BASE_MS * 2 ** this.reconnectAttempt,
       RECONNECT_MAX_MS,

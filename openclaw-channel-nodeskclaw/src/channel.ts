@@ -5,7 +5,7 @@ import type {
   CollaborationPayload,
 } from "./types.js";
 import { getNoDeskClawRuntime } from "./runtime.js";
-import { getTunnelClient } from "./tunnel-client.js";
+import { getTunnelClient, isProtocolDowngraded } from "./tunnel-client.js";
 
 const CHANNEL_KEY = "nodeskclaw";
 const DEFAULT_ACCOUNT_ID = "default";
@@ -57,8 +57,11 @@ async function listNoDeskClawPeers(params: {
 }): Promise<Array<{ kind: "user"; id: string; name: string }>> {
   const account = resolveAccount(params.cfg, params.accountId);
   if (!account.configured || !account.apiUrl) return [];
+  const effectiveUrl = isProtocolDowngraded()
+    ? account.apiUrl.replace(/^https:\/\//, "http://")
+    : account.apiUrl;
   try {
-    const url = `${account.apiUrl}/workspaces/${account.workspaceId}/topology/reachable?instance_id=${account.instanceId}`;
+    const url = `${effectiveUrl}/workspaces/${account.workspaceId}/topology/reachable?instance_id=${account.instanceId}`;
     const resp = await fetch(url, {
       headers: { "X-Proxy-Token": account.apiToken },
     });
