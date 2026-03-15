@@ -227,7 +227,7 @@ const storageIndex = computed({
 async function fetchImageTags() {
   loadingTags.value = true
   try {
-    const res = await api.get('/registry/tags')
+    const res = await api.get('/registry/tags', { params: { runtime: selectedRuntime.value } })
     const tags = (res.data.data ?? []) as { tag: string }[]
     imageTags.value = tags.map((t) => t.tag)
     if (imageTags.value.length > 0 && !selectedImage.value) {
@@ -310,10 +310,14 @@ watch(slug, () => {
   debouncedSlugCheck()
 })
 
+watch(selectedRuntime, () => {
+  selectedImage.value = ''
+  fetchImageTags()
+})
+
 onMounted(async () => {
   try {
-    const [, clustersRes, enginesRes] = await Promise.all([
-      fetchImageTags(),
+    const [clustersRes, enginesRes] = await Promise.all([
       api.get('/clusters'),
       api.get('/engines'),
     ])
@@ -322,6 +326,7 @@ onMounted(async () => {
       selectedRuntime.value = engines.value[0].runtime_id
     }
     clusters.value = (clustersRes.data.data ?? []).filter((c: any) => c.status === 'connected')
+    await fetchImageTags()
   } catch {
     // ignore init errors
   } finally {
@@ -500,94 +505,128 @@ async function handleDeploy() {
           </p>
         </div>
 
-        <!-- AI 员工标识 + 镜像版本 -->
-        <div class="grid grid-cols-2 gap-4">
-          <!-- AI 员工标识 (slug) -->
-          <div class="space-y-2">
-            <div class="flex items-center gap-2">
-              <label class="text-sm font-medium">AI 员工标识</label>
-              <span v-if="slug && !slugManuallyEdited" class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">自动生成</span>
-            </div>
-            <div class="flex items-center gap-0">
-              <div class="flex-1">
-                <input
-                  v-model="slug"
-                  type="text"
-                  placeholder="例如：my-assistant"
-                  class="w-full px-4 py-2.5 rounded-l-lg bg-card border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
-                  :class="slugError ? 'border-destructive' : slug && slugValid && !slugConflict ? 'border-green-500' : 'border-border'"
-                  @input="slugManuallyEdited = true"
-                />
-              </div>
-              <span class="h-[42px] flex items-center gap-1.5 px-2.5 rounded-r-lg border border-l-0 border-border bg-muted text-sm font-mono text-muted-foreground select-none whitespace-nowrap">
-                -{{ randomSuffix }}
-                <Loader2 v-if="slugChecking" class="w-4 h-4 animate-spin text-muted-foreground" />
-                <Check v-else-if="slug && slugValid && !slugConflict && !slugChecking" class="w-4 h-4 text-green-500" />
-              </span>
-            </div>
-            <p v-if="slugError" class="text-xs text-destructive flex items-center gap-1">
-              <AlertCircle class="w-3 h-3" />
-              {{ slugError }}
-            </p>
-            <p v-else-if="slug && !slugValid" class="text-xs text-destructive flex items-center gap-1">
-              <AlertCircle class="w-3 h-3" />
-              须以小写字母开头，仅含小写字母、数字和连字符，至少 2 个字符
-            </p>
-            <p v-else-if="slugTooLong" class="text-xs text-destructive flex items-center gap-1">
-              <AlertCircle class="w-3 h-3" />
-              {{ t('validation.instance.slug_too_long') }}
-            </p>
-            <p v-else class="text-xs text-muted-foreground">
-              根据名称自动生成，也可手动修改
-            </p>
+        <!-- AI 员工标识 (slug) -->
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <label class="text-sm font-medium">AI 员工标识</label>
+            <span v-if="slug && !slugManuallyEdited" class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">自动生成</span>
           </div>
-
-          <!-- 镜像版本 -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="text-sm font-medium">镜像版本</label>
-              <button
-                class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                :disabled="loadingTags"
-                @click="fetchImageTags"
-              >
-                <RefreshCw class="w-3 h-3" :class="loadingTags ? 'animate-spin' : ''" />
-                刷新
-              </button>
-            </div>
-            <div v-if="imageTags.length > 0" class="relative">
-              <button
-                class="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-card border border-border text-sm hover:border-primary/50 transition-colors text-left"
-                @click="imageDropdownOpen = !imageDropdownOpen"
-              >
-                <span class="font-mono">{{ selectedImage || '选择版本' }}</span>
-                <ChevronDown class="w-4 h-4 text-muted-foreground transition-transform" :class="imageDropdownOpen ? 'rotate-180' : ''" />
-              </button>
-              <div
-                v-if="imageDropdownOpen"
-                class="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
-              >
-                <button
-                  v-for="tag in imageTags"
-                  :key="tag"
-                  class="w-full px-4 py-2 text-left text-sm font-mono hover:bg-accent transition-colors"
-                  :class="tag === selectedImage ? 'text-primary bg-primary/5' : 'text-foreground'"
-                  @click="selectImage(tag)"
-                >
-                  {{ tag }}
-                  <span v-if="tag === imageTags[0]" class="ml-2 text-[10px] font-sans text-muted-foreground">(最新)</span>
-                </button>
-              </div>
-            </div>
-            <div v-else>
+          <div class="flex items-center gap-0">
+            <div class="flex-1">
               <input
-                v-model="selectedImage"
+                v-model="slug"
                 type="text"
-                :placeholder="loadingTags ? '加载中...' : '手动输入版本号'"
-                class="w-full px-4 py-2.5 rounded-lg bg-card border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                placeholder="例如：my-assistant"
+                class="w-full px-4 py-2.5 rounded-l-lg bg-card border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                :class="slugError ? 'border-destructive' : slug && slugValid && !slugConflict ? 'border-green-500' : 'border-border'"
+                @input="slugManuallyEdited = true"
               />
-              <p class="text-xs text-muted-foreground mt-1">未获取到镜像仓库 Tag，请手动输入</p>
             </div>
+            <span class="h-[42px] flex items-center gap-1.5 px-2.5 rounded-r-lg border border-l-0 border-border bg-muted text-sm font-mono text-muted-foreground select-none whitespace-nowrap">
+              -{{ randomSuffix }}
+              <Loader2 v-if="slugChecking" class="w-4 h-4 animate-spin text-muted-foreground" />
+              <Check v-else-if="slug && slugValid && !slugConflict && !slugChecking" class="w-4 h-4 text-green-500" />
+            </span>
+          </div>
+          <p v-if="slugError" class="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle class="w-3 h-3" />
+            {{ slugError }}
+          </p>
+          <p v-else-if="slug && !slugValid" class="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle class="w-3 h-3" />
+            须以小写字母开头，仅含小写字母、数字和连字符，至少 2 个字符
+          </p>
+          <p v-else-if="slugTooLong" class="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle class="w-3 h-3" />
+            {{ t('validation.instance.slug_too_long') }}
+          </p>
+          <p v-else class="text-xs text-muted-foreground">
+            根据名称自动生成，也可手动修改
+          </p>
+        </div>
+
+        <!-- 工作引擎选择 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-2">
+            <Cpu class="w-4 h-4 text-blue-400" />
+            <label class="text-sm font-medium">{{ t('engine.title') }}</label>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t('engine.subtitle') }}</p>
+          <div class="grid gap-3" :class="engines.length >= 3 ? 'grid-cols-3' : `grid-cols-${engines.length}`">
+            <button
+              v-for="eng in engines"
+              :key="eng.runtime_id"
+              :class="[
+                'relative p-4 rounded-xl border text-left transition-all',
+                selectedRuntime === eng.runtime_id
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                  : 'border-border bg-card hover:border-primary/20',
+              ]"
+              @click="selectedRuntime = eng.runtime_id"
+            >
+              <Check
+                v-if="selectedRuntime === eng.runtime_id"
+                class="absolute top-2.5 right-2.5 w-4 h-4 text-primary"
+              />
+              <div class="flex items-center gap-1.5">
+                <span class="font-medium text-sm">{{ eng.display_name }}</span>
+                <span
+                  v-for="tag in eng.display_tags"
+                  :key="tag"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary"
+                >{{ tag }}</span>
+              </div>
+              <div class="text-xs text-muted-foreground mt-1.5 leading-relaxed">{{ eng.display_description }}</div>
+              <div class="text-[10px] text-muted-foreground/60 mt-2">{{ t('engine.poweredBy') }} {{ eng.display_powered_by }}</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- 镜像版本 -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium">镜像版本</label>
+            <button
+              class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              :disabled="loadingTags"
+              @click="fetchImageTags"
+            >
+              <RefreshCw class="w-3 h-3" :class="loadingTags ? 'animate-spin' : ''" />
+              刷新
+            </button>
+          </div>
+          <div v-if="imageTags.length > 0" class="relative">
+            <button
+              class="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-card border border-border text-sm hover:border-primary/50 transition-colors text-left"
+              @click="imageDropdownOpen = !imageDropdownOpen"
+            >
+              <span class="font-mono">{{ selectedImage || '选择版本' }}</span>
+              <ChevronDown class="w-4 h-4 text-muted-foreground transition-transform" :class="imageDropdownOpen ? 'rotate-180' : ''" />
+            </button>
+            <div
+              v-if="imageDropdownOpen"
+              class="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
+            >
+              <button
+                v-for="tag in imageTags"
+                :key="tag"
+                class="w-full px-4 py-2 text-left text-sm font-mono hover:bg-accent transition-colors"
+                :class="tag === selectedImage ? 'text-primary bg-primary/5' : 'text-foreground'"
+                @click="selectImage(tag)"
+              >
+                {{ tag }}
+                <span v-if="tag === imageTags[0]" class="ml-2 text-[10px] font-sans text-muted-foreground">(最新)</span>
+              </button>
+            </div>
+          </div>
+          <div v-else>
+            <input
+              v-model="selectedImage"
+              type="text"
+              :placeholder="loadingTags ? '加载中...' : '手动输入版本号'"
+              class="w-full px-4 py-2.5 rounded-lg bg-card border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+            />
+            <p class="text-xs text-muted-foreground mt-1">未获取到镜像仓库 Tag，请手动输入</p>
           </div>
         </div>
 
@@ -650,43 +689,6 @@ async function handleDeploy() {
                 {{ label }}Gi
               </span>
             </div>
-          </div>
-        </div>
-
-        <!-- 工作引擎选择 -->
-        <div v-if="engines.length > 1" class="space-y-3">
-          <div class="flex items-center gap-2">
-            <Cpu class="w-4 h-4 text-blue-400" />
-            <label class="text-sm font-medium">{{ t('engine.title') }}</label>
-          </div>
-          <p class="text-xs text-muted-foreground">{{ t('engine.subtitle') }}</p>
-          <div class="grid gap-3" :class="engines.length >= 3 ? 'grid-cols-3' : `grid-cols-${engines.length}`">
-            <button
-              v-for="eng in engines"
-              :key="eng.runtime_id"
-              :class="[
-                'relative p-4 rounded-xl border text-left transition-all',
-                selectedRuntime === eng.runtime_id
-                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                  : 'border-border bg-card hover:border-primary/20',
-              ]"
-              @click="selectedRuntime = eng.runtime_id"
-            >
-              <Check
-                v-if="selectedRuntime === eng.runtime_id"
-                class="absolute top-2.5 right-2.5 w-4 h-4 text-primary"
-              />
-              <div class="flex items-center gap-1.5">
-                <span class="font-medium text-sm">{{ eng.display_name }}</span>
-                <span
-                  v-for="tag in eng.display_tags"
-                  :key="tag"
-                  class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary"
-                >{{ tag }}</span>
-              </div>
-              <div class="text-xs text-muted-foreground mt-1.5 leading-relaxed">{{ eng.display_description }}</div>
-              <div class="text-[10px] text-muted-foreground/60 mt-2">{{ t('engine.poweredBy') }} {{ eng.display_powered_by }}</div>
-            </button>
           </div>
         </div>
 
