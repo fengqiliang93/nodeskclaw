@@ -75,7 +75,7 @@ nodeskclaw-backend/
 │   │   ├── cluster_service.py    # 集群管理
 │   │   ├── deploy_service.py     # 部署编排
 │   │   ├── instance_service.py   # 实例操作
-│   │   ├── registry_service.py   # 镜像仓库查询
+│   │   ├── registry_service.py   # 镜像仓库查询、per-engine 仓库解析
 │   │   ├── config_service.py     # 系统配置读写
 │   │   ├── health_checker.py     # 集群健康巡检
 │   │   ├── workspace_service.py  # 工作区 CRUD + Agent 管理
@@ -159,7 +159,7 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/instances/{id}/channels/upload` | Channel 配置 | 上传 Channel 插件 |
 | `/api/v1/instances/{id}/channels/deploy-repo` | Channel 配置 | 部署项目仓库 Channel |
 | `/api/v1/events` | 事件 | SSE 实时推送 |
-| `/api/v1/registry` | 镜像仓库 | 仓库配置、Tag 查询 |
+| `/api/v1/registry` | 镜像仓库 | 仓库配置、Tag 查询（支持 `?runtime=` per-engine 查询） |
 | `/api/v1/settings` | 系统配置 | 配置读写 |
 | `/api/v1/workspaces` | 工作区 | CRUD、Agent 管理、群聊、SSE |
 | `/api/v1/workspaces/{ws}/chat` | 群聊 | 广播消息给所有 Agent |
@@ -174,6 +174,21 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/instances/{id}/files` | 实例文件 | 列出实例目录文件（instance admin） |
 | `/api/v1/instances/{id}/files/content` | 实例文件 | 读取/写入文件内容（GET 读、PUT 写） |
 | `/api/v1/instances/{id}/files/download` | 实例文件 | 下载文件 |
+
+### Per-engine 镜像仓库配置
+
+不同 AI 工作引擎可配置独立的镜像仓库地址（存储在 `SystemConfig` 表）：
+
+| 配置键 | 引擎 | 说明 |
+|--------|------|------|
+| `image_registry` | OpenClaw | 全局默认，向后兼容 |
+| `image_registry_zeroclaw` | ZeroClaw | ZeroClaw 独立仓库 |
+| `image_registry_nanobot` | Nanobot | Nanobot 独立仓库 |
+
+- 部署和配置更新时通过 `resolve_image_registry(db, runtime)` 自动解析
+- 未配置引擎专属仓库时回退到全局 `image_registry`
+- `GET /registry/tags?runtime=zeroclaw` 按引擎查询对应仓库的 Tag 列表
+- Settings API 动态支持 `image_registry_{runtime_id}` 键，新增引擎自动生效
 
 ### RBAC 双表职责分离
 
