@@ -115,6 +115,7 @@ async def list_runtime_adapters(org_ctx=Depends(get_current_org)):
             "display_tags": list(spec.display_tags),
             "display_powered_by": spec.display_powered_by,
             "order": spec.order,
+            "image_registry_key": spec.image_registry_key,
         })
     runtimes.sort(key=lambda r: r["order"])
     return _ok(runtimes)

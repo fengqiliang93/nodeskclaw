@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.services import config_service
+from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,15 @@ _ALLOWED_KEYS = {
 _SENSITIVE_KEYS = {"registry_password", "smtp_password"}
 
 
+def _is_allowed_key(key: str) -> bool:
+    if key in _ALLOWED_KEYS:
+        return True
+    if key.startswith("image_registry_"):
+        runtime_id = key[len("image_registry_"):]
+        return RUNTIME_REGISTRY.get(runtime_id) is not None
+    return False
+
+
 class ConfigUpdateBody(PydanticBaseModel):
     value: str | None = None
 
@@ -41,7 +51,7 @@ async def get_settings(
     """获取所有可管理的系统配置。"""
     all_configs = await config_service.get_all_configs(db)
     # 只返回白名单内的 key
-    filtered = {k: v for k, v in all_configs.items() if k in _ALLOWED_KEYS}
+    filtered = {k: v for k, v in all_configs.items() if _is_allowed_key(k)}
     # 敏感字段脱敏：有值显示 "******"，无值显示 None
     for k in _SENSITIVE_KEYS:
         if k in filtered and filtered[k]:
@@ -57,7 +67,7 @@ async def update_setting(
     _current_user: User = Depends(get_current_user),
 ):
     """更新指定系统配置项。"""
-    if key not in _ALLOWED_KEYS:
+    if not _is_allowed_key(key):
         raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
 
     row = await config_service.set_config(key, body.value, db)

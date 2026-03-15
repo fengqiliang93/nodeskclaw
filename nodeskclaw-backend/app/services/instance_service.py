@@ -717,9 +717,9 @@ async def _execute_config_update(
             api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
             k8s = K8sClient(api_client)
 
-            from app.services.config_service import get_config
+            from app.services.registry_service import resolve_image_registry
 
-            image_registry = await get_config("image_registry", db) or "openclaw"
+            image_registry = await resolve_image_registry(db, instance.runtime) or "openclaw"
             image = f"{image_registry}:{instance.image_version}"
             patch_body = {
                 "spec": {

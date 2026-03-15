@@ -15,9 +15,10 @@ router = APIRouter()
 @router.get("/tags", response_model=ApiResponse[list[dict]])
 async def get_image_tags(
     registry_url: str | None = Query(None, description="可选，覆盖数据库中的镜像仓库地址配置"),
+    runtime: str | None = Query(None, description="可选，按引擎类型解析对应镜像仓库"),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
     """从 Docker Registry 获取可用镜像 Tag 列表。"""
-    tags = await list_image_tags(db, registry_url)
+    tags = await list_image_tags(db, registry_url, runtime=runtime)
     return ApiResponse(data=tags)

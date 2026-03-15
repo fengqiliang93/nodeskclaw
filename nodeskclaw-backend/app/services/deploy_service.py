@@ -322,6 +322,7 @@ class _DeployContext:
     template_id: str | None = None
     template_gene_slugs: list[str] | None = None
     compute_provider: str = "k8s"
+    runtime: str = "openclaw"
 
 
 async def deploy_instance(
@@ -527,6 +528,7 @@ async def deploy_instance(
         template_id=req.template_id,
         template_gene_slugs=template_gene_slugs,
         compute_provider=instance.compute_provider,
+        runtime=instance.runtime,
     )
 
 
@@ -751,7 +753,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
 
             # Step 5: 创建 Deployment（含镜像拉取凭据）
             _publish(5, steps[4])
-            image_registry = await get_config("image_registry", db) or "openclaw"
+            from app.services.registry_service import resolve_image_registry
+            image_registry = await resolve_image_registry(db, ctx.runtime) or "openclaw"
             image = f"{image_registry}:{ctx.image_version}"
 
             # 创建镜像仓库拉取凭据 Secret（如果配置了仓库用户名密码）

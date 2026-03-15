@@ -21,6 +21,7 @@ class RuntimeSpec:
     display_tags: tuple[str, ...] = ()
     display_powered_by: str = ""
     order: int = 0
+    image_registry_key: str = "image_registry"
 
 
 class RuntimeRegistry:
@@ -63,6 +64,7 @@ def _register_builtins() -> None:
         display_tags=(),
         display_powered_by="ZeroClaw",
         order=1,
+        image_registry_key="image_registry_zeroclaw",
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
@@ -74,6 +76,7 @@ def _register_builtins() -> None:
         display_tags=(),
         display_powered_by="Nanobot",
         order=2,
+        image_registry_key="image_registry_nanobot",
     ))
 
 

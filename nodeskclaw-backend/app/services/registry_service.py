@@ -13,10 +13,24 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.config_service import get_config
+from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 10.0
+
+
+async def resolve_image_registry(
+    db: AsyncSession, runtime: str | None = None,
+) -> str | None:
+    """Per-engine 镜像仓库解析：优先使用引擎专属配置，回退到全局 image_registry。"""
+    if runtime:
+        spec = RUNTIME_REGISTRY.get(runtime)
+        if spec and spec.image_registry_key != "image_registry":
+            per_engine = await get_config(spec.image_registry_key, db)
+            if per_engine:
+                return per_engine
+    return await get_config("image_registry", db)
 
 
 async def _get_registry_auth(db: AsyncSession) -> tuple[str, str] | None:
@@ -72,6 +86,7 @@ async def _get_bearer_token(
 async def list_image_tags(
     db: AsyncSession,
     registry_url: str | None = None,
+    runtime: str | None = None,
 ) -> list[dict]:
     """
     Query a Docker Registry v2 for available tags.
@@ -82,7 +97,7 @@ async def list_image_tags(
     2. 如果返回 401 且有 Www-Authenticate: Bearer，走 Token 换取流程
     """
     if not registry_url:
-        registry_url = await get_config("image_registry", db)
+        registry_url = await resolve_image_registry(db, runtime)
 
     registry = (registry_url or "").strip().rstrip("/")
     if not registry:
