@@ -35,20 +35,24 @@ class ValidationMiddleware(MessageMiddleware):
             if await self._check_idempotency(ctx, db):
                 return
 
-            from app.services.runtime.security import check_workspace_isolation
-            isolation_ok, _reason = await check_workspace_isolation(
-                db,
-                envelope.workspaceid,
-                [envelope.data.sender.id] if envelope.data.sender else [],
-            )
-            if not isolation_ok:
-                logger.warning(
-                    "ValidationMiddleware: workspace isolation check failed for %s",
-                    envelope.id,
+            from app.services.runtime.messaging.envelope import SenderType
+
+            sender_type = envelope.data.sender.type if envelope.data.sender else None
+            if sender_type not in (SenderType.USER, SenderType.SYSTEM, SenderType.CRON):
+                from app.services.runtime.security import check_workspace_isolation
+                isolation_ok, _reason = await check_workspace_isolation(
+                    db,
+                    envelope.workspaceid,
+                    [envelope.data.sender.id] if envelope.data.sender else [],
                 )
-                ctx.short_circuited = True
-                ctx.error = "workspace_isolation_violation"
-                return
+                if not isolation_ok:
+                    logger.warning(
+                        "ValidationMiddleware: workspace isolation check failed for %s",
+                        envelope.id,
+                    )
+                    ctx.short_circuited = True
+                    ctx.error = "workspace_isolation_violation"
+                    return
 
         await next_fn(ctx)
 
