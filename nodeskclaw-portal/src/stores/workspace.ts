@@ -208,6 +208,16 @@ export interface GroupChatMessage {
   envelope_id?: string
 }
 
+export interface ScheduleInfo {
+  id: string
+  workspace_id: string
+  name: string
+  cron_expr: string
+  message_template: string
+  is_active: boolean
+  created_at: string | null
+}
+
 export type ChatSSECallback = (event: string, data: Record<string, unknown>) => void
 
 export const WORKSPACE_PERMISSIONS = [
@@ -232,6 +242,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const workspaces = ref<WorkspaceListItem[]>([])
   const currentWorkspace = ref<WorkspaceInfo | null>(null)
   const blackboard = ref<BlackboardInfo | null>(null)
+  const schedules = ref<ScheduleInfo[]>([])
   const members = ref<WorkspaceMemberInfo[]>([])
   const loading = ref(false)
 
@@ -379,6 +390,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       const res = await api.get(`/workspaces/${workspaceId}/blackboard`)
       blackboard.value = res.data.data
+      fetchSchedules(workspaceId)
     } catch (e) {
       console.error('fetchBlackboard error:', e)
     }
@@ -425,6 +437,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function updateObjective(workspaceId: string, objectiveId: string, data: Record<string, unknown>) {
     const res = await api.put(`/workspaces/${workspaceId}/blackboard/objectives/${objectiveId}`, data)
     return res.data.data as ObjectiveInfo
+  }
+
+  // ── Schedules ───────────────────────────────────────
+
+  async function fetchSchedules(workspaceId: string) {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/schedules`)
+      schedules.value = (res.data.data?.schedules || []) as ScheduleInfo[]
+    } catch (e) {
+      console.error('fetchSchedules error:', e)
+    }
+  }
+
+  async function toggleScheduleActive(workspaceId: string, scheduleId: string, isActive: boolean) {
+    await api.put(`/workspaces/${workspaceId}/schedules/${scheduleId}`, { is_active: isActive })
+    const idx = schedules.value.findIndex(s => s.id === scheduleId)
+    if (idx >= 0) schedules.value[idx].is_active = isActive
   }
 
   // ── Performance ──────────────────────────────────────
@@ -1169,6 +1198,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function resetCurrentState() {
     currentWorkspace.value = null
     blackboard.value = null
+    schedules.value = []
     topology.value = null
     decoration.value = null
     members.value = []
@@ -1187,6 +1217,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     workspaces,
     currentWorkspace,
     blackboard,
+    schedules,
     members,
     loading,
     chatMessages,
@@ -1230,6 +1261,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchObjectives,
     createObjective,
     updateObjective,
+    fetchSchedules,
+    toggleScheduleActive,
     fetchPerformance,
     collectPerformance,
     attributeTokens,

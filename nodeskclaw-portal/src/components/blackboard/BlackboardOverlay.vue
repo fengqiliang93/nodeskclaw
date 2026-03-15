@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { renderMarkdown } from '@/utils/markdown'
 import TaskKanban from './TaskKanban.vue'
 import ObjectivePanel from './ObjectivePanel.vue'
+import SchedulePanel from './SchedulePanel.vue'
 import RoiDashboard from './RoiDashboard.vue'
 import TopologyGraph from './TopologyGraph.vue'
 
@@ -141,6 +142,7 @@ const canEditTab = computed(() => activeTab.value === 'notes-perf')
             <div class="space-y-6">
               <ObjectivePanel ref="objectivePanelRef" :workspace-id="workspaceId" />
               <TaskKanban ref="taskKanbanRef" :workspace-id="workspaceId" />
+              <SchedulePanel :workspace-id="workspaceId" />
               <RoiDashboard v-if="isPerformanceEnabled" ref="roiDashboardRef" :workspace-id="workspaceId" />
             </div>
           </template>

@@ -344,17 +344,17 @@ async def _ensure_workspace_schedules(session_factory: async_sessionmaker[AsyncS
             existing = (await db.execute(
                 select(WorkspaceSchedule).where(
                     WorkspaceSchedule.workspace_id == ws.id,
-                    WorkspaceSchedule.name == "任务巡检",
+                    WorkspaceSchedule.name.in_(["任务巡检", "定时巡检"]),
                     WorkspaceSchedule.deleted_at.is_(None),
                 )
             )).scalar_one_or_none()
             if existing is None:
                 db.add(WorkspaceSchedule(
                     workspace_id=ws.id,
-                    name="任务巡检",
+                    name="定时巡检",
                     cron_expr="0 */4 * * *",
                     message_template="请检查黑板待办任务队列，接取并执行优先级最高的任务。完成后汇报进展。",
-                    is_active=True,
+                    is_active=False,
                 ))
         await db.commit()
-        logger.info("种子数据：已为 %d 个工作区检查/补建任务巡检定时器", len(all_ws))
+        logger.info("种子数据：已为 %d 个工作区检查/补建定时巡检定时器", len(all_ws))
