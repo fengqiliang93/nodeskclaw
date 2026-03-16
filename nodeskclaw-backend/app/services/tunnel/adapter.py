@@ -21,8 +21,9 @@ from app.services.tunnel.protocol import TunnelMessage, TunnelMessageType
 
 logger = logging.getLogger(__name__)
 
+from app.services.workspace_message_service import MAX_COLLABORATION_DEPTH
+
 NO_REPLY_BUFFER_SIZE = 30
-MAX_COLLABORATION_DEPTH = 5
 AUTH_TIMEOUT_S = 10
 PING_INTERVAL_S = 30
 PING_TIMEOUT_S = 45

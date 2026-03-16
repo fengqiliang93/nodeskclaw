@@ -291,7 +291,7 @@ MessageEnvelope 遵循 CloudEvents 1.0 规范，扩展字段：
 
 ### delegate/escalate 协议
 
-Agent 响应以 `delegate:<target>` 或 `escalate:<target>` 开头时，自动构建新 envelope 转发给目标 Agent 或 Human。协作深度限制 `MAX_COLLABORATION_DEPTH=5`，超限拒绝。delegation 链通过 `routing.visited` 追踪已访问节点，`causationid`/`correlationid` 追踪因果链。
+Agent 响应以 `delegate:<target>` 或 `escalate:<target>` 开头时，自动构建新 envelope 转发给目标 Agent 或 Human。协作深度限制 `MAX_COLLABORATION_DEPTH=3`，超限拒绝。delegation 链通过 `routing.visited` 追踪已访问节点，`causationid`/`correlationid` 追踪因果链。
 
 ### Channel 降级链
 

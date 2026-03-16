@@ -72,6 +72,34 @@ async def handle_collaboration_message(
             target_inst = await _find_agent_by_name_or_id(db, workspace_id, target[6:])
             if target_inst:
                 resolved_target_id = target_inst.id
+        elif target.startswith("human:"):
+            human_name = target[6:]
+            hh = await _find_human_by_display_name(db, workspace_id, human_name)
+            if hh:
+                await msg_service.record_message(
+                    db,
+                    workspace_id=workspace_id,
+                    sender_type="agent",
+                    sender_id=source_instance_id,
+                    sender_name=source_name,
+                    content=text,
+                    message_type="collaboration",
+                    depth=depth,
+                )
+                from app.api.workspaces import broadcast_event
+                broadcast_event(workspace_id, "agent:collaboration", {
+                    "instance_id": source_instance_id,
+                    "agent_name": source_name,
+                    "target": target,
+                    "content": text,
+                })
+                await _route_to_human(
+                    db, workspace_id, source_instance_id, source_name, hh, text,
+                )
+                await db.commit()
+                return
+            else:
+                logger.warning("Human target not found: %s in workspace %s", human_name, workspace_id)
 
         await msg_service.record_message(
             db,
