@@ -51,15 +51,21 @@ async def handle_collaboration_message(
     """Process an inbound collaboration message from a channel plugin.
 
     Routes all messages through the MessageBus pipeline for unified processing.
+    Channel plugins cannot track session depth, so when depth=0 (the default
+    from plugins), we derive the actual chain depth from recent DB messages.
     """
-    if depth > msg_service.MAX_COLLABORATION_DEPTH:
-        logger.warning(
-            "Collaboration depth exceeded (%d > %d) from instance %s",
-            depth, msg_service.MAX_COLLABORATION_DEPTH, source_instance_id,
-        )
-        return
-
     async with async_session_factory() as db:
+        if depth == 0:
+            inferred = await _infer_chain_depth(db, workspace_id, source_instance_id)
+            if inferred is not None:
+                depth = inferred
+
+        if depth > msg_service.MAX_COLLABORATION_DEPTH:
+            logger.warning(
+                "Collaboration depth exceeded (%d > %d) from instance %s",
+                depth, msg_service.MAX_COLLABORATION_DEPTH, source_instance_id,
+            )
+            return
         source_inst = await _get_instance(db, source_instance_id)
         if source_inst is None:
             logger.warning("Source instance not found: %s", source_instance_id)
@@ -109,6 +115,39 @@ async def handle_collaboration_message(
         await db.commit()
         if result.error:
             logger.error("MessageBus error in collaboration: %s", result.error)
+
+
+async def _infer_chain_depth(
+    db: AsyncSession, workspace_id: str, source_instance_id: str,
+) -> int | None:
+    """Derive collaboration chain depth from the most recent message TO this agent.
+
+    When a collaboration message was recently delivered to *source_instance_id*,
+    the current outbound message is a reply in the same chain, so depth should be
+    previous_depth + 1.  Returns None if there is no recent inbound message
+    (i.e. this is a brand-new conversation, depth stays 0).
+    """
+    from datetime import datetime as _dt, timedelta
+
+    from app.models.workspace_message import WorkspaceMessage
+
+    cutoff = _dt.now() - timedelta(seconds=120)
+    result = await db.execute(
+        select(WorkspaceMessage.depth)
+        .where(
+            WorkspaceMessage.workspace_id == workspace_id,
+            WorkspaceMessage.message_type == "collaboration",
+            WorkspaceMessage.target_instance_id == source_instance_id,
+            WorkspaceMessage.created_at >= cutoff,
+            WorkspaceMessage.deleted_at.is_(None),
+        )
+        .order_by(WorkspaceMessage.created_at.desc())
+        .limit(1)
+    )
+    last_depth = result.scalar_one_or_none()
+    if last_depth is not None:
+        return last_depth + 1
+    return None
 
 
 async def _route_to_human(
