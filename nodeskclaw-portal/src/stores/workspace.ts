@@ -656,7 +656,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const agentName = data.agent_name as string
     const instanceId = data.instance_id as string
     const content = data.content as string
-    const msgId = (data.envelope_id as string) || `collab-${instanceId}-${Date.now()}`
+    const traceId = data.trace_id as string | undefined
+    const intent = data.intent as string | undefined
+    const priority = data.priority as string | undefined
+    const msgId =
+      (data.envelope_id as string) ||
+      `collab-${instanceId}-${content}-${traceId ?? ''}-${intent ?? ''}-${priority ?? ''}`
 
     if (_isDuplicateMessage(msgId)) return
 
