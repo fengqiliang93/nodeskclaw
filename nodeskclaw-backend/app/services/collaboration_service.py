@@ -54,18 +54,33 @@ async def handle_collaboration_message(
     Channel plugins cannot track session depth, so when depth=0 (the default
     from plugins), we derive the actual chain depth from recent DB messages.
     """
+    # Fast-path guard: if the caller already supplied an excessive depth,
+    # avoid opening a DB session at all.
+    if depth > msg_service.MAX_COLLABORATION_DEPTH:
+        logger.warning(
+            "Collaboration depth exceeded (%d > %d) from instance %s",
+            depth,
+            msg_service.MAX_COLLABORATION_DEPTH,
+            source_instance_id,
+        )
+        return
+
     async with async_session_factory() as db:
         if depth == 0:
             inferred = await _infer_chain_depth(db, workspace_id, source_instance_id)
             if inferred is not None:
                 depth = inferred
 
-        if depth > msg_service.MAX_COLLABORATION_DEPTH:
-            logger.warning(
-                "Collaboration depth exceeded (%d > %d) from instance %s",
-                depth, msg_service.MAX_COLLABORATION_DEPTH, source_instance_id,
-            )
-            return
+            # Re-check after inference in case the derived depth exceeds the limit.
+            if depth > msg_service.MAX_COLLABORATION_DEPTH:
+                logger.warning(
+                    "Collaboration depth exceeded (%d > %d) from instance %s",
+                    depth,
+                    msg_service.MAX_COLLABORATION_DEPTH,
+                    source_instance_id,
+                )
+                return
+
         source_inst = await _get_instance(db, source_instance_id)
         if source_inst is None:
             logger.warning("Source instance not found: %s", source_instance_id)
