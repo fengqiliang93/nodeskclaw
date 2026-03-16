@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useConfirm } from '@/composables/useConfirm'
+import { useEdition } from '@/composables/useFeature'
 import { Loader2, Building2, BrainCircuit, Rocket, Target, KeyRound, MessageSquareCode, Eye, EyeOff, ExternalLink } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 
@@ -13,6 +14,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const { t } = useI18n()
 const { confirm } = useConfirm()
+const { isEE } = useEdition()
 
 const loading = ref(false)
 const error = ref('')
@@ -44,7 +46,7 @@ const canSubmitCode = computed(() => {
 
 async function handleAccountSubmit() {
   if (!canSubmitAccount.value || loading.value) return
-  if (isNonWhitelistedEmail(accountForm.value.account)) {
+  if (isEE.value && isNonWhitelistedEmail(accountForm.value.account)) {
     await showWaitlistDialog()
     return
   }
@@ -55,7 +57,7 @@ async function handleAccountSubmit() {
     router.replace('/')
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+    if (isEE.value && detail?.message_key === 'errors.auth.email_domain_not_allowed') {
       await showWaitlistDialog()
       return
     }
@@ -67,7 +69,7 @@ async function handleAccountSubmit() {
 
 async function handleSendCode() {
   if (!codeForm.value.account || codeSending.value || codeCountdown.value > 0) return
-  if (isNonWhitelistedEmail(codeForm.value.account)) {
+  if (isEE.value && isNonWhitelistedEmail(codeForm.value.account)) {
     await showWaitlistDialog()
     return
   }
@@ -84,7 +86,7 @@ async function handleSendCode() {
     }, 1000)
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+    if (isEE.value && detail?.message_key === 'errors.auth.email_domain_not_allowed') {
       await showWaitlistDialog()
       return
     }
@@ -96,7 +98,7 @@ async function handleSendCode() {
 
 async function handleCodeSubmit() {
   if (!canSubmitCode.value || loading.value) return
-  if (isNonWhitelistedEmail(codeForm.value.account)) {
+  if (isEE.value && isNonWhitelistedEmail(codeForm.value.account)) {
     await showWaitlistDialog()
     return
   }
@@ -107,7 +109,7 @@ async function handleCodeSubmit() {
     router.replace('/')
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail?.message_key === 'errors.auth.email_domain_not_allowed') {
+    if (isEE.value && detail?.message_key === 'errors.auth.email_domain_not_allowed') {
       await showWaitlistDialog()
       return
     }
@@ -376,8 +378,9 @@ watch(activeTab, () => { error.value = '' })
             </p>
           </Transition>
 
-        <!-- Waitlist 入口 -->
+        <!-- Waitlist 入口 (EE-only) -->
         <a
+          v-if="isEE"
           :href="WAITLIST_URL"
           target="_blank"
           class="block rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-center transition-all hover:bg-primary/10 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 group"
