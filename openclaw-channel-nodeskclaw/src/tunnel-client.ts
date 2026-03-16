@@ -329,7 +329,9 @@ export class TunnelClient {
                   ts: Date.now(),
                 });
               }
-            } catch {}
+            } catch (e) {
+              console.debug("[tunnel] SSE data parse failed:", e, dataAccum.slice(0, 200));
+            }
             dataAccum = "";
           }
         }
@@ -349,7 +351,9 @@ export class TunnelClient {
               ts: Date.now(),
             });
           }
-        } catch {}
+        } catch (e) {
+          console.debug("[tunnel] SSE trailing data parse failed:", e, dataAccum.slice(0, 200));
+        }
       }
 
       this.send({
