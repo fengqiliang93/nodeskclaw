@@ -127,11 +127,11 @@ async def _infer_chain_depth(
     previous_depth + 1.  Returns None if there is no recent inbound message
     (i.e. this is a brand-new conversation, depth stays 0).
     """
-    from datetime import datetime as _dt, timedelta
+    from datetime import datetime as _dt, timedelta, timezone
 
     from app.models.workspace_message import WorkspaceMessage
 
-    cutoff = _dt.now() - timedelta(seconds=120)
+    cutoff = _dt.now(timezone.utc) - timedelta(seconds=120)
     result = await db.execute(
         select(WorkspaceMessage.depth)
         .where(
