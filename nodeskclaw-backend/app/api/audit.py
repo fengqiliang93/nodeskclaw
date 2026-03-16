@@ -72,7 +72,7 @@ def _serialize(row: OperationAuditLog, name_map: dict[str, str] | None = None) -
     }
 
 
-@router.get("/{org_id}/audit-logs")
+@router.get("/{org_id}/audit-logs", response_model=PaginatedResponse)
 async def list_audit_logs(
     org_id: str,
     db: AsyncSession = Depends(get_db),

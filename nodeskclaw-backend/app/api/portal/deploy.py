@@ -87,7 +87,7 @@ async def cancel_deploy_endpoint(
     _current_user: User = Depends(get_current_user),
 ):
     result = await deploy_service.cancel_deploy(deploy_id)
-    await hooks.emit("operation_audit", action="deploy.cancelled", target_type="instance", target_id=deploy_id, actor_id=_current_user.id, details={"deploy_id": deploy_id, "source": "portal"})
+    await hooks.emit("operation_audit", action="deploy.cancelled", target_type="instance", target_id=deploy_id, actor_id=_current_user.id, org_id=_current_user.current_org_id, details={"deploy_id": deploy_id, "source": "portal"})
     logger.info("取消部署: deploy_id=%s, result=%s", deploy_id, result)
     return ApiResponse(data={"deploy_id": deploy_id, "message": result})
 

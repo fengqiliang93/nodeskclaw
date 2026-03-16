@@ -1227,6 +1227,7 @@ const enUS = {
     exportCsv: "Export CSV",
     exportJson: "Export JSON",
     exportSuccess: "Export successful",
+    exportTruncated: "Exported {exported} of {total} records (data truncated)",
     exportFailed: "Export failed",
     filterAction: "Action",
     filterActionPlaceholder: "Search actions...",

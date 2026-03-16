@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrgStore } from '@/stores/org'
 import api from '@/services/api'
@@ -54,6 +54,7 @@ const targetTypeOptions = computed<SelectOption[]>(() => [
   { value: 'cluster', label: 'cluster' },
   { value: 'workspace', label: 'workspace' },
   { value: 'organization', label: 'organization' },
+  { value: 'org_membership', label: 'org_membership' },
   { value: 'llm_key', label: 'llm_key' },
   { value: 'system_config', label: 'system_config' },
 ])
@@ -112,12 +113,14 @@ async function fetchLogs() {
   }
 }
 
+const EXPORT_LIMIT = 5000
+
 async function handleExport(format: 'csv' | 'json') {
   const orgId = orgStore.currentOrgId
   if (!orgId) return
   exportOpen.value = false
   try {
-    const params = { ...buildParams(), format, limit: 5000 }
+    const params = { ...buildParams(), format, limit: EXPORT_LIMIT }
     delete (params as any).page
     delete (params as any).page_size
     const res = await api.get(`/orgs/${orgId}/audit-logs/export`, { params, responseType: 'blob' })
@@ -130,7 +133,11 @@ async function handleExport(format: 'csv' | 'json') {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    toast.success(t('auditLogs.exportSuccess'))
+    if (total.value > EXPORT_LIMIT) {
+      toast.success(t('auditLogs.exportTruncated', { exported: EXPORT_LIMIT, total: total.value }))
+    } else {
+      toast.success(t('auditLogs.exportSuccess'))
+    }
   } catch (e: unknown) {
     toast.error(resolveApiErrorMessage(e, t('auditLogs.exportFailed')))
   }
@@ -143,23 +150,34 @@ function applyFilters() {
 
 watch(page, () => fetchLogs())
 
+function onClickOutside(e: MouseEvent) {
+  if (exportOpen.value && !(e.target as HTMLElement)?.closest('.export-dropdown')) {
+    exportOpen.value = false
+  }
+}
+
 onMounted(async () => {
+  document.addEventListener('click', onClickOutside, true)
   if (!orgStore.currentOrg) await orgStore.fetchMyOrg()
   await fetchLogs()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onClickOutside, true)
 })
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-base font-semibold">{{ t('auditLogs.title') }}</h2>
-        <p class="text-xs text-muted-foreground mt-1">{{ t('auditLogs.description') }}</p>
+        <p class="text-sm text-muted-foreground mt-1">{{ t('auditLogs.description') }}</p>
       </div>
-      <div class="relative">
+      <div class="relative export-dropdown">
         <button
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition-colors"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-input text-xs font-medium hover:bg-muted/50 transition-colors"
           @click="exportOpen = !exportOpen"
         >
           <Download class="w-3.5 h-3.5" />
@@ -167,7 +185,7 @@ onMounted(async () => {
         </button>
         <div
           v-if="exportOpen"
-          class="absolute right-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-border bg-card shadow-lg overflow-hidden"
+          class="absolute right-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-input bg-card shadow-lg overflow-hidden"
         >
           <button
             class="flex w-full items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors"
@@ -196,7 +214,7 @@ onMounted(async () => {
           <input
             v-model="filters.action"
             :placeholder="t('auditLogs.filterActionPlaceholder')"
-            class="w-48 h-8 pl-7 pr-3 rounded-md border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+            class="w-48 h-8 pl-7 pr-3 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
             @keydown.enter="applyFilters"
           />
         </div>
@@ -219,7 +237,7 @@ onMounted(async () => {
         <input
           v-model="filters.from_time"
           type="datetime-local"
-          class="w-44 h-8 px-2 rounded-md border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 [color-scheme:dark]"
+          class="w-44 h-8 px-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 [color-scheme:dark]"
           @change="applyFilters"
         />
       </div>
@@ -229,7 +247,7 @@ onMounted(async () => {
         <input
           v-model="filters.to_time"
           type="datetime-local"
-          class="w-44 h-8 px-2 rounded-md border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 [color-scheme:dark]"
+          class="w-44 h-8 px-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 [color-scheme:dark]"
           @change="applyFilters"
         />
       </div>

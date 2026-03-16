@@ -1227,6 +1227,7 @@ const zhCN = {
     exportCsv: "导出 CSV",
     exportJson: "导出 JSON",
     exportSuccess: "导出成功",
+    exportTruncated: "已导出 {exported} 条（共 {total} 条，部分数据已截断）",
     exportFailed: "导出失败",
     filterAction: "操作类型",
     filterActionPlaceholder: "搜索操作...",

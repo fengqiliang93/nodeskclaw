@@ -72,7 +72,7 @@ async def update_setting(
 
     row = await config_service.set_config(key, body.value, db)
     display_value = "******" if key in _SENSITIVE_KEYS and row.value else row.value
-    await hooks.emit("operation_audit", action="system.setting_updated", target_type="system_config", target_id=key, actor_id=_current_user.id, details={})
+    await hooks.emit("operation_audit", action="system.setting_updated", target_type="system_config", target_id=key, actor_id=_current_user.id, org_id=_current_user.current_org_id, details={})
     return ApiResponse(data={"key": row.key, "value": display_value})
 
 

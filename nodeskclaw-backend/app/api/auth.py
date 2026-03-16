@@ -39,7 +39,7 @@ async def oauth_callback(body: OAuthCallbackRequest, db: AsyncSession = Depends(
     result = await auth_service.oauth_login(
         body.provider, body.code, db, redirect_uri=body.redirect_uri, client_id=body.client_id
     )
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "oauth"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "oauth"})
     return ApiResponse(data=result)
 
 
@@ -49,7 +49,7 @@ async def feishu_callback(body: FeishuCallbackRequest, db: AsyncSession = Depend
     result = await auth_service.oauth_login(
         "feishu", body.code, db, redirect_uri=body.redirect_uri, client_id=body.client_id
     )
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "feishu"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "feishu"})
     return ApiResponse(data=result)
 
 
@@ -59,7 +59,7 @@ async def feishu_callback(body: FeishuCallbackRequest, db: AsyncSession = Depend
 async def email_login(body: EmailLoginRequest, db: AsyncSession = Depends(get_db)):
     """邮箱密码登录。"""
     result = await auth_service.login_with_email(body.email, body.password, db)
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "email"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "email"})
     return ApiResponse(data=result)
 
 
@@ -76,7 +76,7 @@ async def sms_send(body: SmsSendRequest):
 async def sms_login(body: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
     """手机验证码登录（自动注册）。"""
     result = await auth_service.login_with_phone(body.phone, body.code, db)
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "sms"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "sms"})
     return ApiResponse(data=result)
 
 
@@ -128,14 +128,14 @@ async def change_password(
     await auth_service.change_password(
         current_user.id, body.old_password, body.new_password, db,
     )
-    await hooks.emit("operation_audit", action="auth.password_changed", target_type="user", target_id=current_user.id, actor_id=current_user.id, details={})
+    await hooks.emit("operation_audit", action="auth.password_changed", target_type="user", target_id=current_user.id, actor_id=current_user.id, org_id=current_user.current_org_id, details={})
     return ApiResponse(message="密码已更新")
 
 
 @router.post("/logout", response_model=ApiResponse)
 async def logout(current_user: User = Depends(get_current_user_unchecked)):
     """登出（客户端清除 Token 即可，服务端无需额外操作）。"""
-    await hooks.emit("operation_audit", action="auth.logout", target_type="user", target_id=current_user.id, actor_id=current_user.id, details={})
+    await hooks.emit("operation_audit", action="auth.logout", target_type="user", target_id=current_user.id, actor_id=current_user.id, org_id=current_user.current_org_id, details={})
     return ApiResponse(message="已登出")
 
 
@@ -233,7 +233,7 @@ async def update_staff(
 
     await db.commit()
     await db.refresh(user)
-    await hooks.emit("operation_audit", action="auth.staff_updated", target_type="user", target_id=user_id, actor_id=current_user.id, details={"is_super_admin": user.is_super_admin, "is_active": user.is_active})
+    await hooks.emit("operation_audit", action="auth.staff_updated", target_type="user", target_id=user_id, actor_id=current_user.id, org_id=current_user.current_org_id, details={"is_super_admin": user.is_super_admin, "is_active": user.is_active})
     return ApiResponse(data=UserInfo.model_validate(user))
 
 
@@ -246,7 +246,7 @@ async def account_login(
     db: AsyncSession = Depends(get_db),
 ):
     result = await auth_service.login_with_account(body.account, body.password, db)
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "account"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "account"})
     return ApiResponse(data=result)
 
 
@@ -265,5 +265,5 @@ async def verification_code_login(
     db: AsyncSession = Depends(get_db),
 ):
     result = await auth_service.login_with_verification_code(body.account, body.code, db)
-    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, details={"method": "verification_code"})
+    await hooks.emit("operation_audit", action="auth.login", target_type="user", target_id=result.user.id, actor_id=result.user.id, org_id=result.user.current_org_id, details={"method": "verification_code"})
     return ApiResponse(data=result)

@@ -57,7 +57,7 @@ async def create_organization(
 ):
     """创建组织（超管）。"""
     data = await org_service.create_org(body, admin, db)
-    await hooks.emit("operation_audit", action="org.created", target_type="organization", target_id=data.id, actor_id=admin.id)
+    await hooks.emit("operation_audit", action="org.created", target_type="organization", target_id=data.id, actor_id=admin.id, org_id=data.id)
     return ApiResponse(data=data)
 
 
@@ -161,7 +161,7 @@ async def update_organization(
 ):
     """更新组织（超管）。"""
     data = await org_service.update_org(org_id, body, db)
-    await hooks.emit("operation_audit", action="org.updated", target_type="organization", target_id=org_id, actor_id=_admin.id)
+    await hooks.emit("operation_audit", action="org.updated", target_type="organization", target_id=org_id, actor_id=_admin.id, org_id=org_id)
     return ApiResponse(data=data)
 
 
@@ -174,7 +174,7 @@ async def delete_organization(
 ):
     """删除组织（超管）。"""
     await org_service.delete_org(org_id, db)
-    await hooks.emit("operation_audit", action="org.deleted", target_type="organization", target_id=org_id, actor_id=_admin.id)
+    await hooks.emit("operation_audit", action="org.deleted", target_type="organization", target_id=org_id, actor_id=_admin.id, org_id=org_id)
     return ApiResponse(message="组织已删除")
 
 

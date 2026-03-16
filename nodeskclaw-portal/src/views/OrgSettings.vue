@@ -27,8 +27,8 @@ const allNavItems: NavItem[] = [
   { name: 'OrgMembers', label: () => t('orgSettings.humanMembers'), icon: Users },
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },
   { name: 'OrgSettingsSmtp', label: () => t('orgSettings.smtpTitle'), icon: Mail, ceOnly: true },
-  { name: 'OrgSettingsAudit', label: () => t('auditLogs.title'), icon: ScrollText },
   { name: 'OrgEnterpriseFiles', label: () => t('enterpriseFiles.title'), icon: FolderOpen, matchPrefix: '/org-settings/files' },
+  { name: 'OrgSettingsAudit', label: () => t('auditLogs.title'), icon: ScrollText },
 ]
 
 const navItems = computed(() =>
