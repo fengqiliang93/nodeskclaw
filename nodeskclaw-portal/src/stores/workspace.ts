@@ -501,6 +501,25 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!chatVisible.value) unreadCount.value++
   }
 
+  const unreadPostCount = ref(0)
+  const postsTabVisible = ref(false)
+
+  function setPostsTabVisible(visible: boolean) {
+    postsTabVisible.value = visible
+    if (visible) unreadPostCount.value = 0
+  }
+
+  function _incrementUnreadPosts() {
+    if (!postsTabVisible.value) unreadPostCount.value++
+  }
+
+  async function fetchUnreadPostCount(workspaceId: string) {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/blackboard/unread-count`)
+      unreadPostCount.value = res.data.data?.count ?? 0
+    } catch { /* ignore */ }
+  }
+
   async function fetchChatHistory(workspaceId: string) {
     try {
       const res = await api.get(`/workspaces/${workspaceId}/messages`, { params: { limit: 50 } })
@@ -846,6 +865,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       eventSource.addEventListener(evtName, (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
+          if (evtName === 'post:created') _incrementUnreadPosts()
           externalCallback?.(evtName, data)
         } catch { /* ignore */ }
       })
@@ -1233,6 +1253,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     chatLoading,
     typingAgents,
     unreadCount,
+    unreadPostCount,
     corridorHexes,
     connections,
     topology,
@@ -1246,6 +1267,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     isOrgAdmin,
     resetCurrentState,
     setChatVisible,
+    setPostsTabVisible,
+    fetchUnreadPostCount,
     fileUploadEnabled,
     fetchSystemCapabilities,
     uploadFile,

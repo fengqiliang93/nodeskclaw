@@ -66,7 +66,15 @@ watch(() => props.open, (isOpen) => {
     editing.value = false
     selectedPostId.value = null
     activeTab.value = 'objectives-tasks'
+    store.fetchUnreadPostCount(props.workspaceId)
+  } else {
+    store.setPostsTabVisible(false)
   }
+})
+
+watch(activeTab, (tab, oldTab) => {
+  if (tab === 'posts') store.setPostsTabVisible(true)
+  else if (oldTab === 'posts') store.setPostsTabVisible(false)
 })
 
 function enterEdit() {
@@ -140,6 +148,12 @@ const canEditTab = computed(() => activeTab.value === 'notes-perf')
             @click="activeTab = tab.key; editing = false; selectedPostId = null"
           >
             {{ t(tab.labelKey) }}
+            <span
+              v-if="tab.key === 'posts' && store.unreadPostCount > 0 && activeTab !== 'posts'"
+              class="inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 text-[10px] font-medium leading-none rounded-full bg-primary text-primary-foreground"
+            >
+              {{ store.unreadPostCount > 99 ? '99+' : store.unreadPostCount }}
+            </span>
           </button>
         </div>
 
