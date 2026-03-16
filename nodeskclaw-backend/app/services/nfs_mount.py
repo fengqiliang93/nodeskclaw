@@ -324,9 +324,9 @@ class DockerFS:
         return self._base / rel
 
     async def read_text(self, remote_path: str) -> str | None:
+        """Read a file from local Docker data dir. Returns None if file does not exist."""
         p = self._resolve(remote_path)
         if not p.exists():
-            # Align behavior with PodFS: missing file -> None
             return None
         return p.read_text(encoding="utf-8")
 

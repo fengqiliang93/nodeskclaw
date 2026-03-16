@@ -24,17 +24,21 @@ def _parse_cpu(cpu_str: str) -> float:
     return float(s)
 
 
+_K8S_MEM_SUFFIXES: dict[str, str] = {
+    "ki": "k", "mi": "m", "gi": "g", "ti": "t", "pi": "p",
+}
+
+
 def _parse_mem(mem_str: str) -> str:
     """Convert K8s-style memory (e.g. '2Gi', '512Mi') to Docker format ('2g', '512m')."""
     s = mem_str.strip()
     lower = s.lower()
-    if lower.endswith("gi"):
-        return s[:-2] + "g"
-    if lower.endswith("mi"):
-        return s[:-2] + "m"
-    if lower.endswith("ki"):
-        return s[:-2] + "k"
-    return s
+    for k8s_suffix, docker_suffix in _K8S_MEM_SUFFIXES.items():
+        if lower.endswith(k8s_suffix):
+            return s[:-len(k8s_suffix)] + docker_suffix
+    if lower[-1:].isdigit() or lower.endswith(("k", "m", "g", "t", "b")):
+        return s
+    raise ValueError(f"Unsupported memory unit: {mem_str!r}")
 
 
 def _build_compose_yaml(config: InstanceComputeConfig) -> dict:
