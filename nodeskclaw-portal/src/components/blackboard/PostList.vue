@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { Plus, Pin, MessageSquare, ChevronLeft, ChevronRight, Loader2 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import api from '@/services/api'
+import MentionPicker from './MentionPicker.vue'
 
 const props = defineProps<{ workspaceId: string }>()
 const emit = defineEmits<{ (e: 'select', postId: string): void }>()
@@ -27,6 +28,8 @@ const showCreate = ref(false)
 const newTitle = ref('')
 const newContent = ref('')
 const creating = ref(false)
+const contentTextareaRef = ref<HTMLTextAreaElement | null>(null)
+const mentionPickerRef = ref<InstanceType<typeof MentionPicker> | null>(null)
 
 async function fetchPosts() {
   loading.value = true
@@ -95,12 +98,22 @@ watch(() => props.workspaceId, fetchPosts)
         class="w-full bg-background border border-border rounded px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/50"
         :placeholder="t('blackboard.postTitlePlaceholder')"
       />
-      <textarea
-        v-model="newContent"
-        rows="4"
-        class="w-full bg-background border border-border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/50 resize-none font-mono"
-        :placeholder="t('blackboard.postContentPlaceholder')"
-      />
+      <div class="relative">
+        <textarea
+          ref="contentTextareaRef"
+          v-model="newContent"
+          rows="4"
+          class="w-full bg-background border border-border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/50 resize-none font-mono"
+          :placeholder="t('blackboard.postContentPlaceholder')"
+          @input="mentionPickerRef?.onInput()"
+          @keydown="mentionPickerRef?.onKeydown($event)"
+        />
+        <MentionPicker
+          ref="mentionPickerRef"
+          v-model="newContent"
+          :textarea-el="contentTextareaRef"
+        />
+      </div>
       <div class="flex justify-end gap-2">
         <button
           class="px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 transition-colors"

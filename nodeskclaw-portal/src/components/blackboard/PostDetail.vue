@@ -4,6 +4,7 @@ import { ArrowLeft, Send, Loader2, Pin, PinOff } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import api from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
+import MentionPicker from './MentionPicker.vue'
 
 const props = defineProps<{ workspaceId: string; postId: string }>()
 const emit = defineEmits<{ (e: 'back'): void }>()
@@ -35,6 +36,8 @@ const post = ref<PostData | null>(null)
 const loading = ref(false)
 const replyContent = ref('')
 const replying = ref(false)
+const replyTextareaRef = ref<HTMLTextAreaElement | null>(null)
+const mentionPickerRef = ref<InstanceType<typeof MentionPicker> | null>(null)
 
 async function fetchPost() {
   loading.value = true
@@ -140,14 +143,24 @@ watch(() => props.postId, fetchPost)
 
     <div class="border-t border-border pt-3 shrink-0">
       <div class="flex items-end gap-2">
-        <textarea
-          v-model="replyContent"
-          rows="2"
-          class="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/50 resize-none"
-          :placeholder="t('blackboard.replyPlaceholder')"
-          @keydown.meta.enter="sendReply"
-          @keydown.ctrl.enter="sendReply"
-        />
+        <div class="relative flex-1">
+          <textarea
+            ref="replyTextareaRef"
+            v-model="replyContent"
+            rows="2"
+            class="w-full bg-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+            :placeholder="t('blackboard.replyPlaceholder')"
+            @input="mentionPickerRef?.onInput()"
+            @keydown="mentionPickerRef?.onKeydown($event)"
+            @keydown.meta.enter="sendReply"
+            @keydown.ctrl.enter="sendReply"
+          />
+          <MentionPicker
+            ref="mentionPickerRef"
+            v-model="replyContent"
+            :textarea-el="replyTextareaRef"
+          />
+        </div>
         <button
           class="p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
           :disabled="replying || !replyContent.trim()"
