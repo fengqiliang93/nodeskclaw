@@ -1477,6 +1477,32 @@ def _file_to_info(f: BlackboardFile) -> FileInfo:
     )
 
 
+_DEFAULT_ROOT_DIRS = ["documents", "code", "temp"]
+
+
+async def _ensure_default_dirs(db: AsyncSession, workspace_id: str) -> None:
+    for name in _DEFAULT_ROOT_DIRS:
+        existing = (await db.execute(
+            select(BlackboardFile.id).where(
+                BlackboardFile.workspace_id == workspace_id,
+                BlackboardFile.parent_path == "/",
+                BlackboardFile.name == name,
+                BlackboardFile.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if existing is None:
+            db.add(BlackboardFile(
+                workspace_id=workspace_id,
+                parent_path="/",
+                name=name,
+                is_directory=True,
+                uploader_type="system",
+                uploader_id="system",
+                uploader_name="System",
+            ))
+    await db.commit()
+
+
 async def list_shared_files(
     db: AsyncSession, workspace_id: str, parent_path: str = "/",
 ) -> list[FileInfo]:
@@ -1491,6 +1517,20 @@ async def list_shared_files(
             BlackboardFile.name.asc(),
         )
     )).scalars().all()
+
+    if parent_path == "/" and len(rows) == 0:
+        await _ensure_default_dirs(db, workspace_id)
+        rows = (await db.execute(
+            select(BlackboardFile).where(
+                BlackboardFile.workspace_id == workspace_id,
+                BlackboardFile.parent_path == "/",
+                BlackboardFile.deleted_at.is_(None),
+            ).order_by(
+                BlackboardFile.is_directory.desc(),
+                BlackboardFile.name.asc(),
+            )
+        )).scalars().all()
+
     return [_file_to_info(f) for f in rows]
 
 
