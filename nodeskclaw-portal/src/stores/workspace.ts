@@ -675,9 +675,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const agentName = data.agent_name as string
     const instanceId = data.instance_id as string
     const content = data.content as string
+    const traceId = data.trace_id as string | undefined
+    const intent = data.intent as string | undefined
+    const priority = data.priority as string | undefined
+    const msgId =
+      (data.envelope_id as string) ||
+      `collab-${instanceId}-${content}-${traceId ?? ''}-${intent ?? ''}-${priority ?? ''}`
+
+    if (_isDuplicateMessage(msgId)) return
 
     chatMessages.value.push({
-      id: (data.envelope_id as string) || `collab-${instanceId}-${Date.now()}`,
+      id: msgId,
       sender_type: 'agent',
       sender_id: instanceId,
       sender_name: agentName,
@@ -937,7 +945,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
 
     eventSource.onerror = () => {
-      if (eventSource?.readyState === EventSource.CLOSED) {
+      const state = eventSource?.readyState
+      if (state === EventSource.CLOSED || state === EventSource.CONNECTING) {
+        if (state === EventSource.CONNECTING) {
+          eventSource?.close()
+        }
         _reconnectAttempts++
         const delay = _getReconnectDelay()
         _reconnectTimer = setTimeout(() => {
