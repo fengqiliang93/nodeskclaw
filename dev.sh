@@ -216,6 +216,11 @@ log "启动服务..."
 export LLM_PROXY_URL="http://localhost:8080"
 export LLM_PROXY_INTERNAL_URL="http://localhost:8080"
 
+if [ -z "${DATABASE_URL:-}" ]; then
+  DATABASE_URL=$(grep '^DATABASE_URL=' "$BACKEND_DIR/.env" | head -1 | cut -d= -f2-)
+  export DATABASE_URL
+fi
+
 (cd "$LLM_PROXY_DIR" && uv run uvicorn app.main:app --port 8080 --timeout-graceful-shutdown 3) \
   2>&1 | prefix_output "$CYAN" "llm-prx" &
 PIDS+=($!)
