@@ -236,21 +236,26 @@ class TunnelAdapter:
         workspace_id: str = "",
         trace_id: str = "",
         stream: bool = True,
+        no_reply: bool = False,
     ) -> AsyncChatStream:
         conn = self._connections.get(instance_id)
         if not conn:
             raise ConnectionError(f"Instance {instance_id} not connected via tunnel")
 
         request_id = str(uuid.uuid4())
+        payload: dict[str, Any] = {
+            "messages": messages,
+            "stream": stream,
+            "workspace_id": workspace_id,
+        }
+        if no_reply:
+            payload["no_reply"] = True
+
         msg = TunnelMessage(
             id=request_id,
             type=TunnelMessageType.CHAT_REQUEST,
             trace_id=trace_id,
-            payload={
-                "messages": messages,
-                "stream": stream,
-                "workspace_id": workspace_id,
-            },
+            payload=payload,
         )
         await self._send(conn.ws, msg)
         return AsyncChatStream(conn, request_id, trace_id)
@@ -364,6 +369,17 @@ class TunnelAdapter:
             workspace_id=workspace_id,
         )
 
+        mention_targets: list[str] = data.extensions.get("mention_targets", [])
+        is_mentioned = agent_name in mention_targets or target_node_id in mention_targets
+        has_any_mention = len(mention_targets) > 0
+        no_reply = False
+
+        if has_any_mention and not is_mentioned:
+            context_prompt += "\n[系统指令] 用户没有@提及你。你必须且只能回复 NO_REPLY。"
+            no_reply = True
+        elif has_any_mention and is_mentioned:
+            context_prompt += "\n[重要] 用户在消息中 @提及了你，请务必回复。"
+
         user_content = f"[{data.sender.name}]: {data.content}"
         messages = [
             {"role": "system", "content": context_prompt},
@@ -372,10 +388,11 @@ class TunnelAdapter:
 
         from app.api.workspaces import broadcast_event
 
-        broadcast_event(workspace_id, "agent:typing", {
-            "instance_id": target_node_id,
-            "agent_name": agent_name,
-        })
+        if not no_reply:
+            broadcast_event(workspace_id, "agent:typing", {
+                "instance_id": target_node_id,
+                "agent_name": agent_name,
+            })
 
         try:
             chat_stream = await self.send_chat_request(
@@ -383,6 +400,7 @@ class TunnelAdapter:
                 workspace_id=workspace_id,
                 trace_id=envelope.traceid,
                 stream=True,
+                no_reply=no_reply,
             )
         except ConnectionError as e:
             return DeliveryResult(
