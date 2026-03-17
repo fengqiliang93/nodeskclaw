@@ -41,10 +41,23 @@ ZEROCLAW_REPO=https://github.com/nicholasgasior/zeroclaw.git ZEROCLAW_REF=v0.2.0
 
 **注意**: 构建目标平台为 `linux/amd64`，在 Apple Silicon 设备上通过 QEMU 模拟运行。Rust 编译首次可能需要较长时间。
 
+## NoDeskClaw Tunnel Bridge
+
+镜像内置 `nodeskclaw-tunnel-bridge` Python 包（通过 `python3-minimal` + `pip3 install` 安装），提供 ZeroClaw 与 NoDeskClaw 后端的 WebSocket tunnel 连接。
+
+在 `docker-entrypoint.sh` 中，当检测到 `NODESKCLAW_API_URL` 和 `NODESKCLAW_INSTANCE_ID` 环境变量时，自动在后台启动 tunnel bridge 进程：
+
+```bash
+python3 -m nodeskclaw_tunnel_bridge --runtime zeroclaw &
+```
+
+支持 @mention 回复控制：收到 `no_reply` 标志时，消息仍通过 `POST /webhook` 送入 session（保留上下文），但丢弃响应。
+
 ## 镜像说明
 
 - 基础镜像: `debian:bookworm-slim`
 - Base 模式: 从 GitHub Release 下载 ZeroClaw 预编译的 `linux/amd64` 二进制
 - Security 模式: 从源码编译，包含安全层集成
 - 默认监听端口: `8080`
+- 内置 Python 3 runtime（用于 tunnel bridge）
 - 提供 `/health` 健康检查端点

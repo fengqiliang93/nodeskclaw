@@ -82,7 +82,7 @@ nodeskclaw-backend/
 │   │   ├── workspace_service.py  # 工作区 CRUD + Agent 管理
 │   │   ├── workspace_message_service.py  # 群聊消息记录 + 上下文构建
 │   │   ├── collaboration_service.py      # 协作消息处理（由 Tunnel 调用）
-│   │   ├── tunnel/                       # Agent Tunnel（WebSocket 隧道，替代 SSE + HTTP 直连）
+│   │   ├── tunnel/                       # Agent Tunnel（WebSocket 隧道，替代 SSE + HTTP 直连，支持 @mention no_reply）
 │   │   ├── llm_config_service.py # DeskClaw LLM 配置 + 系统 Channel plugin 分发
 │   │   ├── channel_config_service.py # Channel 发现、配置读写、Schema 注册、自定义部署
 │   │   ├── enterprise_file_service.py # 企业空间文件浏览（PodFS 只读）
@@ -588,6 +588,17 @@ Admin 后台权限**仅依赖 AdminMembership**，`is_super_admin` 不作为 Adm
 | CE -> EE | 自动创建 EE 管理员，CE 超管无法访问 Admin 后台 |
 | EE -> CE | Admin 前端不部署，EE 管理员记录留存无害 |
 | EE -> CE -> EE | 识别已有 EE 管理员，跳过重复创建 |
+
+### Tunnel 协议：@mention 回复控制
+
+`chat.request` payload 新增 `no_reply` 布尔字段。当黑板群消息存在 @mention 且当前 agent 未被提及时，后端在 `_do_deliver` 中设置 `no_reply: true`。
+
+各 runtime 的 tunnel 客户端收到 `no_reply: true` 后：
+- **OpenClaw**：`max_tokens: 1` fire-and-forget，立即返回 `chat.response.done`
+- **ZeroClaw**：`POST /webhook` 后丢弃响应
+- **NanoBot**：注入消息到 AgentLoop 后丢弃回复
+
+无人被 @提及时，`no_reply` 不发送（保持默认行为，所有 agent 正常响应）。
 
 ### 软删除
 

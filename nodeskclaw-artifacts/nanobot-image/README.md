@@ -35,9 +35,17 @@ nanobot-image/
 
 **注意**: 构建目标平台为 `linux/amd64`，在 Apple Silicon 设备上通过 QEMU 模拟运行。
 
+## NoDeskClaw Tunnel Bridge
+
+镜像内置 `nodeskclaw-tunnel-bridge` Python 包，提供 NanoBot 与 NoDeskClaw 后端的 WebSocket tunnel 连接。
+
+通过 NanoBot 的 `entry_points("nanobot.channels")` 自动发现注册，在 `nanobot.yaml` 中启用 `channels.nodeskclaw.enabled: true`。
+
+支持 @mention 回复控制：收到 `no_reply` 标志时，消息仍注入 AgentLoop（保留上下文），但丢弃回复。
+
 ## 镜像说明
 
 - 基础镜像: `python:3.13-slim-bookworm`
-- 通过 `pip install nanobot-ai` 安装
+- 通过 `pip install nanobot-ai` + `pip install nodeskclaw-tunnel-bridge` 安装
 - 默认监听端口: `18790`
 - 配置文件: `/opt/nanobot/nanobot.yaml`（首次启动时从模板生成）
