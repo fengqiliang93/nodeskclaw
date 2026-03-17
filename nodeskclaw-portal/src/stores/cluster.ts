@@ -76,17 +76,24 @@ export interface ConnectionTestResult {
 export const useClusterStore = defineStore('cluster', () => {
   const clusters = ref<ClusterInfo[]>([])
   const loading = ref(false)
+  const refreshing = ref(false)
   const currentCluster = ref<ClusterInfo | null>(null)
   const overview = ref<ClusterOverview | null>(null)
   const overviewLoading = ref(false)
 
   async function fetchClusters() {
-    loading.value = true
+    const isFirstLoad = clusters.value.length === 0
+    if (isFirstLoad) {
+      loading.value = true
+    } else {
+      refreshing.value = true
+    }
     try {
       const res = await api.get('/clusters')
       clusters.value = res.data.data ?? []
     } finally {
       loading.value = false
+      refreshing.value = false
     }
   }
 
@@ -151,6 +158,7 @@ export const useClusterStore = defineStore('cluster', () => {
   return {
     clusters,
     loading,
+    refreshing,
     currentCluster,
     overview,
     overviewLoading,

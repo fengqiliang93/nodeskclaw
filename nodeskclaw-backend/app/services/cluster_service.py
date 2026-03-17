@@ -198,7 +198,7 @@ async def _create_docker_cluster(
         name=name or "local-docker",
         compute_provider="docker",
         credentials_encrypted=None,
-        provider_config={},
+        provider_config={"cloud_vendor": "local"},
         status=ClusterStatus.connected,
         health_status="healthy",
         created_by=user.id,
