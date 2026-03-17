@@ -58,27 +58,34 @@ function createBlackboardTool(cfg: ToolConfig): AnyAgentTool {
   return {
     name: "nodeskclaw_blackboard",
     description:
-      "Workspace blackboard operations: tasks, objectives, and BBS discussion posts.",
+      "Workspace blackboard operations: content, tasks, objectives, and BBS discussion posts.",
     parameters: {
       type: "object",
       properties: {
         action: {
           type: "string",
           enum: [
-            "get_blackboard", "list_tasks", "create_task", "update_task", "archive_task",
-            "get_objectives",
+            "get_blackboard", "update_blackboard", "patch_section",
+            "list_tasks", "create_task", "update_task", "archive_task",
+            "list_objectives", "create_objective", "update_objective",
             "list_posts", "create_post", "get_post", "reply_post",
+            "update_post", "delete_post", "pin_post", "unpin_post",
           ],
           description: "Which blackboard operation to perform.",
         },
-        title: { type: "string", description: "Task/post title (create_task, create_post)." },
-        description: { type: "string", description: "Task description (create_task / update_task)." },
-        content: { type: "string", description: "Post/reply body in Markdown (create_post, reply_post). Use @agent:{id} or @human:{id} to mention." },
-        priority: { type: "string", enum: ["urgent", "high", "medium", "low"], description: "create_task." },
+        title: { type: "string", description: "Task/post/objective title." },
+        description: { type: "string", description: "Task/objective description." },
+        content: { type: "string", description: "Markdown content (update_blackboard, create_post, reply_post, update_post, patch_section)." },
+        section: { type: "string", description: "patch_section: section heading to update." },
+        priority: { type: "string", enum: ["urgent", "high", "medium", "low"], description: "create_task / update_task." },
         assignee_id: { type: "string", description: "create_task: assign to agent instance ID." },
         estimated_value: { type: "number", description: "create_task: estimated monetary value." },
         task_id: { type: "string", description: "update_task / archive_task: target task ID." },
-        post_id: { type: "string", description: "get_post / reply_post: target post ID." },
+        post_id: { type: "string", description: "get_post / reply_post / update_post / delete_post / pin_post / unpin_post: target post ID." },
+        objective_id: { type: "string", description: "update_objective: target objective ID." },
+        obj_type: { type: "string", description: "create_objective / update_objective: objective type." },
+        parent_id: { type: "string", description: "create_objective / update_objective: parent objective ID." },
+        progress: { type: "number", description: "update_objective: progress (0.0 ~ 1.0)." },
         status: {
           type: "string",
           enum: ["pending", "in_progress", "done", "blocked"],
@@ -98,6 +105,16 @@ function createBlackboardTool(cfg: ToolConfig): AnyAgentTool {
       switch (p.action) {
         case "get_blackboard":
           return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/blackboard`));
+        case "update_blackboard":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard`, "PUT", { content: p.content }),
+          );
+        case "patch_section":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/sections`, "PATCH", {
+              section: p.section, content: p.content,
+            }),
+          );
         case "list_tasks": {
           const statusFilter = p.filter_status ? `?status=${p.filter_status}` : "";
           return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/blackboard/tasks${statusFilter}`));
@@ -131,8 +148,28 @@ function createBlackboardTool(cfg: ToolConfig): AnyAgentTool {
           return jsonResult(
             await apiFetch(cfg, `/workspaces/${ws}/blackboard/tasks/${p.task_id}/archive`, "POST"),
           );
-        case "get_objectives":
+        case "list_objectives":
           return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/blackboard/objectives`));
+        case "create_objective": {
+          const body: Record<string, unknown> = { title: p.title };
+          if (p.description !== undefined) body.description = p.description;
+          if (p.obj_type !== undefined) body.obj_type = p.obj_type;
+          if (p.parent_id !== undefined) body.parent_id = p.parent_id;
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/objectives`, "POST", body),
+          );
+        }
+        case "update_objective": {
+          const body: Record<string, unknown> = {};
+          if (p.title !== undefined) body.title = p.title;
+          if (p.description !== undefined) body.description = p.description;
+          if (p.progress !== undefined) body.progress = p.progress;
+          if (p.obj_type !== undefined) body.obj_type = p.obj_type;
+          if (p.parent_id !== undefined) body.parent_id = p.parent_id;
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/objectives/${p.objective_id}`, "PUT", body),
+          );
+        }
         case "list_posts": {
           const pg = p.page ? `?page=${p.page}` : "";
           return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts${pg}`));
@@ -151,6 +188,26 @@ function createBlackboardTool(cfg: ToolConfig): AnyAgentTool {
             await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts/${p.post_id}/replies`, "POST", {
               content: p.content,
             }),
+          );
+        case "update_post": {
+          const body: Record<string, unknown> = {};
+          if (p.title !== undefined) body.title = p.title;
+          if (p.content !== undefined) body.content = p.content;
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts/${p.post_id}`, "PUT", body),
+          );
+        }
+        case "delete_post":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts/${p.post_id}`, "DELETE"),
+          );
+        case "pin_post":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts/${p.post_id}/pin`, "POST"),
+          );
+        case "unpin_post":
+          return jsonResult(
+            await apiFetch(cfg, `/workspaces/${ws}/blackboard/posts/${p.post_id}/pin`, "DELETE"),
           );
         default:
           return jsonResult({ error: `Unknown action: ${p.action}` });
@@ -381,7 +438,7 @@ function createSharedFilesTool(cfg: ToolConfig): AnyAgentTool {
       properties: {
         action: {
           type: "string",
-          enum: ["list_files", "read_file", "write_file", "delete_file", "mkdir"],
+          enum: ["list_files", "read_file", "write_file", "delete_file", "mkdir", "get_file_url"],
           description: "Which file operation to perform.",
         },
         parent_path: { type: "string", description: "list_files / write_file / mkdir: directory path (default '/')." },
@@ -423,6 +480,8 @@ function createSharedFilesTool(cfg: ToolConfig): AnyAgentTool {
               name: p.name,
             }),
           );
+        case "get_file_url":
+          return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/blackboard/files/${p.file_id}/url`));
         default:
           return jsonResult({ error: `Unknown action: ${p.action}` });
       }

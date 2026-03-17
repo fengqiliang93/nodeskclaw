@@ -90,6 +90,9 @@ nodeskclaw-backend/
 │   │   ├── runtime/              # 运行时平台 v2（五层架构）
 │   │   │   ├── registries/       # 六大注册表（NodeType/Transport/Runtime/Compute/ContextBridge/Channel）
 │   │   │   ├── adapters/         # Agent 运行时适配器（OpenClaw/ZeroClaw/Nanobot）
+│   │   │   ├── gene_install_adapter.py      # GeneInstallAdapter 抽象接口
+│   │   │   ├── openclaw_gene_install_adapter.py # OpenClaw 基因安装适配器
+│   │   │   ├── noop_gene_install_adapter.py     # ZeroClaw/NanoBot 空实现
 │   │   │   ├── context_bridges/  # 上下文注入桥接（ChannelPlugin/SystemPrompt/MCP）
 │   │   │   ├── compute/          # 计算资源提供者（K8s/Docker/Process）
 │   │   │   ├── transport/        # 消息投递适配器（Agent/Channel）
@@ -117,12 +120,15 @@ nodeskclaw-backend/
 │   │       ├── k8s_client.py     # K8s API 封装
 │   │       ├── event_bus.py      # K8s 事件 → SSE
 │   │       └── resource_builder.py # K8s YAML 资源构建
-│   └── utils/
-│       ├── feishu.py             # 飞书 API 工具函数（兼容旧逻辑）
-│       └── oauth_providers/      # OAuth 提供方注册（可扩展）
-│           ├── base.py           # OAuthProvider 基类
-│           ├── registry.py       # 提供方注册与获取
-│           └── feishu.py         # 飞书 OAuth 实现
+│   ├── utils/
+│   │   ├── feishu.py             # 飞书 API 工具函数（兼容旧逻辑）
+│   │   └── oauth_providers/      # OAuth 提供方注册（可扩展）
+│   │       ├── base.py           # OAuthProvider 基类
+│   │       ├── registry.py       # 提供方注册与获取
+│   │       └── feishu.py         # 飞书 OAuth 实现
+│   └── data/                     # 静态数据与模板
+│       ├── gene_templates/       # 基因 JSON 模板（Skill + manifest + scripts 引用）
+│       └── gene_scripts/         # 框架无关 Python 工具脚本（部署到 AI 实例）
 ├── pyproject.toml            # 项目依赖定义
 ├── uv.lock                   # 锁定依赖版本
 ├── Dockerfile                # 生产镜像构建

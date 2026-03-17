@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class RuntimeSpec:
     runtime_id: str
     adapter: Any = None
+    gene_install_adapter: Any = None
     description: str | None = None
     requires_companion: bool = False
     config_schema: dict | None = None
@@ -43,9 +44,16 @@ RUNTIME_REGISTRY = RuntimeRegistry()
 
 
 def _register_builtins() -> None:
+    from app.services.runtime.noop_gene_install_adapter import NoopGeneInstallAdapter
+    from app.services.runtime.openclaw_gene_install_adapter import OpenClawGeneInstallAdapter
+
+    _openclaw_gene_adapter = OpenClawGeneInstallAdapter()
+    _noop_gene_adapter = NoopGeneInstallAdapter()
+
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="openclaw",
         adapter=None,
+        gene_install_adapter=_openclaw_gene_adapter,
         description="OpenClaw runtime -- primary DeskClaw agent kernel.",
         requires_companion=False,
         display_name="全能工作引擎",
@@ -57,6 +65,7 @@ def _register_builtins() -> None:
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="zeroclaw",
         adapter=None,
+        gene_install_adapter=_noop_gene_adapter,
         description="ZeroClaw runtime -- high-performance Rust-based agent kernel.",
         requires_companion=False,
         display_name="高性能工作引擎",
@@ -69,6 +78,7 @@ def _register_builtins() -> None:
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
         adapter=None,
+        gene_install_adapter=_noop_gene_adapter,
         description="Nanobot runtime -- ultra-lightweight Python-based agent.",
         requires_companion=False,
         display_name="轻量工作引擎",

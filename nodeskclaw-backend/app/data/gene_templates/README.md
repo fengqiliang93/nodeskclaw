@@ -15,31 +15,45 @@
 ```
 gene_templates/
 ├── README.md
-├── mcp_blackboard_tools.json        # 黑板工具基因（任务 CRUD + 工作循环）
+├── mcp_blackboard_tools.json        # 黑板工具基因（任务/目标/帖子 CRUD + 工作循环）
 ├── mcp_topology_awareness.json      # 拓扑感知基因（工位、邻居查询）
 ├── mcp_performance_reader.json      # 效能数据读取基因
 ├── mcp_proposals.json               # 提案/审批基因
 ├── mcp_gene_discovery.json          # 基因发现/安装基因
+├── mcp_shared_files.json            # 共享文件管理基因
 ├── meta_gene_ai_hc.json             # AI HC 招聘元基因
 ├── meta_gene_reorg.json             # 自组织重构元基因
 ├── meta_gene_culture.json           # 团队文化元基因
 ├── meta_gene_self_improve.json      # 自我改进元基因
 ├── meta_gene_innovation.json        # 创新探索元基因
 ├── meta_gene_akr_decomposer.json    # AKR 分解元基因（O -> KR -> Task）
-├── genome_self_management.json      # 自管理基因组（捆绑 5 个 MCP 工具基因）
+├── genome_self_management.json      # 自管理基因组（捆绑 5 个工具基因，旧版）
+├── genome_ai_employee_basics.json   # AI 员工基础技能基因组（捆绑 6 个工具基因）
 ├── workflow_genome_example.json     # 内容创作流水线基因组（含拓扑推荐）
 └── workflow_step_template.json      # 工作流步骤基因的 manifest 模板（不入库）
 ```
+
+关联目录：`../gene_scripts/` 包含基因安装时部署到实例的 Python CLI 脚本。
+
+## Manifest 字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `skill` | Skill 内容（name + content），安装时写入运行时的 skill 目录 |
+| `tool_allow` | OpenClaw 专属：工具白名单，安装时追加到 `openclaw.json` 的 `tools.allow` |
+| `scripts` | Python 脚本文件名数组（如 `["deskclaw_blackboard.py"]`），安装时从 `gene_scripts/` 读取并部署到实例 |
+| `openclaw_config` | OpenClaw 配置补丁，安装时浅合并到 `openclaw.json` |
 
 ## 分类
 
 | 类型 | 文件 | slug | GeneHub 状态 |
 |------|------|------|-------------|
-| MCP 工具基因 | mcp_blackboard_tools.json | nodeskclaw-blackboard-tools | 已上传 |
-| MCP 工具基因 | mcp_topology_awareness.json | nodeskclaw-topology-awareness | 已上传 |
-| MCP 工具基因 | mcp_performance_reader.json | nodeskclaw-performance-reader | 已上传 |
-| MCP 工具基因 | mcp_proposals.json | nodeskclaw-proposals | 已上传 |
-| MCP 工具基因 | mcp_gene_discovery.json | nodeskclaw-gene-discovery | 已上传 |
+| 工具基因 | mcp_blackboard_tools.json | nodeskclaw-blackboard-tools | 已上传 |
+| 工具基因 | mcp_topology_awareness.json | nodeskclaw-topology-awareness | 已上传 |
+| 工具基因 | mcp_performance_reader.json | nodeskclaw-performance-reader | 已上传 |
+| 工具基因 | mcp_proposals.json | nodeskclaw-proposals | 已上传 |
+| 工具基因 | mcp_gene_discovery.json | nodeskclaw-gene-discovery | 已上传 |
+| 工具基因 | mcp_shared_files.json | nodeskclaw-shared-files | 待上传 |
 | 元基因 | meta_gene_ai_hc.json | ai-hc-recruiter | 已上传 |
 | 元基因 | meta_gene_reorg.json | self-reorg | 已上传 |
 | 元基因 | meta_gene_culture.json | team-culture-concise | 已上传 |
@@ -47,5 +61,6 @@ gene_templates/
 | 元基因 | meta_gene_innovation.json | innovation-scout | 已上传 |
 | 元基因 | meta_gene_akr_decomposer.json | akr-decomposer | 已上传 |
 | 基因组 | genome_self_management.json | nodeskclaw-self-management | 已上传 |
-| 基因组 | workflow_genome_example.json | content-creation-pipeline | 未上传（引用的步骤基因不存在） |
+| 基因组 | genome_ai_employee_basics.json | ai-employee-basics | 待上传 |
+| 基因组 | workflow_genome_example.json | content-creation-pipeline | 未上传 |
 | 模板 | workflow_step_template.json | -- | 不入库 |

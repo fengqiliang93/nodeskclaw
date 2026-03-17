@@ -27,6 +27,7 @@ GENE_FILES = [
     "mcp_gene_discovery.json",
     "mcp_performance_reader.json",
     "mcp_topology_awareness.json",
+    "mcp_shared_files.json",
     "meta_gene_ai_hc.json",
     "meta_gene_reorg.json",
     "meta_gene_culture.json",
@@ -37,6 +38,7 @@ GENE_FILES = [
 
 GENOME_FILES = [
     "genome_self_management.json",
+    "genome_ai_employee_basics.json",
     "workflow_genome_example.json",
 ]
 
@@ -73,6 +75,9 @@ TAG_MAP = {
     "akr": "ability",
     "planning": "ability",
     "objectives": "ability",
+    "shared-files": "tool",
+    "genome": "ability",
+    "autonomy": "ability",
 }
 
 
@@ -98,6 +103,8 @@ def _map_tags(raw_tags: list[str]) -> list[str]:
 def build_gene_manifest(tpl: dict) -> dict:
     """Convert a local gene template to the flat GeneHub manifest format."""
     inner = tpl.get("manifest", {})
+
+    default_compat = [{"product": "openclaw", "min_version": "0.5.0"}]
     manifest = {
         "name": tpl["name"],
         "slug": tpl["slug"],
@@ -107,7 +114,7 @@ def build_gene_manifest(tpl: dict) -> dict:
         "tags": _map_tags(tpl.get("tags", [])),
         "version": "1.0.0",
         "author": {"ref": "", "name": "NoDeskAI", "type": "human"},
-        "compatibility": [{"product": "openclaw", "min_version": "0.5.0"}],
+        "compatibility": tpl.get("compatibility", inner.get("compatibility", default_compat)),
         "dependencies": [],
         "synergies": [],
         "rules": [],
@@ -117,6 +124,8 @@ def build_gene_manifest(tpl: dict) -> dict:
         manifest["skill"] = inner["skill"]
     if "tool_allow" in inner:
         manifest["tool_allow"] = inner["tool_allow"]
+    if "scripts" in inner:
+        manifest["scripts"] = inner["scripts"]
     return manifest
 
 
@@ -125,6 +134,7 @@ def build_genome_payload(tpl: dict) -> dict:
     gene_slugs = tpl.get("gene_slugs", [])
     genes = [{"slug": s, "version": ">=1.0.0", "required": True} for s in gene_slugs]
 
+    default_compat = [{"product": "openclaw", "min_version": "0.5.0"}]
     return {
         "name": tpl["name"],
         "slug": tpl["slug"],
@@ -135,7 +145,7 @@ def build_genome_payload(tpl: dict) -> dict:
         "version": "1.0.0",
         "author": {"ref": "", "name": "NoDeskAI", "type": "organization"},
         "genes": genes,
-        "compatibility": [{"product": "openclaw", "min_version": "0.5.0"}],
+        "compatibility": tpl.get("compatibility", default_compat),
     }
 
 

@@ -1,0 +1,52 @@
+"""No-op gene installation adapter for runtimes that don't yet have specific logic.
+
+Used as a fallback for ZeroClaw, NanoBot, and any future runtimes that
+haven't implemented their own GeneInstallAdapter yet. Deploys skills and
+scripts to generic paths without runtime-specific config management.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from app.services.runtime.gene_install_adapter import GeneInstallAdapter
+
+if TYPE_CHECKING:
+    from app.services.nfs_mount import RemoteFS
+
+logger = logging.getLogger(__name__)
+
+SKILLS_DIR_REL = ".deskclaw/skills"
+SCRIPTS_DIR_REL = ".deskclaw/tools"
+
+
+class NoopGeneInstallAdapter(GeneInstallAdapter):
+
+    async def deploy_skill(
+        self, fs: RemoteFS, skill_name: str, content: str, description: str = "",
+    ) -> None:
+        await fs.mkdir(f"{SKILLS_DIR_REL}/{skill_name}")
+        await fs.write_text(f"{SKILLS_DIR_REL}/{skill_name}/SKILL.md", content)
+
+    async def allow_tools(self, fs: RemoteFS, tool_names: list[str]) -> None:
+        pass
+
+    async def deploy_scripts(self, fs: RemoteFS, scripts: dict[str, str]) -> None:
+        if not scripts:
+            return
+        await fs.mkdir(SCRIPTS_DIR_REL)
+        for filename, content in scripts.items():
+            await fs.write_text(f"{SCRIPTS_DIR_REL}/{filename}", content)
+
+    async def apply_config(self, fs: RemoteFS, config_patch: dict) -> None:
+        pass
+
+    async def invalidate_cache(self, fs: RemoteFS, skill_name: str, event: str = "installed") -> None:
+        logger.debug("NoopGeneInstallAdapter: cache invalidation not implemented for skill=%s", skill_name)
+
+    async def remove_skill(self, fs: RemoteFS, skill_name: str) -> None:
+        await fs.remove(f"{SKILLS_DIR_REL}/{skill_name}")
+
+    async def post_remove_cleanup(self, fs: RemoteFS, skill_name: str) -> None:
+        pass

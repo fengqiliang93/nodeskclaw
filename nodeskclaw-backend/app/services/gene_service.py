@@ -53,11 +53,23 @@ from app.services.openclaw_session import (
     inject_evolution_notification,
     invalidate_skill_snapshots,
 )
+from app.services.runtime.gene_install_adapter import GeneInstallAdapter
 
 OPENCLAW_CONFIG_REL = ".openclaw/openclaw.json"
 SKILLS_DIR_REL = ".openclaw/skills"
 
 logger = logging.getLogger(__name__)
+
+
+def _get_gene_install_adapter(runtime: str) -> GeneInstallAdapter:
+    """Get the GeneInstallAdapter for a given runtime, falling back to NoopGeneInstallAdapter."""
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+
+    spec = RUNTIME_REGISTRY.get(runtime)
+    if spec and spec.gene_install_adapter:
+        return spec.gene_install_adapter
+    from app.services.runtime.noop_gene_install_adapter import NoopGeneInstallAdapter
+    return NoopGeneInstallAdapter()
 
 
 async def _get_instance_workspace_ids(db: AsyncSession, instance_id: str) -> list[str]:
@@ -1261,18 +1273,17 @@ async def install_gene_prerestart(instance_id: str, gene_slug: str) -> None:
                 hub_manifest = await genehub_client.get_manifest(gene.slug)
                 manifest = hub_manifest or _json_loads(gene.manifest) or {}
                 skill = manifest.get("skill", {})
+                adapter = _get_gene_install_adapter(instance.runtime)
 
                 async with remote_fs(instance, db) as fs:
                     skill_name = skill.get("name", gene.slug)
                     skill_content = skill.get("content", "")
-                    await _write_skill_file(
+                    await adapter.deploy_skill(
                         fs, skill_name, skill_content,
                         gene.short_description or gene.description or "",
                     )
-                    await ensure_skills_discovery(fs)
-                    await _apply_engineering_actions(fs, manifest)
-                    await invalidate_skill_snapshots(fs)
-                    await inject_evolution_notification(fs, skill_name, "installed")
+                    await _apply_engineering_actions_via_adapter(fs, manifest, adapter)
+                    await adapter.invalidate_cache(fs, skill_name, "installed")
 
                 ig.status = InstanceGeneStatus.installed
                 ig.installed_at = datetime.now(timezone.utc)
@@ -1376,17 +1387,17 @@ async def _direct_install(
                 hub_manifest = await genehub_client.get_manifest(gene.slug)
                 manifest = hub_manifest or _json_loads(gene.manifest) or {}
                 skill = manifest.get("skill", {})
+                adapter = _get_gene_install_adapter(instance.runtime)
 
                 async with remote_fs(instance, db) as fs:
                     skill_name = skill.get("name", gene.slug)
                     skill_content = skill.get("content", "")
-                    await _write_skill_file(fs, skill_name, skill_content, gene.short_description or gene.description or "")
-                    await ensure_skills_discovery(fs)
-
-                    await _apply_engineering_actions(fs, manifest)
-
-                    await invalidate_skill_snapshots(fs)
-                    await inject_evolution_notification(fs, skill_name, "installed")
+                    await adapter.deploy_skill(
+                        fs, skill_name, skill_content,
+                        gene.short_description or gene.description or "",
+                    )
+                    await _apply_engineering_actions_via_adapter(fs, manifest, adapter)
+                    await adapter.invalidate_cache(fs, skill_name, "installed")
 
                 ig.status = InstanceGeneStatus.installed
                 ig.installed_at = datetime.now(timezone.utc)
@@ -1551,7 +1562,7 @@ async def _append_tool_allow(fs: RemoteFS, tool_names: list[str]) -> None:
 
 
 async def _apply_engineering_actions(fs: RemoteFS, manifest: dict) -> None:
-    """Execute all engineering actions from a gene manifest."""
+    """Execute all engineering actions from a gene manifest (legacy, OpenClaw-specific)."""
     openclaw_config = manifest.get("openclaw_config")
     if openclaw_config:
         await _merge_openclaw_config(fs, openclaw_config)
@@ -1559,6 +1570,47 @@ async def _apply_engineering_actions(fs: RemoteFS, manifest: dict) -> None:
     tool_allow = manifest.get("tool_allow")
     if tool_allow and isinstance(tool_allow, list):
         await _append_tool_allow(fs, tool_allow)
+
+
+async def _apply_engineering_actions_via_adapter(
+    fs: RemoteFS, manifest: dict, adapter: GeneInstallAdapter,
+) -> None:
+    """Execute engineering actions using the runtime-specific adapter."""
+    openclaw_config = manifest.get("openclaw_config")
+    if openclaw_config:
+        await adapter.apply_config(fs, openclaw_config)
+
+    tool_allow = manifest.get("tool_allow")
+    if tool_allow and isinstance(tool_allow, list):
+        await adapter.allow_tools(fs, tool_allow)
+
+    scripts = manifest.get("scripts")
+    if scripts and isinstance(scripts, list):
+        await _deploy_gene_scripts(fs, scripts, adapter)
+
+
+async def _deploy_gene_scripts(
+    fs: RemoteFS, script_names: list[str], adapter: GeneInstallAdapter,
+) -> None:
+    """Load script files from gene_scripts directory and deploy them via adapter."""
+    from pathlib import Path
+
+    scripts_dir = Path(__file__).resolve().parent.parent / "data" / "gene_scripts"
+    scripts_to_deploy: dict[str, str] = {}
+
+    api_client_path = scripts_dir / "_api_client.py"
+    if api_client_path.exists():
+        scripts_to_deploy["_api_client.py"] = api_client_path.read_text()
+
+    for name in script_names:
+        script_path = scripts_dir / name
+        if script_path.exists():
+            scripts_to_deploy[name] = script_path.read_text()
+        else:
+            logger.warning("Gene script not found: %s", name)
+
+    if scripts_to_deploy:
+        await adapter.deploy_scripts(fs, scripts_to_deploy)
 
 
 async def _remove_skill_file(fs: RemoteFS, skill_name: str) -> None:
@@ -1612,11 +1664,11 @@ async def handle_learning_callback(
         skill = manifest.get("skill", {})
         gene_desc = gene_obj.short_description or gene_obj.description or ""
         skill_name = skill.get("name", gene_obj.slug)
+        adapter = _get_gene_install_adapter(instance.runtime)
         async with remote_fs(instance, db) as fs:
-            await _write_skill_file(fs, skill_name, skill.get("content", ""), gene_desc)
-            await _apply_engineering_actions(fs, manifest)
-            await invalidate_skill_snapshots(fs)
-            await inject_evolution_notification(fs, skill_name, "installed")
+            await adapter.deploy_skill(fs, skill_name, skill.get("content", ""), gene_desc)
+            await _apply_engineering_actions_via_adapter(fs, manifest, adapter)
+            await adapter.invalidate_cache(fs, skill_name, "installed")
 
         ig_obj.status = InstanceGeneStatus.installed
         ig_obj.installed_at = datetime.now(timezone.utc)
@@ -1624,12 +1676,12 @@ async def handle_learning_callback(
     elif payload.decision == "learned":
         content = payload.content or ""
         gene_desc = gene_obj.short_description or gene_obj.description or ""
+        adapter = _get_gene_install_adapter(instance.runtime)
         async with remote_fs(instance, db) as fs:
-            await _write_skill_file(fs, gene_obj.slug, content, gene_desc)
+            await adapter.deploy_skill(fs, gene_obj.slug, content, gene_desc)
             manifest = _json_loads(gene_obj.manifest) or {}
-            await _apply_engineering_actions(fs, manifest)
-            await invalidate_skill_snapshots(fs)
-            await inject_evolution_notification(fs, gene_obj.slug, "installed")
+            await _apply_engineering_actions_via_adapter(fs, manifest, adapter)
+            await adapter.invalidate_cache(fs, gene_obj.slug, "installed")
 
         ig_obj.status = InstanceGeneStatus.installed
         ig_obj.installed_at = datetime.now(timezone.utc)
@@ -2208,13 +2260,12 @@ async def refresh_gene_skills(db: AsyncSession, gene_slugs: list[str]) -> dict:
             if not skill_content:
                 continue
 
+            adapter = _get_gene_install_adapter(instance.runtime)
             async with remote_fs(instance, db) as fs:
-                await _write_skill_file(
+                await adapter.deploy_skill(
                     fs, skill_name, skill_content,
                     gene.short_description or gene.description or "",
                 )
-                await ensure_skills_discovery(fs)
-                await invalidate_skill_snapshots(fs)
 
             refreshed.append({
                 "instance_id": instance.id,
@@ -2292,11 +2343,10 @@ async def _direct_uninstall(
                 if gene:
                     manifest = _json_loads(gene.manifest) or {}
                     skill_name = manifest.get("skill", {}).get("name", gene.slug)
+                    adapter = _get_gene_install_adapter(instance.runtime)
                     async with remote_fs(instance, db) as fs:
-                        await _remove_skill_file(fs, skill_name)
-                        await ensure_skills_discovery(fs)
-                        await invalidate_skill_snapshots(fs)
-                        await inject_evolution_notification(fs, skill_name, "uninstalled")
+                        await adapter.remove_skill(fs, skill_name)
+                        await adapter.post_remove_cleanup(fs, skill_name)
 
                 ig.soft_delete()
                 if gene:
@@ -2409,10 +2459,10 @@ async def handle_forgetting_callback(
         manifest = _json_loads(gene.manifest) or {}
         skill_name = manifest.get("skill", {}).get("name", gene.slug)
         content = payload.content or ""
+        adapter = _get_gene_install_adapter(instance.runtime)
         async with remote_fs(instance, db) as fs:
-            await _write_skill_file(fs, skill_name, content, gene.short_description or "")
-            await invalidate_skill_snapshots(fs)
-            await inject_evolution_notification(fs, skill_name, "uninstalled")
+            await adapter.deploy_skill(fs, skill_name, content, gene.short_description or "")
+            await adapter.invalidate_cache(fs, skill_name, "uninstalled")
 
         ig.status = InstanceGeneStatus.simplified
         await _record_evolution(
@@ -2444,11 +2494,10 @@ async def handle_forgetting_callback(
     if gene:
         manifest = _json_loads(gene.manifest) or {}
         skill_name = manifest.get("skill", {}).get("name", gene.slug)
+        adapter = _get_gene_install_adapter(instance.runtime)
         async with remote_fs(instance, db) as fs:
-            await _remove_skill_file(fs, skill_name)
-            await ensure_skills_discovery(fs)
-            await invalidate_skill_snapshots(fs)
-            await inject_evolution_notification(fs, skill_name, "uninstalled")
+            await adapter.remove_skill(fs, skill_name)
+            await adapter.post_remove_cleanup(fs, skill_name)
 
     ig.soft_delete()
     if gene:
