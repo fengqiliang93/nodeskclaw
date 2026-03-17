@@ -213,7 +213,8 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE), si
 
 ## Community
 
-[![Join NoDesk AI on Discord](https://invidget.switchblade.xyz/y5NKqcP6eY)](https://discord.gg/y5NKqcP6eY)
+- [Discord](https://discord.gg/y5NKqcP6eY) -- Join the discussion, ask questions, share feedback
+- [GitHub Issues](https://github.com/patchwork-body/nodeskclaw/issues) -- Bug reports and feature requests
 
 ## Contributing
 
