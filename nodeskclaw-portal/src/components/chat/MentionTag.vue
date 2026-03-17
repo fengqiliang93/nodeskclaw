@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
 import { NodeViewWrapper } from '@tiptap/vue-3'
-import { Bot, X } from 'lucide-vue-next'
+import { Bot, Users, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   node: any
@@ -48,7 +48,8 @@ onUnmounted(() => {
       @click.stop.prevent="deleteNode"
     >
       <X class="tag-icon-x" :class="{ visible: hovered }" />
-      <Bot class="tag-icon-bot" :class="{ visible: !hovered }" />
+      <Users v-if="node.attrs.id === 'all'" class="tag-icon-bot" :class="{ visible: !hovered }" />
+      <Bot v-else class="tag-icon-bot" :class="{ visible: !hovered }" />
     </button>
     <span class="tag-label">{{ node.attrs.label }}</span>
 

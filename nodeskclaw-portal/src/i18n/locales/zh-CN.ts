@@ -465,8 +465,10 @@ const zhCN = {
     agentRenamed: "AI 员工已重命名",
   },
   chat: {
-    emptyHint: "发送消息开始群聊，所有 AI 员工都会看到",
-    inputPlaceholder: "输入消息到办公室，{'@'} 提及 AI 员工，/ 执行命令",
+    emptyHint: "{'@'} 提及 AI 员工开始对话，{'@'}所有人 群发消息",
+    inputPlaceholder: "输入消息，{'@'} 提及 AI 员工，/ 执行命令",
+    mentionAll: "所有人",
+    mentionTitle: "提及",
     slugCopied: "AI 员工标识已复制",
     cmdStatusLabel: "显示所有 AI 员工状态",
     cmdClearLabel: "清空聊天记录",

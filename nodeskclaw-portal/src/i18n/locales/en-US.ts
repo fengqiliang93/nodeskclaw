@@ -465,8 +465,10 @@ const enUS = {
     agentRenamed: "AI Employee renamed",
   },
   chat: {
-    emptyHint: "Send a message to start group chat, all AI Employees will see it",
-    inputPlaceholder: "Type a message, {'@'} to mention AI Employee, / for commands",
+    emptyHint: "{'@'} mention an AI Employee to chat, {'@'}Everyone to broadcast",
+    inputPlaceholder: "Type a message, {'@'} to mention, / for commands",
+    mentionAll: "Everyone",
+    mentionTitle: "Mention",
     slugCopied: "AI Employee slug copied",
     cmdStatusLabel: "Show all AI Employee statuses",
     cmdClearLabel: "Clear chat history",

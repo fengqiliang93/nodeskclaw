@@ -371,11 +371,18 @@ class TunnelAdapter:
         )
 
         mention_targets: list[str] = data.extensions.get("mention_targets", [])
-        is_mentioned = agent_name in mention_targets or target_node_id in mention_targets
+        is_mention_all = "all" in mention_targets
+        is_mentioned = (
+            is_mention_all
+            or agent_name in mention_targets
+            or target_node_id in mention_targets
+        )
         has_any_mention = len(mention_targets) > 0
         no_reply = False
 
-        if has_any_mention and not is_mentioned:
+        if not has_any_mention:
+            no_reply = True
+        elif has_any_mention and not is_mentioned:
             context_prompt += "\n[系统指令] 用户没有@提及你。你必须且只能回复 NO_REPLY。"
             no_reply = True
         elif has_any_mention and is_mentioned:

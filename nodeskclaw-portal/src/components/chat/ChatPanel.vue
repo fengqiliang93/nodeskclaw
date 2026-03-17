@@ -10,7 +10,7 @@ import { useWorkspaceStore, type GroupChatMessage, type AgentBrief, type FileAtt
 import FileAttachmentList from './FileAttachmentList.vue'
 import BaseTooltip from '@/components/shared/BaseTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
-import { Send, Loader2, Bot, User, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText } from 'lucide-vue-next'
+import { Send, Loader2, Bot, User, Users, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -416,7 +416,14 @@ const editor = useEditor({
         allowedPrefixes: null,
         items: ({ query }: { query: string }) => {
           const q = query.toLowerCase()
-          return agents.value
+          const allItem = {
+            id: 'all',
+            label: t('chat.mentionAll'),
+            sublabel: '',
+            status: '',
+            slug: '',
+          }
+          const agentItems = agents.value
             .filter(a => agentLabel(a).toLowerCase().includes(q))
             .sort((a, b) => hexDistToBlackboard(a.hex_q, a.hex_r) - hexDistToBlackboard(b.hex_q, b.hex_r))
             .slice(0, 10)
@@ -427,6 +434,9 @@ const editor = useEditor({
               status: a.status,
               slug: a.slug,
             }))
+          const allMatch = allItem.label.toLowerCase().includes(q)
+            || 'all'.includes(q)
+          return allMatch ? [allItem, ...agentItems] : agentItems
         },
         render: createSuggestionRenderer(mentionState),
         command: ({ editor: ed, range, props: p }: any) => {
@@ -533,6 +543,8 @@ function triggerSlash() {
 function parseContent(content: string): Array<{ type: 'text' | 'mention'; value: string }> {
   if (!content) return [{ type: 'text', value: '...' }]
   const agentNames = new Set(agents.value.map(a => agentLabel(a)))
+  agentNames.add(t('chat.mentionAll'))
+  agentNames.add('Everyone')
   const segments: Array<{ type: 'text' | 'mention'; value: string }> = []
   const regex = /@(\S+)/g
   let lastIdx = 0
@@ -763,7 +775,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
           class="absolute bottom-full left-4 right-4 mb-1 rounded-lg border border-border bg-card shadow-lg overflow-hidden z-10"
         >
           <div class="px-3 py-1.5 text-[10px] text-muted-foreground font-medium uppercase tracking-wide border-b border-border">
-            AI 员工
+            {{ t('chat.mentionTitle') }}
           </div>
           <div class="max-h-40 overflow-y-auto">
             <button
@@ -774,7 +786,8 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
               @mousedown.prevent="selectSuggestionItem(mentionState!, item)"
               @mouseenter="updateSuggestionIndex(mentionState!, idx)"
             >
-              <Bot class="w-4 h-4 shrink-0" :style="{ color: getAgentColor(item.id) }" />
+              <Users v-if="item.id === 'all'" class="w-4 h-4 shrink-0 text-primary" />
+              <Bot v-else class="w-4 h-4 shrink-0" :style="{ color: getAgentColor(item.id) }" />
               <div class="flex flex-col min-w-0 flex-1">
                 <span class="font-medium truncate">{{ item.label }}</span>
                 <span v-if="item.sublabel" class="text-[10px] text-muted-foreground truncate">{{ item.sublabel }}</span>
