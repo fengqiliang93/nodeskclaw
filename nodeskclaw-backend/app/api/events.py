@@ -1,5 +1,7 @@
 """K8s events SSE streaming endpoints."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
