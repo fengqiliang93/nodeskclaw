@@ -1,5 +1,8 @@
 [中文](README.zh-CN.md)
 
+[![Discord](https://img.shields.io/discord/1483008731934359723?logo=discord&label=Discord&color=5865F2)](https://discord.gg/y5NKqcP6eY)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 # DeskClaw
 
 **Co-operate with AI.** The open-source platform where humans and AI run businesses together -- from strategy to execution.
@@ -207,6 +210,10 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE), si
 | [Artifacts](nodeskclaw-artifacts/README.md) | DeskClaw image build & deploy manifests |
 | [Channel Plugin](openclaw-channel-nodeskclaw/README.md) | Cyber Workspace communication infrastructure |
 | [LLM Proxy](nodeskclaw-llm-proxy/README.md) | AI reasoning capability relay |
+
+## Community
+
+[![Join NoDesk AI on Discord](https://invidget.switchblade.xyz/y5NKqcP6eY)](https://discord.gg/y5NKqcP6eY)
 
 ## Contributing
 
