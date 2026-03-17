@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EE_DIR="$SCRIPT_DIR/ee"
 BACKEND_DIR="$SCRIPT_DIR/nodeskclaw-backend"
+LLM_PROXY_DIR="$SCRIPT_DIR/nodeskclaw-llm-proxy"
 PORTAL_DIR="$SCRIPT_DIR/nodeskclaw-portal"
 ADMIN_DIR="$EE_DIR/nodeskclaw-frontend"
 
@@ -37,6 +38,7 @@ usage() {
 
 服务端口:
   backend    http://localhost:8000
+  llm-proxy  http://localhost:8080
   portal     http://localhost:4517
   admin(EE)  http://localhost:4518
 EOF
@@ -162,6 +164,7 @@ log "前置检查通过 (uv=$(uv --version 2>/dev/null || echo '?'), node=$(node
 if [ "$FRESH" = true ]; then
   log "--fresh: 清理并重新安装依赖..."
   rm -rf "$BACKEND_DIR/.venv"
+  rm -rf "$LLM_PROXY_DIR/.venv"
   rm -rf "$PORTAL_DIR/node_modules"
   [ "$MODE" = "ee" ] && rm -rf "$ADMIN_DIR/node_modules"
 fi
@@ -171,6 +174,13 @@ if [ ! -d "$BACKEND_DIR/.venv" ]; then
   (cd "$BACKEND_DIR" && uv sync)
 else
   log "后端依赖已就绪，跳过安装"
+fi
+
+if [ ! -d "$LLM_PROXY_DIR/.venv" ]; then
+  log "安装 LLM Proxy 依赖 (uv sync)..."
+  (cd "$LLM_PROXY_DIR" && uv sync)
+else
+  log "LLM Proxy 依赖已就绪，跳过安装"
 fi
 
 if [ ! -d "$PORTAL_DIR/node_modules" ]; then
@@ -203,6 +213,13 @@ log "执行数据库迁移 (alembic upgrade head)..."
 # ── 启动服务 ──────────────────────────────────────────────
 log "启动服务..."
 
+export LLM_PROXY_URL="http://localhost:8080"
+export LLM_PROXY_INTERNAL_URL="http://localhost:8080"
+
+(cd "$LLM_PROXY_DIR" && uv run uvicorn app.main:app --port 8080 --timeout-graceful-shutdown 3) \
+  2>&1 | prefix_output "$CYAN" "llm-prx" &
+PIDS+=($!)
+
 (cd "$BACKEND_DIR" && uv run uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 3) \
   2>&1 | prefix_output "$BLUE" "backend" &
 PIDS+=($!)
@@ -228,6 +245,7 @@ echo "${BOLD}========================================${RESET}"
 echo "${BOLD} NoDeskClaw 本地开发环境 (${MODE_UPPER})${RESET}"
 echo "${BOLD}========================================${RESET}"
 echo "  ${BLUE}Backend${RESET}  http://localhost:8000"
+echo "  ${CYAN}LLM Prx${RESET}  http://localhost:8080"
 echo "  ${GREEN}Portal${RESET}   http://localhost:4517"
 if [ "$MODE" = "ee" ]; then
   echo "  ${YELLOW}Admin${RESET}    http://localhost:4518"

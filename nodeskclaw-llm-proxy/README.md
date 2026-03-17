@@ -6,9 +6,12 @@ DeskClaw LLM 代理 -- AI 经营伙伴的智力供给中枢。负责大语言模
 
 - 通过 `proxy_token` 鉴权，解析组织/个人 Key
 - 支持 OpenAI、Anthropic、Gemini、OpenRouter、MiniMax 等 Provider
-- Working Plan 额度检查
+- Working Plan 额度检查（仅组织 Key）
 - 流式/非流式请求转发
-- Token 用量自动记录
+- 全量 Token 用量记录（组织 Key + 个人 Key），含 latency、status_code、request_path 等元数据
+- `stream_options` 按 provider 白名单自动注入（OpenAI/OpenRouter/MiniMax/Gemini）
+- 可选请求体记录（`LLM_LOG_CONTENT` 环境变量控制，默认关闭）
+- 响应元数据记录（去除 content 后的结构化 JSON，始终存储）
 
 ## 目录结构
 
@@ -25,13 +28,17 @@ nodeskclaw-llm-proxy/
     clash-config.yaml     # Clash 出站代理配置
   app/
     main.py               # FastAPI 入口
-    config.py             # 配置（DATABASE_URL, HTTPS_PROXY）
+    config.py             # 配置（DATABASE_URL, HTTPS_PROXY, LLM_LOG_CONTENT）
     database.py           # 数据库连接
     models.py             # 精简 DB models（只含 proxy 所需列）
     proxy.py              # 代理核心逻辑
 ```
 
 ## 本地开发
+
+推荐使用项目根目录的 `./dev.sh`，它会自动启动 LLM Proxy（port 8080）、Backend、前端并覆盖 `LLM_PROXY_URL`。
+
+手动启动：
 
 ```bash
 # 安装依赖

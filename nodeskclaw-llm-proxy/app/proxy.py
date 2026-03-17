@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 import httpx
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.database import get_session
 from app.models import Instance, LlmUsageLog, OrgLlmKey, UserLlmConfig, UserLlmKey, not_deleted
 
@@ -24,6 +26,8 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
     "minimax-openai": {"base_url": "https://api.minimaxi.com", "auth_type": "bearer"},
     "minimax-anthropic": {"base_url": "https://api.minimaxi.com/anthropic", "auth_type": "bearer"},
 }
+
+_OPENAI_STREAM_PROVIDERS = {"openai", "openrouter", "minimax-openai", "gemini"}
 
 _http_client: httpx.AsyncClient | None = None
 
@@ -95,8 +99,8 @@ async def _check_quota(org_key_id: str, org_limit: int | None, sys_limit: int | 
     return True, ""
 
 
-def _maybe_inject_stream_options(body: bytes, is_org_key: bool) -> bytes:
-    if not is_org_key:
+def _maybe_inject_stream_options(body: bytes, provider: str) -> bytes:
+    if provider not in _OPENAI_STREAM_PROVIDERS:
         return body
     try:
         data = json.loads(body)
@@ -143,6 +147,23 @@ def _parse_usage_from_sse_chunk(line: str) -> dict | None:
     return None
 
 
+def _strip_content_from_response(body: bytes) -> str | None:
+    """Strip content fields from response JSON, keeping only metadata."""
+    try:
+        data = json.loads(body)
+        if "choices" in data:
+            for choice in data.get("choices", []):
+                msg = choice.get("message")
+                if isinstance(msg, dict) and "content" in msg:
+                    msg["content"] = None
+                delta = choice.get("delta")
+                if isinstance(delta, dict) and "content" in delta:
+                    delta["content"] = None
+        return json.dumps(data, ensure_ascii=False)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
 @router.api_route(
     "/{provider}/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
@@ -186,6 +207,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
             })
 
         is_org_key = config.key_source == "org"
+        key_source = "org" if is_org_key else "personal"
         real_key: str | None = None
         base_url: str | None = None
         org_key_id: str | None = None
@@ -230,8 +252,8 @@ async def llm_proxy(provider: str, path: str, request: Request):
     target_url = _build_target_url(provider, path, base_url, real_key)
     req_headers = _build_auth_headers(provider, real_key, dict(request.headers))
 
-    body = await request.body()
-    body = _maybe_inject_stream_options(body, is_org_key)
+    raw_body = await request.body()
+    body = _maybe_inject_stream_options(raw_body, provider)
 
     is_stream = False
     try:
@@ -240,38 +262,71 @@ async def llm_proxy(provider: str, path: str, request: Request):
     except (json.JSONDecodeError, UnicodeDecodeError):
         pass
 
+    ctx = _RequestContext(
+        instance=instance,
+        provider=provider,
+        key_source=key_source,
+        org_key_id=org_key_id,
+        request_path=f"/{path}",
+        is_stream=is_stream,
+        raw_body=raw_body,
+    )
+
     client = _get_http_client()
 
     if is_stream:
-        return await _handle_stream(
-            client, request.method, target_url, req_headers, body,
-            is_org_key, org_key_id, instance, provider,
-        )
+        return await _handle_stream(client, request.method, target_url, req_headers, body, ctx)
     else:
-        return await _handle_non_stream(
-            client, request.method, target_url, req_headers, body,
-            is_org_key, org_key_id, instance, provider,
-        )
+        return await _handle_non_stream(client, request.method, target_url, req_headers, body, ctx)
+
+
+class _RequestContext:
+    __slots__ = ("instance", "provider", "key_source", "org_key_id",
+                 "request_path", "is_stream", "raw_body")
+
+    def __init__(self, *, instance: Instance, provider: str, key_source: str,
+                 org_key_id: str | None, request_path: str, is_stream: bool,
+                 raw_body: bytes):
+        self.instance = instance
+        self.provider = provider
+        self.key_source = key_source
+        self.org_key_id = org_key_id
+        self.request_path = request_path
+        self.is_stream = is_stream
+        self.raw_body = raw_body
 
 
 async def _handle_non_stream(
     client: httpx.AsyncClient,
     method: str, url: str, headers: dict, body: bytes,
-    is_org_key: bool, org_key_id: str | None,
-    instance: Instance, provider: str,
+    ctx: _RequestContext,
 ) -> JSONResponse:
+    start = time.monotonic()
     try:
         resp = await client.request(method, url, headers=headers, content=body)
     except httpx.RequestError as e:
+        latency_ms = int((time.monotonic() - start) * 1000)
         logger.error("LLM proxy request failed: %s", e)
+        await _record_usage(ctx, usage={}, status_code=502, latency_ms=latency_ms,
+                            error_message=str(e)[:512])
         return JSONResponse(status_code=502, content={"error": f"上游请求失败: {e}"})
 
+    latency_ms = int((time.monotonic() - start) * 1000)
     resp_body = resp.content
 
-    if is_org_key and org_key_id and resp.status_code < 400:
-        usage = _parse_usage_from_response(resp_body)
-        if usage:
-            await _record_usage(org_key_id, instance, provider, usage)
+    usage = _parse_usage_from_response(resp_body) if resp.status_code < 400 else {}
+    response_meta = _strip_content_from_response(resp_body)
+    error_msg = None
+    if resp.status_code >= 400:
+        try:
+            err_data = json.loads(resp_body)
+            error_msg = str(err_data.get("error", ""))[:512]
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            error_msg = resp_body[:512].decode("utf-8", errors="replace") if resp_body else None
+
+    await _record_usage(ctx, usage=usage, status_code=resp.status_code,
+                        latency_ms=latency_ms, error_message=error_msg,
+                        response_body=response_meta)
 
     resp_headers = {}
     for k, v in resp.headers.items():
@@ -302,14 +357,17 @@ async def _handle_non_stream(
 async def _handle_stream(
     client: httpx.AsyncClient,
     method: str, url: str, headers: dict, body: bytes,
-    is_org_key: bool, org_key_id: str | None,
-    instance: Instance, provider: str,
+    ctx: _RequestContext,
 ) -> StreamingResponse:
+    start = time.monotonic()
     try:
         req = client.build_request(method, url, headers=headers, content=body)
         resp = await client.send(req, stream=True)
     except httpx.RequestError as e:
+        latency_ms = int((time.monotonic() - start) * 1000)
         logger.error("LLM proxy stream request failed: %s", e)
+        await _record_usage(ctx, usage={}, status_code=502, latency_ms=latency_ms,
+                            error_message=str(e)[:512])
         return JSONResponse(status_code=502, content={"error": f"上游请求失败: {e}"})
 
     usage_data: dict = {}
@@ -319,10 +377,9 @@ async def _handle_stream(
         seen_done = False
         try:
             async for line in resp.aiter_lines():
-                if is_org_key and org_key_id:
-                    parsed = _parse_usage_from_sse_chunk(line)
-                    if parsed:
-                        usage_data = parsed
+                parsed = _parse_usage_from_sse_chunk(line)
+                if parsed:
+                    usage_data = parsed
                 if line.strip() == "data: [DONE]":
                     seen_done = True
                 yield line + "\n"
@@ -330,8 +387,10 @@ async def _handle_stream(
                 yield "data: [DONE]\n\n"
         finally:
             await resp.aclose()
-            if is_org_key and org_key_id and usage_data:
-                await _record_usage(org_key_id, instance, provider, usage_data)
+            latency_ms = int((time.monotonic() - start) * 1000)
+            response_meta = json.dumps(usage_data, ensure_ascii=False) if usage_data else None
+            await _record_usage(ctx, usage=usage_data, status_code=resp.status_code,
+                                latency_ms=latency_ms, response_body=response_meta)
 
     resp_headers = {}
     for k, v in resp.headers.items():
@@ -349,18 +408,42 @@ async def _handle_stream(
     )
 
 
-async def _record_usage(org_key_id: str, instance: Instance, provider: str, usage: dict):
+async def _record_usage(
+    ctx: _RequestContext,
+    *,
+    usage: dict,
+    status_code: int | None = None,
+    latency_ms: int | None = None,
+    error_message: str | None = None,
+    response_body: str | None = None,
+):
     try:
+        request_body = None
+        if settings.LLM_LOG_CONTENT:
+            try:
+                request_body = ctx.raw_body.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+
         async with get_session() as db:
             log = LlmUsageLog(
-                org_llm_key_id=org_key_id,
-                user_id=instance.created_by,
-                instance_id=instance.id,
-                provider=provider,
+                org_llm_key_id=ctx.org_key_id,
+                user_id=ctx.instance.created_by,
+                instance_id=ctx.instance.id,
+                provider=ctx.provider,
                 model=usage.get("model"),
                 prompt_tokens=usage.get("prompt_tokens", 0),
                 completion_tokens=usage.get("completion_tokens", 0),
                 total_tokens=usage.get("total_tokens", 0),
+                org_id=ctx.instance.org_id,
+                key_source=ctx.key_source,
+                request_path=ctx.request_path,
+                is_stream=ctx.is_stream,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                error_message=error_message,
+                request_body=request_body,
+                response_body=response_body,
             )
             db.add(log)
             await db.commit()

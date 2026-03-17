@@ -116,6 +116,7 @@ docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
 |---|---|
 | Portal | http://localhost |
 | Backend API | http://localhost:8000 |
+| LLM Proxy | http://localhost:8080 |
 | Admin (EE) | http://localhost:8001 |
 
 To use an external database instead of the built-in PostgreSQL, create a `.env` at project root with your `DATABASE_URL` and start only the services you need:
@@ -157,8 +158,8 @@ The script handles dependency installation, starts all services with colored log
 
 | Mode | Services | Ports |
 |------|----------|-------|
-| CE | backend + portal | 8000, 4517 |
-| EE | backend + portal + admin | 8000, 4517, 4518 |
+| CE | backend + llm-proxy + portal | 8000, 8080, 4517 |
+| EE | backend + llm-proxy + portal + admin | 8000, 8080, 4517, 4518 |
 
 <details>
 <summary>Manual Start (alternative)</summary>

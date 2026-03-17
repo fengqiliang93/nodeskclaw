@@ -7,7 +7,7 @@ Schema is owned by nodeskclaw-backend; this service never runs migrations.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -76,8 +76,18 @@ class LlmUsageLog(Base):
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     instance_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_tokens: Mapped[int] = mapped_column(default=0)
     completion_tokens: Mapped[int] = mapped_column(default=0)
     total_tokens: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    org_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    key_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    request_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    is_stream: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    status_code: Mapped[int | None] = mapped_column(nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    request_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
