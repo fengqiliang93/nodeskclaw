@@ -5,8 +5,12 @@ ARG IMAGE_VERSION=v0.1.0
 ARG TARGETARCH=amd64
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl && \
+    ca-certificates curl python3-minimal python3-pip && \
     rm -rf /var/lib/apt/lists/*
+
+COPY nodeskclaw-tunnel-bridge/ /tmp/nodeskclaw-tunnel-bridge/
+RUN pip3 install --no-cache-dir --break-system-packages /tmp/nodeskclaw-tunnel-bridge/ && \
+    rm -rf /tmp/nodeskclaw-tunnel-bridge/
 
 RUN mkdir -p /opt/zeroclaw && \
     curl -fsSL "https://github.com/nicholasgasior/zeroclaw/releases/download/${ZEROCLAW_VERSION}/zeroclaw-linux-${TARGETARCH}" \

@@ -6,3 +6,8 @@ gateway:
 
 session:
   store: "memory"
+
+channels:
+  nodeskclaw:
+    enabled: true
+    allow_from: ["*"]

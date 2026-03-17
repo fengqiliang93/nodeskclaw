@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir "nanobot-ai==${NANOBOT_VERSION}"
 
+COPY nodeskclaw-tunnel-bridge/ /tmp/nodeskclaw-tunnel-bridge/
+RUN pip install --no-cache-dir /tmp/nodeskclaw-tunnel-bridge/ && \
+    rm -rf /tmp/nodeskclaw-tunnel-bridge/
+
 COPY nanobot.yaml.template /opt/nanobot/nanobot.yaml.template
 COPY docker-entrypoint.sh /opt/nanobot/docker-entrypoint.sh
 RUN chmod +x /opt/nanobot/docker-entrypoint.sh
