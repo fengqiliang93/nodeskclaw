@@ -526,6 +526,13 @@ async def update_agent(
 
 async def _deploy_channel_plugin(inst: Instance, db: AsyncSession, workspace_id: str) -> None:
     """Deploy nodeskclaw channel plugin config + restart instance + connect SSE."""
+    if inst.runtime and inst.runtime != "openclaw":
+        logger.info(
+            "跳过 OpenClaw channel plugin 部署（runtime=%s）: instance=%s",
+            inst.runtime, inst.name,
+        )
+        return
+
     try:
         from app.services.llm_config_service import deploy_nodeskclaw_channel_plugin
         await deploy_nodeskclaw_channel_plugin(inst, db, workspace_id)

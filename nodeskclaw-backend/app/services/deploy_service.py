@@ -437,6 +437,10 @@ async def deploy_instance(
     await db.commit()
     await db.refresh(instance)
 
+    env_vars["NODESKCLAW_INSTANCE_ID"] = str(instance.id)
+    instance.env_vars = _json.dumps(env_vars)
+    await db.commit()
+
     from app.models.instance_member import InstanceMember, InstanceRole
     db.add(InstanceMember(
         instance_id=instance.id, user_id=user.id, role=InstanceRole.admin,
