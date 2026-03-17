@@ -14,6 +14,9 @@ class AdminMemberInfo(BaseModel):
     user_email: str | None = None
     user_avatar_url: str | None = None
     created_at: datetime
+    is_super_admin: bool = False
+    is_active: bool = True
+    last_login_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
