@@ -13,8 +13,8 @@ from app.core.security import get_current_user
 from app.models.cluster import Cluster
 from app.models.user import User
 from app.schemas.common import ApiResponse
-from app.services.k8s.client_manager import k8s_manager
 from app.services.config_service import get_config
+from app.services.runtime.registries.compute_registry import require_k8s_client
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,11 @@ class StorageClassInfo(BaseModel):
 async def _fetch_all_storage_classes(db: AsyncSession) -> list[StorageClassInfo]:
     """从已连接集群获取全部 StorageClass。"""
     result = await db.execute(
-        select(Cluster).where(Cluster.status == "connected", Cluster.deleted_at.is_(None))
+        select(Cluster).where(
+            Cluster.status == "connected",
+            Cluster.compute_provider == "k8s",
+            Cluster.deleted_at.is_(None),
+        )
     )
     cluster = result.scalars().first()
     if not cluster:
@@ -43,8 +47,8 @@ async def _fetch_all_storage_classes(db: AsyncSession) -> list[StorageClassInfo]
     try:
         from kubernetes_asyncio.client import StorageV1Api
 
-        api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-        storage_api = StorageV1Api(api_client)
+        k8s = await require_k8s_client(cluster)
+        storage_api = StorageV1Api(k8s.core.api_client)
         sc_list = await storage_api.list_storage_class()
 
         # 读取管理员启用列表

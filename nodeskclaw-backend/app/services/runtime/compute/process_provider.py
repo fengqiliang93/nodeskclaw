@@ -102,6 +102,13 @@ class ProcessComputeProvider:
                 pass
         return ""
 
+    async def restart_instance(self, handle: ComputeHandle, config: InstanceComputeConfig) -> ComputeHandle:
+        await self.destroy_instance(handle)
+        return await self.create_instance(config)
+
+    async def scale_instance(self, handle: ComputeHandle, replicas: int) -> ComputeHandle:
+        raise NotImplementedError("ProcessComputeProvider 不支持水平扩缩容")
+
     async def update_instance(
         self, handle: ComputeHandle, config: InstanceComputeConfig,
     ) -> ComputeHandle:

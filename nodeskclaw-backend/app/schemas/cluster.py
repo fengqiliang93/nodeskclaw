@@ -24,9 +24,9 @@ class ClusterUpdate(BaseModel):
 class ClusterInfo(BaseModel):
     id: str
     name: str
-    provider: str
+    provider: str = "unknown"
     compute_provider: str = "k8s"
-    auth_type: str
+    auth_type: str = "unknown"
     ingress_class: str = "nginx"
     proxy_endpoint: str | None = None
     api_server_url: str | None = None
@@ -35,6 +35,7 @@ class ClusterInfo(BaseModel):
     health_status: str | None = None
     token_expires_at: datetime | None = None
     last_health_check: datetime | None = None
+    provider_config: dict = {}
     created_by: str
     created_at: datetime
     updated_at: datetime

@@ -262,9 +262,9 @@ async def _get_k8s_client(instance: Instance, db: AsyncSession) -> K8sClient:
         select(Cluster).where(Cluster.id == instance.cluster_id)
     )
     cluster = cluster_result.scalar_one_or_none()
-    if not cluster or not cluster.kubeconfig_encrypted:
+    if not cluster or not cluster.is_k8s or not cluster.credentials_encrypted:
         raise NFSMountError("实例所属集群不可用")
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+    api_client = await k8s_manager.get_or_create(cluster.id, cluster.credentials_encrypted)
     return K8sClient(api_client)
 
 

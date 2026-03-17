@@ -309,6 +309,8 @@ def encrypt_kubeconfig(plaintext: str) -> str:
 
 def decrypt_kubeconfig(encrypted: str) -> str:
     """Decrypt base64(nonce + ciphertext) back to KubeConfig plaintext."""
+    if not encrypted:
+        raise ValueError("credentials_encrypted 为空，无法解密（可能是非 K8s 集群）")
     key = _get_aes_key()
     raw = base64.b64decode(encrypted)
     nonce, ciphertext = raw[:12], raw[12:]

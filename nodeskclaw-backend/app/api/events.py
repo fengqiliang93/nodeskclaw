@@ -14,8 +14,7 @@ from app.core.exceptions import NotFoundError
 from app.core.security import get_current_user
 from app.models.cluster import Cluster
 from app.models.user import User
-from app.services.k8s.client_manager import k8s_manager
-from app.services.k8s.k8s_client import K8sClient
+from app.services.runtime.registries.compute_registry import require_k8s_client
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +39,9 @@ async def events_stream(
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+    k8s = await require_k8s_client(cluster)
 
     async def generate():
-        k8s = K8sClient(api_client)
         yield ": connected\n\n"
 
         event_queue: asyncio.Queue[str | None] = asyncio.Queue()

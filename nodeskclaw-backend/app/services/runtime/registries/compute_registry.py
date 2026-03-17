@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.services.k8s.k8s_client import K8sClient
 
 logger = logging.getLogger(__name__)
+
+
+class ComputeCapability:
+    K8S_EVENTS = "k8s_events"
+    POD_LOGS = "pod_logs"
+    STORAGE_CLASSES = "storage_classes"
+    K8S_OVERVIEW = "k8s_overview"
+    CONFIGMAP = "configmap"
+    EXEC = "exec"
 
 
 @dataclass(frozen=True)
@@ -15,6 +27,7 @@ class ComputeSpec:
     provider: Any = None
     description: str | None = None
     supports_sidecar: bool = True
+    capabilities: frozenset[str] = field(default_factory=frozenset)
     config_schema: dict | None = None
 
 
@@ -36,6 +49,19 @@ class ComputeRegistry:
 COMPUTE_REGISTRY = ComputeRegistry()
 
 
+async def require_k8s_client(cluster) -> "K8sClient":
+    """检查集群类型并获取 K8s 客户端。非 K8s 集群直接抛出 BadRequestError。"""
+    from app.core.exceptions import BadRequestError
+
+    spec = COMPUTE_REGISTRY.get(cluster.compute_provider)
+    if not spec or not hasattr(spec.provider, "get_k8s_client"):
+        raise BadRequestError(
+            message=f"集群类型 {cluster.compute_provider} 不支持此操作",
+            message_key="errors.cluster.unsupported_operation",
+        )
+    return await spec.provider.get_k8s_client(cluster)
+
+
 def _register_builtins() -> None:
     from app.services.runtime.compute.docker_provider import DockerComputeProvider
     from app.services.runtime.compute.k8s_provider import K8sComputeProvider
@@ -46,18 +72,25 @@ def _register_builtins() -> None:
         provider=K8sComputeProvider(),
         description="Kubernetes compute -- Deployment + Service + NetworkPolicy.",
         supports_sidecar=True,
+        capabilities=frozenset({
+            ComputeCapability.K8S_EVENTS, ComputeCapability.POD_LOGS,
+            ComputeCapability.STORAGE_CLASSES, ComputeCapability.K8S_OVERVIEW,
+            ComputeCapability.CONFIGMAP, ComputeCapability.EXEC,
+        }),
     ))
     COMPUTE_REGISTRY.register(ComputeSpec(
         compute_id="docker",
         provider=DockerComputeProvider(),
         description="Docker compose compute -- local container orchestration.",
         supports_sidecar=True,
+        capabilities=frozenset(),
     ))
     COMPUTE_REGISTRY.register(ComputeSpec(
         compute_id="process",
         provider=ProcessComputeProvider(),
         description="Local process compute -- subprocess management for dev/testing.",
         supports_sidecar=False,
+        capabilities=frozenset(),
     ))
 
 

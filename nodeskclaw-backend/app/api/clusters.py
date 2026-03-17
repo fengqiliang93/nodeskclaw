@@ -14,8 +14,7 @@ from app.models.user import User
 from app.schemas.cluster import ClusterCreate, ClusterInfo, ClusterUpdate, ConnectionTestResult
 from app.schemas.common import ApiResponse
 from app.services import cluster_service
-from app.services.k8s.client_manager import k8s_manager
-from app.services.k8s.k8s_client import K8sClient
+from app.services.runtime.registries.compute_registry import require_k8s_client
 
 router = APIRouter()
 
@@ -106,20 +105,18 @@ async def cluster_overview(
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    k8s = await require_k8s_client(cluster)
 
     summary = await k8s.get_cluster_overview()
     nodes = await k8s.list_nodes()
 
-    # 获取 StorageClass 列表（标记哪些被 NoDeskClaw 启用）
     storage_classes = []
     try:
         import json as _json
         from kubernetes_asyncio.client import StorageV1Api
         from app.services.config_service import get_config
 
-        storage_api = StorageV1Api(api_client)
+        storage_api = StorageV1Api(k8s.core.api_client)
         sc_list = await storage_api.list_storage_class()
 
         allowed_raw = await get_config("allowed_storage_classes", db)
@@ -149,7 +146,7 @@ async def cluster_overview(
     try:
         from kubernetes_asyncio.client import NetworkingV1Api
 
-        networking_api = NetworkingV1Api(api_client)
+        networking_api = NetworkingV1Api(k8s.core.api_client)
         ic_list = await networking_api.list_ingress_class()
         for ic in ic_list.items:
             ingress_classes.append({

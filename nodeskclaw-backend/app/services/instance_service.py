@@ -10,7 +10,7 @@ from typing import Coroutine
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.models.cluster import Cluster
 from app.models.workspace import Workspace
 from app.models.workspace_agent import WorkspaceAgent
@@ -253,10 +253,10 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
             }]
         except Exception as e:
             logger.warning("Failed to get Docker status for instance %s: %s", instance_id, e)
-    elif cluster and cluster.kubeconfig_encrypted:
+    elif cluster and cluster.is_k8s and cluster.credentials_encrypted:
         try:
-            api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-            k8s = K8sClient(api_client)
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
             label_selector = f"app.kubernetes.io/name={_k8s_name(instance)}"
             pods = await k8s.list_pods(instance.namespace, label_selector)
             detail.pods = [
@@ -330,10 +330,10 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
                 select(Cluster).where(Cluster.id == instance.cluster_id, Cluster.deleted_at.is_(None))
             )
             cluster = cluster_result.scalar_one_or_none()
-            if cluster and cluster.kubeconfig_encrypted:
+            if cluster and cluster.is_k8s and cluster.credentials_encrypted:
                 try:
-                    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-                    k8s = K8sClient(api_client)
+                    from app.services.runtime.registries.compute_registry import require_k8s_client
+                    k8s = await require_k8s_client(cluster)
                     ns = instance.namespace
                     try:
                         await k8s.core.delete_namespace(ns)
@@ -386,8 +386,8 @@ async def scale_instance(instance_id: str, replicas: int, db: AsyncSession):
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
     await k8s.scale_deployment(instance.namespace, _k8s_name(instance), replicas)
 
     instance.replicas = replicas
@@ -426,8 +426,8 @@ async def restart_instance(instance_id: str, db: AsyncSession):
     instance.status = InstanceStatus.restarting
     await db.commit()
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
     name = _k8s_name(instance)
     desired = instance.replicas or 1
 
@@ -441,7 +441,7 @@ async def restart_instance(instance_id: str, db: AsyncSession):
         raise
 
     logger.info("实例 %s (%s) 已触发重启 (scale 0->%d)", instance.name, instance_id, desired)
-    _fire_task(_monitor_restart(instance_id, cluster.id, cluster.kubeconfig_encrypted, instance.namespace, name))
+    _fire_task(_monitor_restart(instance_id, cluster.id, cluster.credentials_encrypted, instance.namespace, name))
 
 
 _RESTART_POLL_INTERVAL = 5
@@ -459,7 +459,7 @@ def _broadcast_agent_status(workspace_ids: list[str], instance_id: str, status: 
 
 
 async def _monitor_restart(
-    instance_id: str, cluster_id: str, kubeconfig_encrypted: str, namespace: str, deploy_name: str,
+    instance_id: str, cluster_id: str, credentials_encrypted: str, namespace: str, deploy_name: str,
 ) -> None:
     """Poll K8s pod status after restart and update DB status when ready."""
     from app.core.deps import async_session_factory
@@ -469,7 +469,7 @@ async def _monitor_restart(
     elapsed = 0
     while elapsed < _RESTART_TIMEOUT:
         try:
-            api_client = await k8s_manager.get_or_create(cluster_id, kubeconfig_encrypted)
+            api_client = await k8s_manager.get_or_create(cluster_id, credentials_encrypted)
             k8s = K8sClient(api_client)
             pods = await k8s.list_pods(namespace)
             has_ready = any(
@@ -534,8 +534,8 @@ async def get_pod_logs(
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
     return await k8s.get_pod_logs(instance.namespace, pod_name, container, tail_lines)
 
 
@@ -714,8 +714,8 @@ async def _execute_config_update(
             record.finished_at = datetime.now(timezone.utc)
     else:
         try:
-            api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-            k8s = K8sClient(api_client)
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
 
             from app.services.registry_service import resolve_image_registry
 
@@ -798,8 +798,10 @@ async def sync_gateway_token(instance_id: str, db: AsyncSession) -> str:
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    if not cluster.is_k8s:
+        raise BadRequestError("Docker 集群不支持此操作", message_key="errors.cluster.unsupported_operation")
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
 
     # 找一个 Running 的 Pod
     k_name = _k8s_name(instance)
@@ -860,8 +862,10 @@ async def regenerate_gateway_token(instance_id: str, db: AsyncSession) -> str:
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-    k8s = K8sClient(api_client)
+    if not cluster.is_k8s:
+        raise BadRequestError("Docker 集群不支持此操作", message_key="errors.cluster.unsupported_operation")
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
 
     new_token = secrets.token_hex(24)
     while new_token == old_env_vars.get("OPENCLAW_GATEWAY_TOKEN"):

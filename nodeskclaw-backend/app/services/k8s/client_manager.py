@@ -58,7 +58,7 @@ class K8sClientManager:
     async def get_or_create(
         self,
         cluster_id: str,
-        kubeconfig_encrypted: str,
+        credentials_encrypted: str,
         *,
         check_health: bool = False,
     ) -> k8s_client.ApiClient:
@@ -71,13 +71,13 @@ class K8sClientManager:
                 if not ok:
                     logger.warning("Cluster %s unhealthy, rebuilding", cluster_id)
                     await self.remove(cluster_id)
-                    return await self._create(cluster_id, kubeconfig_encrypted)
+                    return await self._create(cluster_id, credentials_encrypted)
             return entry.api_client
 
-        return await self._create(cluster_id, kubeconfig_encrypted)
+        return await self._create(cluster_id, credentials_encrypted)
 
-    async def _create(self, cluster_id: str, kubeconfig_encrypted: str) -> k8s_client.ApiClient:
-        kubeconfig_plain = decrypt_kubeconfig(kubeconfig_encrypted)
+    async def _create(self, cluster_id: str, credentials_encrypted: str) -> k8s_client.ApiClient:
+        kubeconfig_plain = decrypt_kubeconfig(credentials_encrypted)
         api = await _load_client_from_str(kubeconfig_plain)
         self._entries[cluster_id] = ClientEntry(api_client=api)
         return api
@@ -94,9 +94,9 @@ class K8sClientManager:
             entry.healthy = False
             return False
 
-    async def rebuild(self, cluster_id: str, kubeconfig_encrypted: str) -> k8s_client.ApiClient:
+    async def rebuild(self, cluster_id: str, credentials_encrypted: str) -> k8s_client.ApiClient:
         await self.remove(cluster_id)
-        return await self._create(cluster_id, kubeconfig_encrypted)
+        return await self._create(cluster_id, credentials_encrypted)
 
     async def remove(self, cluster_id: str):
         entry = self._entries.pop(cluster_id, None)

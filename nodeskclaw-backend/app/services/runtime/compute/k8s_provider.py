@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from app.services.runtime.compute.base import (
     ComputeHandle,
     InstanceComputeConfig,
 )
+
+if TYPE_CHECKING:
+    from app.services.k8s.k8s_client import K8sClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +24,17 @@ class K8sComputeProvider:
     """
 
     provider_id = "k8s"
+
+    async def get_k8s_client(self, cluster) -> "K8sClient":
+        from app.services.k8s.client_manager import k8s_manager
+        from app.services.k8s.k8s_client import K8sClient
+
+        if not cluster.credentials_encrypted:
+            raise ValueError(f"集群 {cluster.name} 没有有效的连接凭证")
+        api_client = await k8s_manager.get_or_create(
+            cluster.id, cluster.credentials_encrypted,
+        )
+        return K8sClient(api_client)
 
     async def create_instance(
         self, config: InstanceComputeConfig, **kwargs,
@@ -81,18 +96,20 @@ class K8sComputeProvider:
             logger.error("K8s destroy_instance failed: %s", e)
 
     async def get_status(self, handle: ComputeHandle) -> str:
+        cluster_id = (handle.extra or {}).get("cluster_id")
+        creds = (handle.extra or {}).get("credentials_encrypted")
+        if not cluster_id or not creds:
+            return handle.status
         try:
             from app.services.k8s.client_manager import k8s_manager
+            from app.services.k8s.k8s_client import K8sClient
 
-            clients = k8s_manager.get_all_clients()
-            for client in clients:
-                try:
-                    pods = await client.list_namespaced_pod(handle.namespace)
-                    for pod in pods.items:
-                        if handle.instance_id in (pod.metadata.name or ""):
-                            return pod.status.phase.lower() if pod.status.phase else "unknown"
-                except Exception:
-                    continue
+            api_client = await k8s_manager.get_or_create(cluster_id, creds)
+            k8s = K8sClient(api_client)
+            pods = await k8s.list_namespaced_pod(handle.namespace)
+            for pod in pods.items:
+                if handle.instance_id in (pod.metadata.name or ""):
+                    return pod.status.phase.lower() if pod.status.phase else "unknown"
         except Exception as e:
             logger.warning("K8s get_status failed: %s", e)
         return handle.status
@@ -101,18 +118,20 @@ class K8sComputeProvider:
         return handle.endpoint
 
     async def get_logs(self, handle: ComputeHandle, *, tail: int = 50) -> str:
+        cluster_id = (handle.extra or {}).get("cluster_id")
+        creds = (handle.extra or {}).get("credentials_encrypted")
+        if not cluster_id or not creds:
+            return ""
         try:
             from app.services.k8s.client_manager import k8s_manager
+            from app.services.k8s.k8s_client import K8sClient
 
-            clients = k8s_manager.get_all_clients()
-            for client in clients:
-                try:
-                    log = await client.read_namespaced_pod_log(
-                        handle.instance_id, handle.namespace, tail_lines=tail,
-                    )
-                    return log or ""
-                except Exception:
-                    continue
+            api_client = await k8s_manager.get_or_create(cluster_id, creds)
+            k8s = K8sClient(api_client)
+            log = await k8s.read_namespaced_pod_log(
+                handle.instance_id, handle.namespace, tail_lines=tail,
+            )
+            return log or ""
         except Exception as e:
             logger.warning("K8s get_logs failed: %s", e)
         return ""
@@ -124,37 +143,36 @@ class K8sComputeProvider:
             "K8sComputeProvider.update_instance: %s in %s (rolling update)",
             handle.instance_id, handle.namespace,
         )
-        try:
-            from app.services.k8s.client_manager import k8s_manager
+        cluster_id = (handle.extra or {}).get("cluster_id")
+        creds = (handle.extra or {}).get("credentials_encrypted")
+        if cluster_id and creds:
+            try:
+                from app.services.k8s.client_manager import k8s_manager
+                from app.services.k8s.k8s_client import K8sClient
 
-            clients = k8s_manager.get_all_clients()
-            for client in clients:
-                try:
-                    image = config.image if hasattr(config, "image") else ""
-                    if image:
-                        deploy_name = f"deskclaw-{handle.instance_id}"
-                        body = {
-                            "spec": {
-                                "template": {
-                                    "spec": {
-                                        "containers": [{
-                                            "name": "deskclaw",
-                                            "image": image,
-                                        }]
-                                    }
+                api_client = await k8s_manager.get_or_create(cluster_id, creds)
+                k8s = K8sClient(api_client)
+                image = config.image if hasattr(config, "image") else ""
+                if image:
+                    deploy_name = f"deskclaw-{handle.instance_id}"
+                    body = {
+                        "spec": {
+                            "template": {
+                                "spec": {
+                                    "containers": [{
+                                        "name": "deskclaw",
+                                        "image": image,
+                                    }]
                                 }
                             }
                         }
-                        await client.patch_namespaced_deployment(
-                            deploy_name, handle.namespace, body,
-                        )
-                        logger.info("Rolling update triggered for %s", handle.instance_id)
-                    break
-                except Exception as e:
-                    logger.warning("K8s update_instance via client failed: %s", e)
-                    continue
-        except Exception as e:
-            logger.error("K8s update_instance failed: %s", e)
+                    }
+                    await k8s.patch_namespaced_deployment(
+                        deploy_name, handle.namespace, body,
+                    )
+                    logger.info("Rolling update triggered for %s", handle.instance_id)
+            except Exception as e:
+                logger.error("K8s update_instance failed: %s", e)
 
         return ComputeHandle(
             provider=self.provider_id,
@@ -165,7 +183,6 @@ class K8sComputeProvider:
         )
 
     async def health_check(self, handle: ComputeHandle) -> bool:
-        """Check if the K8s pod is Running and Ready."""
         try:
             status = await self.get_status(handle)
             return status == "running"

@@ -19,8 +19,7 @@ from app.schemas.common import ApiResponse
 from app.schemas.deploy import DeployRecordInfo
 from app.schemas.instance import InstanceDetail, InstanceInfo, UpdateConfigRequest
 from app.services import instance_service
-from app.services.k8s.client_manager import k8s_manager
-from app.services.k8s.k8s_client import K8sClient
+from app.services.runtime.registries.compute_registry import require_k8s_client
 
 logger = logging.getLogger(__name__)
 
@@ -245,10 +244,9 @@ async def pod_logs_stream(
     if not cluster:
         raise NotFoundError("集群不存在")
 
-    api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+    k8s = await require_k8s_client(cluster)
 
     async def generate():
-        k8s = K8sClient(api_client)
         try:
             async for line in k8s.stream_pod_logs(
                 instance.namespace, pod_name, container, tail_lines,

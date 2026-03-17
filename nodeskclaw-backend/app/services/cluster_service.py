@@ -64,12 +64,14 @@ async def create_cluster(
 
     cluster = Cluster(
         name=data.name,
-        provider=data.provider,
         compute_provider="k8s",
-        kubeconfig_encrypted=encrypt_kubeconfig(data.kubeconfig),
-        auth_type=auth_type,
-        api_server_url=api_server_url,
-        ingress_class=data.ingress_class,
+        credentials_encrypted=encrypt_kubeconfig(data.kubeconfig),
+        provider_config={
+            "cloud_vendor": data.provider,
+            "auth_type": auth_type,
+            "api_server_url": api_server_url,
+            "ingress_class": data.ingress_class,
+        },
         proxy_endpoint=data.proxy_endpoint,
         status=ClusterStatus.disconnected,
         created_by=user.id,
@@ -100,9 +102,9 @@ async def update_cluster(cluster_id: str, data: ClusterUpdate, db: AsyncSession)
     if data.name is not None:
         cluster.name = data.name
     if data.provider is not None:
-        cluster.provider = data.provider
+        cluster.set_provider_value("cloud_vendor", data.provider)
     if data.ingress_class is not None:
-        cluster.ingress_class = data.ingress_class
+        cluster.set_provider_value("ingress_class", data.ingress_class)
     if data.proxy_endpoint is not None:
         cluster.proxy_endpoint = data.proxy_endpoint
     await db.commit()
@@ -146,9 +148,9 @@ async def delete_cluster(cluster_id: str, db: AsyncSession) -> None:
 async def update_kubeconfig(cluster_id: str, kubeconfig: str, db: AsyncSession) -> ClusterInfo:
     cluster = await get_cluster(cluster_id, db)
     api_server_url, auth_type = _parse_kubeconfig_meta(kubeconfig)
-    cluster.kubeconfig_encrypted = encrypt_kubeconfig(kubeconfig)
-    cluster.auth_type = auth_type
-    cluster.api_server_url = api_server_url
+    cluster.credentials_encrypted = encrypt_kubeconfig(kubeconfig)
+    cluster.set_provider_value("auth_type", auth_type)
+    cluster.set_provider_value("api_server_url", api_server_url)
 
     # 清除旧的 K8s 客户端缓存，使用新 KubeConfig 重新连接
     from app.services.k8s.client_manager import k8s_manager
@@ -163,7 +165,7 @@ async def update_kubeconfig(cluster_id: str, kubeconfig: str, db: AsyncSession) 
             info = await VersionApi(api_client).get_code()
 
         cluster.status = ClusterStatus.connected
-        cluster.k8s_version = info.git_version
+        cluster.set_provider_value("k8s_version", info.git_version)
         cluster.health_status = "healthy"
     except Exception:
         cluster.status = ClusterStatus.disconnected
@@ -194,10 +196,9 @@ async def _create_docker_cluster(
 
     cluster = Cluster(
         name=name or "local-docker",
-        provider="docker",
         compute_provider="docker",
-        kubeconfig_encrypted="",
-        auth_type="none",
+        credentials_encrypted=None,
+        provider_config={},
         status=ClusterStatus.connected,
         health_status="healthy",
         created_by=user.id,
@@ -216,7 +217,7 @@ async def test_connection(cluster_id: str, db: AsyncSession) -> ConnectionTestRe
     if cluster.compute_provider == "docker":
         return await _test_docker_connection(cluster, db)
 
-    kubeconfig_plain = decrypt_kubeconfig(cluster.kubeconfig_encrypted)
+    kubeconfig_plain = decrypt_kubeconfig(cluster.credentials_encrypted)
 
     try:
         from app.services.k8s.client_manager import create_temp_client
@@ -233,7 +234,7 @@ async def test_connection(cluster_id: str, db: AsyncSession) -> ConnectionTestRe
             nodes = await core_api.list_node()
 
         cluster.status = ClusterStatus.connected
-        cluster.k8s_version = info.git_version
+        cluster.set_provider_value("k8s_version", info.git_version)
         cluster.health_status = "healthy"
         await db.commit()
 

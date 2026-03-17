@@ -68,13 +68,11 @@ class HealthChecker:
         now = datetime.now(timezone.utc)
 
         try:
-            api_client = await k8s_manager.get_or_create(
-                cluster.id, cluster.kubeconfig_encrypted, check_health=True
-            )
-            k8s = K8sClient(api_client)
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
             info = await k8s.test_connection()
             cluster.health_status = "healthy"
-            cluster.k8s_version = info.get("version")
+            cluster.set_provider_value("k8s_version", info.get("version"))
             cluster.last_health_check = now
 
             # 检测 token 过期
@@ -138,10 +136,10 @@ async def get_cluster_health(cluster_id: str, db) -> dict:
     }
 
     # 尝试获取实时集群概览
-    if cluster.status == ClusterStatus.connected and cluster.kubeconfig_encrypted:
+    if cluster.status == ClusterStatus.connected and cluster.is_k8s and cluster.credentials_encrypted:
         try:
-            api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
-            k8s = K8sClient(api_client)
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
             overview = await k8s.get_cluster_overview()
             health["overview"] = overview
         except Exception as e:

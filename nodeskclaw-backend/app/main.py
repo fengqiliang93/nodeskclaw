@@ -196,8 +196,11 @@ async def lifespan(app: FastAPI):
         )
         clusters = result.scalars().all()
         for cluster in clusters:
+            if not cluster.is_k8s:
+                continue
             try:
-                await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+                from app.services.runtime.registries.compute_registry import require_k8s_client
+                await require_k8s_client(cluster)
                 logger.info("预热集群连接: %s (%s)", cluster.name, cluster.id)
             except Exception as e:
                 logger.warning("预热集群 %s 失败: %s", cluster.name, e)
@@ -224,11 +227,11 @@ async def lifespan(app: FastAPI):
                     )
                 )
                 cluster = cluster_result.scalar_one_or_none()
-                if not cluster or not cluster.kubeconfig_encrypted:
+                if not cluster or not cluster.is_k8s or not cluster.credentials_encrypted:
                     continue
 
                 from app.services.k8s.k8s_client import K8sClient
-                api_client = await k8s_manager.get_or_create(cluster.id, cluster.kubeconfig_encrypted)
+                api_client = await k8s_manager.get_or_create(cluster.id, cluster.credentials_encrypted)
                 k8s = K8sClient(api_client)
 
                 k8s_name = inst.slug or inst.name

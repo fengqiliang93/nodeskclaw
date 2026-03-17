@@ -170,11 +170,9 @@ async def cancel_deploy(deploy_id: str) -> str:
                     select(Cluster).where(Cluster.id == instance.cluster_id)
                 )
                 cluster = cluster_result.scalar_one_or_none()
-                if cluster and cluster.kubeconfig_encrypted:
-                    api_client = await k8s_manager.get_or_create(
-                        cluster.id, cluster.kubeconfig_encrypted
-                    )
-                    k8s = K8sClient(api_client)
+                if cluster and cluster.is_k8s and cluster.credentials_encrypted:
+                    from app.services.runtime.registries.compute_registry import require_k8s_client
+                    k8s = await require_k8s_client(cluster)
                     await k8s.core.delete_namespace(instance.namespace)
                     ns_cleaned = True
                     logger.info("取消部署，已清理命名空间: %s", instance.namespace)
@@ -314,8 +312,6 @@ class _DeployContext:
     quota_mem: str
     env_vars: dict | None
     advanced_config: dict | None
-    kubeconfig_encrypted: str
-    ingress_class: str = "nginx"
     proxy_endpoint: str | None = None
     org_id: str | None = None
     has_llm_configs: bool = False
@@ -524,8 +520,6 @@ async def deploy_instance(
         quota_mem=req.quota_mem,
         env_vars=env_vars,
         advanced_config=req.advanced_config,
-        kubeconfig_encrypted=cluster.kubeconfig_encrypted,
-        ingress_class=cluster.ingress_class,
         proxy_endpoint=cluster.proxy_endpoint,
         org_id=org_id,
         has_llm_configs=bool(req.llm_configs),
@@ -741,9 +735,12 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             # Step 1: 预检（同步阶段已完成，标记通过）
             _publish(1, steps[0])
 
-            # 获取 K8s 客户端
-            api_client = await k8s_manager.get_or_create(ctx.cluster_id, ctx.kubeconfig_encrypted)
-            k8s = K8sClient(api_client)
+            cluster_result = await db.execute(
+                select(Cluster).where(Cluster.id == ctx.cluster_id)
+            )
+            cluster = cluster_result.scalar_one()
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
 
             labels = build_labels(ctx.name, ctx.instance_id, ctx.image_version)
 
@@ -834,7 +831,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 ing = build_ingress(
                     ctx.name, ctx.namespace, ingress_host, labels,
                     tls_secret_name=inst_tls,
-                    ingress_class=ctx.ingress_class,
+                    ingress_class=cluster.ingress_class,
                 )
                 await k8s.create_or_skip(k8s.networking.create_namespaced_ingress, ctx.namespace, ing)
                 inst_result = await db.execute(
@@ -1069,8 +1066,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             logger.exception("部署失败: %s", ctx.name)
             ns_cleaned = False
             try:
-                api_client = await k8s_manager.get_or_create(ctx.cluster_id, ctx.kubeconfig_encrypted)
-                cleanup_k8s = K8sClient(api_client)
+                cleanup_k8s = await require_k8s_client(cluster)
                 await cleanup_k8s.core.delete_namespace(ctx.namespace)
                 ns_cleaned = True
                 logger.info("部署异常，已清理命名空间: %s", ctx.namespace)
