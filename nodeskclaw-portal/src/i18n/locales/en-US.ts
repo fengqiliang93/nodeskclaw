@@ -572,6 +572,10 @@ const enUS = {
     endpointUrl: "Endpoint URL",
     podStatus: "Pod Status",
     containerStatus: "Container Status",
+    aiEmployeeStatus: "AI Employee Status",
+    viewLogs: "View Logs",
+    closeLogs: "Close",
+    logsLoadFailed: "Failed to load logs",
   },
   instanceList: {
     title: "AI Employee Management",

@@ -22,6 +22,7 @@ class RuntimeSpec:
     display_tags: tuple[str, ...] = ()
     display_powered_by: str = ""
     gateway_port: int = 18789
+    health_probe_path: str | None = "/"
     order: int = 0
     image_registry_key: str = "image_registry"
 
@@ -74,6 +75,7 @@ def _register_builtins() -> None:
         display_tags=(),
         display_powered_by="ZeroClaw",
         gateway_port=8080,
+        health_probe_path="/health",
         order=1,
         image_registry_key="image_registry_zeroclaw",
     ))
@@ -88,6 +90,7 @@ def _register_builtins() -> None:
         display_tags=(),
         display_powered_by="Nanobot",
         gateway_port=18790,
+        health_probe_path=None,
         order=2,
         image_registry_key="image_registry_nanobot",
     ))

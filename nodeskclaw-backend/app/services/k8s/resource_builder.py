@@ -239,6 +239,8 @@ def build_deployment(
     env_vars: dict[str, str] | None = None,
     advanced_config: dict | None = None,
     image_pull_secret: str | None = None,
+    health_probe_path: str | None = "/healthz",
+    readiness_probe_path: str | None = "/readyz",
 ) -> V1Deployment:
     """Build OpenClaw Deployment manifest with optional advanced config."""
 
@@ -309,8 +311,33 @@ def build_deployment(
                 )
             )
 
-    liveness_get = V1HTTPGetAction(path="/healthz", port=port)
-    readiness_get = V1HTTPGetAction(path="/readyz", port=port)
+    if health_probe_path is not None:
+        liveness_get = V1HTTPGetAction(path=health_probe_path, port=port)
+        readiness_get = V1HTTPGetAction(path=readiness_probe_path or health_probe_path, port=port)
+        startup_probe = V1Probe(
+            http_get=liveness_get,
+            initial_delay_seconds=5,
+            period_seconds=3,
+            failure_threshold=20,
+            timeout_seconds=2,
+        )
+        readiness_probe = V1Probe(
+            http_get=readiness_get,
+            period_seconds=5,
+            failure_threshold=3,
+            success_threshold=1,
+            timeout_seconds=2,
+        )
+        liveness_probe = V1Probe(
+            http_get=liveness_get,
+            period_seconds=15,
+            failure_threshold=3,
+            timeout_seconds=3,
+        )
+    else:
+        startup_probe = None
+        readiness_probe = None
+        liveness_probe = None
 
     container = V1Container(
         name=name,
@@ -325,26 +352,9 @@ def build_deployment(
             limits={"cpu": cpu_limit, "memory": mem_limit},
         ),
         volume_mounts=volume_mounts or None,
-        startup_probe=V1Probe(
-            http_get=liveness_get,
-            initial_delay_seconds=5,
-            period_seconds=3,
-            failure_threshold=20,
-            timeout_seconds=2,
-        ),
-        readiness_probe=V1Probe(
-            http_get=readiness_get,
-            period_seconds=5,
-            failure_threshold=3,
-            success_threshold=1,
-            timeout_seconds=2,
-        ),
-        liveness_probe=V1Probe(
-            http_get=liveness_get,
-            period_seconds=15,
-            failure_threshold=3,
-            timeout_seconds=3,
-        ),
+        startup_probe=startup_probe,
+        readiness_probe=readiness_probe,
+        liveness_probe=liveness_probe,
     )
 
     # ── Advanced config: sidecar containers ──

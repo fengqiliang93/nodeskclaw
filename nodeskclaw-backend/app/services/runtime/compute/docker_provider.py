@@ -142,7 +142,7 @@ class DockerComputeProvider:
             namespace=config.namespace,
             endpoint=f"http://localhost:{host_port}",
             status="running",
-            extra={"compose_path": compose_path, "slug": config.slug},
+            extra={"compose_path": compose_path, "slug": config.slug, "runtime": config.runtime},
         )
 
     async def destroy_instance(self, handle: ComputeHandle, **kwargs) -> None:
@@ -243,5 +243,14 @@ class DockerComputeProvider:
             return {"healthy": False, "detail": f"docker inspect failed: {e}"}
         if status != "running":
             return {"healthy": False, "detail": f"container {status}"}
+
+        runtime = (handle.extra or {}).get("runtime", "openclaw")
+        from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+        rt_spec = RUNTIME_REGISTRY.get(runtime)
+        probe_path = rt_spec.health_probe_path if rt_spec else "/"
+
+        if probe_path is None:
+            return {"healthy": True, "detail": "container running (no http probe)"}
+
         from app.services.runtime.compute.base import http_probe
-        return await http_probe(handle.endpoint)
+        return await http_probe(handle.endpoint, path=probe_path)

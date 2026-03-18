@@ -84,7 +84,7 @@ def _build_docker_handle(instance: Instance) -> "ComputeHandle":
         provider="docker", instance_id=instance.id,
         namespace=instance.namespace, endpoint=instance.ingress_domain or "",
         status=instance.status,
-        extra={"compose_path": advanced.get("compose_path", ""), "slug": instance.slug},
+        extra={"compose_path": advanced.get("compose_path", ""), "slug": instance.slug, "runtime": instance.runtime},
     )
 
 
@@ -95,6 +95,23 @@ def _get_docker_provider():
         return spec.provider
     from app.services.runtime.compute.docker_provider import DockerComputeProvider
     return DockerComputeProvider()
+
+
+async def _in_deploy_grace(instance_id: str, db: AsyncSession, grace_seconds: int = 60) -> bool:
+    """Check if the instance was deployed/redeployed within the last *grace_seconds*."""
+    latest = await db.execute(
+        select(DeployRecord.finished_at)
+        .where(
+            DeployRecord.instance_id == instance_id,
+            DeployRecord.status == DeployStatus.success,
+        )
+        .order_by(DeployRecord.finished_at.desc())
+        .limit(1)
+    )
+    finished_at = latest.scalar_one_or_none()
+    if not finished_at:
+        return False
+    return (datetime.now(timezone.utc) - finished_at).total_seconds() < grace_seconds
 
 
 def _compute_endpoint_url(instance: Instance) -> str | None:
@@ -256,7 +273,10 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
                 if probe["healthy"] is True:
                     detail.health_status = "healthy"
                 elif probe["healthy"] is False:
-                    detail.health_status = "unhealthy"
+                    if await _in_deploy_grace(instance.id, db):
+                        detail.health_status = "unknown"
+                    else:
+                        detail.health_status = "unhealthy"
                 else:
                     detail.health_status = "unknown"
         except Exception as e:
@@ -428,6 +448,7 @@ async def restart_instance(instance_id: str, db: AsyncSession):
         try:
             await provider.restart_instance(handle)
             instance.status = InstanceStatus.running
+            instance.health_status = "unknown"
             await db.commit()
             logger.info("Docker 实例 %s 重启完成", instance.name)
         except Exception as e:

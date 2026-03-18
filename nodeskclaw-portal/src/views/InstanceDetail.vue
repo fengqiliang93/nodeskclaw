@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, inject, type Ref, type ComputedR
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
-  RefreshCw, Trash2, Circle, Loader2, Copy, Check, RotateCcw, AlertTriangle,
+  RefreshCw, Trash2, Circle, Loader2, Copy, Check, RotateCcw, AlertTriangle, FileText, X,
 } from 'lucide-vue-next'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
@@ -73,6 +73,27 @@ const resettingToken = ref(false)
 const showRestartDialog = ref(false)
 const showDeleteDialog = ref(false)
 const deleting = ref(false)
+const logsVisible = ref(false)
+const logsContent = ref('')
+const logsLoading = ref(false)
+
+async function viewLogs(podName: string) {
+  if (logsVisible.value) {
+    logsVisible.value = false
+    return
+  }
+  logsLoading.value = true
+  logsContent.value = ''
+  try {
+    const res = await api.get(`/api/v1/instances/${instanceId.value}/pods/${podName}/logs`, { params: { tail: 100 } })
+    logsContent.value = res.data?.logs || res.data || ''
+    logsVisible.value = true
+  } catch {
+    toast.error(t('instanceDetail.logsLoadFailed'))
+  } finally {
+    logsLoading.value = false
+  }
+}
 
 function formatCpu(val: string): string {
   if (val.endsWith('m')) {
@@ -344,7 +365,7 @@ async function handleDelete() {
 
       <!-- Pod / 容器状态 -->
       <div v-if="instance.pods?.length" class="p-4 rounded-xl border border-border bg-card">
-        <h2 class="text-sm font-medium mb-3">{{ isDocker ? '容器状态' : 'Pod 状态' }}</h2>
+        <h2 class="text-sm font-medium mb-3">{{ isDocker ? t('instanceDetail.aiEmployeeStatus') : t('instanceDetail.podStatus') }}</h2>
         <div class="space-y-2">
           <div
             v-for="pod in instance.pods"
@@ -361,10 +382,28 @@ async function handleDelete() {
                 {{ t('status.running_unhealthy') }}
               </span>
             </div>
-            <span class="text-xs text-muted-foreground">
-              重启 {{ pod.restart_count }} 次
-            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted-foreground">
+                重启 {{ pod.restart_count }} 次
+              </span>
+              <button
+                class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                @click="viewLogs(pod.name)"
+              >
+                <FileText class="w-3 h-3" />
+                {{ t('instanceDetail.viewLogs') }}
+              </button>
+            </div>
           </div>
+        </div>
+        <div v-if="logsVisible" class="mt-3 border border-border rounded-lg overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
+            <span class="text-xs font-medium">{{ t('instanceDetail.viewLogs') }}</span>
+            <button class="text-muted-foreground hover:text-foreground" @click="logsVisible = false">
+              <X class="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <pre class="p-3 text-xs font-mono leading-relaxed overflow-auto max-h-64 bg-black/30 text-foreground">{{ logsContent || '...' }}</pre>
         </div>
       </div>
       <div v-else-if="restarting" class="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">

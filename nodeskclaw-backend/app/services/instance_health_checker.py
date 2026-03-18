@@ -80,12 +80,16 @@ class InstanceHealthChecker:
             namespace=instance.namespace,
             endpoint=instance.ingress_domain or "",
             status=instance.status,
-            extra={"compose_path": advanced.get("compose_path", ""), "slug": instance.slug},
+            extra={"compose_path": advanced.get("compose_path", ""), "slug": instance.slug, "runtime": instance.runtime},
         )
         try:
             provider = DockerComputeProvider()
             probe = await provider.health_check(handle)
             new_status = self._probe_to_health(probe)
+            if new_status == "unhealthy":
+                from app.services.instance_service import _in_deploy_grace
+                if await _in_deploy_grace(instance.id, db):
+                    new_status = "unknown"
             self._update_if_changed(instance, new_status)
         except Exception as e:
             logger.warning("Docker 实例 %s 健康检查失败: %s", instance.name, e)

@@ -112,20 +112,28 @@ class ComputeProvider(Protocol):
         ...
 
 
-async def http_probe(endpoint: str, timeout: float = 5.0) -> dict:
+async def http_probe(endpoint: str, timeout: float = 5.0, path: str = "/") -> dict:
     """HTTP GET probe against an endpoint.
     Any HTTP response (incl. 401/403/500) = healthy.
     Connection error / timeout = unhealthy.
     Empty endpoint = unknown.
     """
     if not endpoint:
+        logger.debug("http_probe skipped: no endpoint")
         return {"healthy": None, "detail": "no endpoint configured"}
     url = endpoint if endpoint.startswith(("http://", "https://")) else f"http://{endpoint}"
+    if path and path != "/":
+        url = url.rstrip("/") + path
     try:
         async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
             resp = await client.get(url)
+            logger.debug("http_probe %s -> HTTP %d", url, resp.status_code)
             return {"healthy": True, "detail": f"HTTP {resp.status_code}"}
-    except (httpx.ConnectError, httpx.ConnectTimeout):
-        return {"healthy": False, "detail": "connection refused or timeout"}
+    except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+        detail = "connection refused or timeout"
+        logger.warning("http_probe %s -> %s (%s)", url, detail, type(e).__name__)
+        return {"healthy": False, "detail": detail}
     except Exception as e:
-        return {"healthy": False, "detail": str(e)[:200]}
+        detail = str(e)[:200]
+        logger.warning("http_probe %s -> %s", url, detail)
+        return {"healthy": False, "detail": detail}

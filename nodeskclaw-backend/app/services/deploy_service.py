@@ -804,6 +804,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 pull_secret_name = REGISTRY_SECRET_NAME
                 logger.info("已创建镜像拉取凭据 Secret: %s/%s", ctx.namespace, REGISTRY_SECRET_NAME)
 
+            _has_http = _rt_spec.health_probe_path is not None if _rt_spec else True
             dep = build_deployment(
                 name=ctx.name,
                 namespace=ctx.namespace,
@@ -820,6 +821,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 env_vars=ctx.env_vars,
                 advanced_config=ctx.advanced_config,
                 image_pull_secret=pull_secret_name,
+                health_probe_path="/healthz" if _has_http else None,
+                readiness_probe_path="/readyz" if _has_http else None,
             )
             await k8s.apply(
                 k8s.apps.create_namespaced_deployment,

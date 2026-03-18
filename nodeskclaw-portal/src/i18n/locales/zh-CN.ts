@@ -572,6 +572,10 @@ const zhCN = {
     endpointUrl: "访问地址",
     podStatus: "Pod 状态",
     containerStatus: "容器状态",
+    aiEmployeeStatus: "AI 员工状态",
+    viewLogs: "查看日志",
+    closeLogs: "关闭",
+    logsLoadFailed: "获取日志失败",
   },
   instanceList: {
     title: "AI 员工管理",
