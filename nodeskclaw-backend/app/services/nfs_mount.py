@@ -352,27 +352,62 @@ class DockerFS:
         p = self._resolve(remote_path)
         p.mkdir(parents=True, exist_ok=True)
 
-    async def list_dir(self, remote_path: str) -> list[str]:
+    async def list_dir(self, remote_path: str) -> list[dict] | None:
         p = self._resolve(remote_path)
         if not p.exists():
-            return []
-        return [f.name for f in p.iterdir()]
+            return None
+        items = []
+        for f in p.iterdir():
+            st = f.stat()
+            items.append({
+                "name": f.name,
+                "is_dir": f.is_dir(),
+                "size": st.st_size,
+                "modified_at": st.st_mtime,
+            })
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        return items
 
-    async def scan_skills(self) -> list[dict]:
-        """Scan skills directory — mirrors PodFS.scan_skills interface."""
-        skills_dir = self._base / "skills"
+    async def scan_skills(self, skills_dir_rel: str) -> list[dict]:
+        """Scan skills directory — returns [{name, content, file_count}]."""
+        skills_dir = self._resolve(skills_dir_rel)
         if not skills_dir.exists():
             return []
         results = []
-        for skill_path in skills_dir.iterdir():
+        for skill_path in sorted(skills_dir.iterdir()):
             if not skill_path.is_dir():
                 continue
             skill_md = skill_path / "SKILL.md"
-            results.append({
-                "name": skill_path.name,
-                "has_skill_md": skill_md.exists(),
-            })
+            content = skill_md.read_text(encoding="utf-8") if skill_md.exists() else ""
+            file_count = sum(1 for f in skill_path.iterdir() if f.is_file())
+            results.append({"name": skill_path.name, "content": content, "file_count": file_count})
         return results
+
+    async def file_stat(self, path: str) -> dict | None:
+        import mimetypes
+        p = self._resolve(path)
+        if not p.exists():
+            return None
+        st = p.stat()
+        mime, _ = mimetypes.guess_type(p.name)
+        return {
+            "size": st.st_size,
+            "modified_at": st.st_mtime,
+            "mime_type": mime or "application/octet-stream",
+        }
+
+    async def append_text(self, remote_path: str, content: str) -> None:
+        p = self._resolve(remote_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(content)
+
+    async def read_last_line(self, remote_path: str) -> str | None:
+        p = self._resolve(remote_path)
+        if not p.exists():
+            return None
+        lines = p.read_text(encoding="utf-8").strip().splitlines()
+        return lines[-1] if lines else None
 
     async def exec_command(self, cmd: list[str]) -> str:
         """Run a command inside the Docker container via docker exec."""
