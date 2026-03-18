@@ -724,6 +724,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let _reconnectAttempts = 0
   let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let _lastEventId = ''
+  let _connectGeneration = 0
   const _recentMessageIds = new Set<string>()
   const _MAX_DEDUP_IDS = 1000
 
@@ -746,7 +747,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function connectSSE(workspaceId: string, onEvent?: ChatSSECallback) {
+    if (!workspaceId) return
     disconnectSSE()
+    const thisGeneration = ++_connectGeneration
     externalCallback = onEvent || null
 
     let token = ''
@@ -756,6 +759,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } catch (err) {
       console.warn('[SSE] Failed to get SSE token, falling back to portal token', err)
     }
+    if (_connectGeneration !== thisGeneration) return
     if (!token) token = localStorage.getItem('portal_token') || ''
 
     let sseUrl = `/api/v1/workspaces/${workspaceId}/events?token=${token}`
@@ -944,8 +948,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       })
     }
 
+    eventSource.onopen = () => {
+      _reconnectAttempts = 0
+    }
+
     eventSource.onerror = () => {
       const state = eventSource?.readyState
+      const gen = _connectGeneration
       if (state === EventSource.CLOSED || state === EventSource.CONNECTING) {
         if (state === EventSource.CONNECTING) {
           eventSource?.close()
@@ -953,20 +962,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         _reconnectAttempts++
         const delay = _getReconnectDelay()
         _reconnectTimer = setTimeout(() => {
+          if (_connectGeneration !== gen) return
           connectSSE(workspaceId, externalCallback || undefined)
         }, delay)
       }
     }
-
-    _reconnectAttempts = 0
   }
 
   function disconnectSSE() {
+    _connectGeneration++
     if (_reconnectTimer) {
       clearTimeout(_reconnectTimer)
       _reconnectTimer = null
     }
-    _reconnectAttempts = 0
     eventSource?.close()
     eventSource = null
     externalCallback = null
