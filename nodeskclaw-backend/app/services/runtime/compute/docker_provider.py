@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 
 from app.services.docker_constants import DOCKER_DATA_DIR
 from app.services.runtime.compute.base import (
@@ -14,6 +15,8 @@ from app.services.runtime.compute.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+_LOCALHOST_RE = re.compile(r"(https?://)(localhost|127\.0\.0\.1)(:\d+)?")
 
 
 def _parse_cpu(cpu_str: str) -> float:
@@ -43,17 +46,22 @@ def _parse_mem(mem_str: str) -> str:
 
 def _build_compose_yaml(config: InstanceComputeConfig) -> dict:
     """Generate a docker-compose service definition with full resource config."""
-    host_port = config.env_vars.get("DOCKER_HOST_PORT", "3000")
+    env = {
+        k: _LOCALHOST_RE.sub(r"\1host.docker.internal\3", str(v))
+        for k, v in config.env_vars.items()
+    }
+    host_port = env.get("DOCKER_HOST_PORT", "3000")
 
     main_service: dict = {
-        "image": config.env_vars.get("DOCKER_IMAGE", f"deskclaw:{config.image_version}"),
+        "image": env.get("DOCKER_IMAGE", f"deskclaw:{config.image_version}"),
         "container_name": config.slug,
-        "environment": {k: str(v) for k, v in config.env_vars.items()},
+        "environment": env,
         "ports": [f"{host_port}:{config.gateway_port}"],
         "volumes": [f"{DOCKER_DATA_DIR / config.slug / 'data'}:/root/.openclaw"],
         "restart": "unless-stopped",
         "platform": "linux/amd64",
         "networks": [f"{config.slug}-net"],
+        "extra_hosts": ["host.docker.internal:host-gateway"],
     }
 
     if config.mem_limit:
@@ -74,6 +82,7 @@ def _build_compose_yaml(config: InstanceComputeConfig) -> dict:
             "platform": "linux/amd64",
             "depends_on": ["agent"],
             "networks": [f"{config.slug}-net"],
+            "extra_hosts": ["host.docker.internal:host-gateway"],
         }
         return {
             "services": {"agent": main_service, "companion": companion},
@@ -226,3 +235,13 @@ class DockerComputeProvider:
                 raise RuntimeError(f"docker compose scale 失败: {stderr.decode()[:300]}")
         handle.extra["replicas"] = replicas
         return handle
+
+    async def health_check(self, handle: ComputeHandle) -> dict:
+        try:
+            status = await self.get_status(handle)
+        except Exception as e:
+            return {"healthy": False, "detail": f"docker inspect failed: {e}"}
+        if status != "running":
+            return {"healthy": False, "detail": f"container {status}"}
+        from app.services.runtime.compute.base import http_probe
+        return await http_probe(handle.endpoint)
