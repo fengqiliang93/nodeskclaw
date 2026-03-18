@@ -114,3 +114,10 @@ class ProcessComputeProvider:
     ) -> ComputeHandle:
         await self.destroy_instance(handle)
         return await self.create_instance(config)
+
+    async def health_check(self, handle: ComputeHandle) -> dict:
+        proc = self._processes.get(handle.instance_id)
+        if proc is None or proc.returncode is not None:
+            return {"healthy": False, "detail": "process not running"}
+        from app.services.runtime.compute.base import http_probe
+        return await http_probe(handle.endpoint)

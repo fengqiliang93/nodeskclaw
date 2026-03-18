@@ -20,6 +20,7 @@ interface InstanceInfo {
   replicas: number
   available_replicas: number
   status: string
+  health_status?: string
   service_type: string
   ingress_domain: string | null
   created_by: string
@@ -74,6 +75,7 @@ function selectTemplate(tpl: TemplateItem) {
 
 const statusConfig: Record<string, { color: string; bg: string }> = {
   running: { color: 'text-emerald-400', bg: 'bg-emerald-400' },
+  running_unhealthy: { color: 'text-orange-400', bg: 'bg-orange-400' },
   learning: { color: 'text-blue-400', bg: 'bg-blue-400' },
   creating: { color: 'text-blue-400', bg: 'bg-blue-400' },
   pending: { color: 'text-yellow-400', bg: 'bg-yellow-400' },
@@ -85,12 +87,19 @@ const statusConfig: Record<string, { color: string; bg: string }> = {
 
 const animatingStatuses = new Set(['creating', 'pending', 'deploying', 'updating', 'deleting', 'learning'])
 
-function getStatus(status: string) {
-  return statusConfig[status] ?? { color: 'text-gray-400', bg: 'bg-gray-400' }
+function getEffectiveStatus(status: string, healthStatus?: string) {
+  if (status === 'running' && healthStatus === 'unhealthy') return 'running_unhealthy'
+  return status
 }
 
-function getStatusLabel(status: string) {
-  const key = `status.${status}`
+function getStatus(status: string, healthStatus?: string) {
+  const effective = getEffectiveStatus(status, healthStatus)
+  return statusConfig[effective] ?? { color: 'text-gray-400', bg: 'bg-gray-400' }
+}
+
+function getStatusLabel(status: string, healthStatus?: string) {
+  const effective = getEffectiveStatus(status, healthStatus)
+  const key = `status.${effective}`
   const translated = t(key)
   return translated === key ? status : translated
 }
@@ -288,12 +297,12 @@ onMounted(() => {
                 <span
                   class="w-2 h-2 rounded-full"
                   :class="[
-                    getStatus(inst.status).bg,
+                    getStatus(inst.status, inst.health_status).bg,
                     animatingStatuses.has(inst.status) ? 'animate-pulse' : '',
                   ]"
                 />
-                <span :class="getStatus(inst.status).color">
-                  {{ getStatusLabel(inst.status) }}
+                <span :class="getStatus(inst.status, inst.health_status).color">
+                  {{ getStatusLabel(inst.status, inst.health_status) }}
                 </span>
               </span>
             </td>

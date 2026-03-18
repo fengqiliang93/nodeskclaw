@@ -21,6 +21,7 @@ class InstanceInfo(BaseModel):
     replicas: int
     available_replicas: int = 0
     status: str
+    health_status: str = "unknown"
     service_type: str
     ingress_domain: str | None = None
     compute_provider: str = "k8s"

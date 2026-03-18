@@ -35,6 +35,8 @@ const enUS = {
   },
   status: {
     running: "Running",
+    running_unhealthy: "Running (Unreachable)",
+    running_unknown: "Running (Checking)",
     learning: "Learning",
     deploying: "Deploying",
     creating: "Creating",

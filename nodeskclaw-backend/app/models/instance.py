@@ -89,6 +89,7 @@ class Instance(BaseModel):
 
     # Status
     status: Mapped[str] = mapped_column(String(16), default=InstanceStatus.creating, nullable=False)
+    health_status: Mapped[str] = mapped_column(String(16), default="unknown", nullable=False)
     current_revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Runtime platform v2

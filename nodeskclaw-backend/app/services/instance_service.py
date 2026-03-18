@@ -251,6 +251,14 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
                     "state": status,
                 }],
             }]
+            if instance.status == InstanceStatus.running:
+                probe = await provider.health_check(handle)
+                if probe["healthy"] is True:
+                    detail.health_status = "healthy"
+                elif probe["healthy"] is False:
+                    detail.health_status = "unhealthy"
+                else:
+                    detail.health_status = "unknown"
         except Exception as e:
             logger.warning("Failed to get Docker status for instance %s: %s", instance_id, e)
     elif cluster and cluster.is_k8s and cluster.credentials_encrypted:
@@ -292,8 +300,22 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
                     await db.commit()
                     detail.status = InstanceStatus.running
                     logger.info("实例 %s 重启完成，状态恢复为 running", instance_id)
+
+            if instance.status == InstanceStatus.running and pods:
+                all_ready = all(
+                    all(c.get("ready", False) for c in p.get("containers", []))
+                    and len(p.get("containers", [])) > 0
+                    for p in pods
+                )
+                detail.health_status = "healthy" if all_ready else "unhealthy"
+            elif instance.status == InstanceStatus.running:
+                detail.health_status = "unknown"
         except Exception as e:
             logger.warning("Failed to fetch pods for instance %s: %s", instance_id, e)
+
+    if instance.status == InstanceStatus.running and detail.health_status != instance.health_status:
+        instance.health_status = detail.health_status
+        await db.commit()
 
     return detail
 

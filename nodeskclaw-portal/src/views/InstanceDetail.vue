@@ -29,6 +29,7 @@ interface InstanceDetail {
   id: string
   name: string
   status: string
+  health_status?: string
   image_version: string
   ingress_domain: string | null
   namespace: string
@@ -353,9 +354,12 @@ async function handleDelete() {
             <div class="flex items-center gap-2">
               <Circle
                 class="w-2 h-2 fill-current"
-                :class="pod.ready ? 'text-green-400' : 'text-yellow-400'"
+                :class="instance.health_status === 'unhealthy' ? 'text-orange-400' : (pod.ready ? 'text-green-400' : 'text-yellow-400')"
               />
               <span class="font-mono text-xs">{{ pod.name }}</span>
+              <span v-if="instance.status === 'running' && instance.health_status === 'unhealthy'" class="text-[10px] text-orange-400">
+                {{ t('status.running_unhealthy') }}
+              </span>
             </div>
             <span class="text-xs text-muted-foreground">
               重启 {{ pod.restart_count }} 次

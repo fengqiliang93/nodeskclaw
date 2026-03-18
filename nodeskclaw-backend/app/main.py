@@ -257,6 +257,11 @@ async def lifespan(app: FastAPI):
     health_checker = HealthChecker(async_session_factory)
     health_checker.start()
 
+    from app.services.instance_health_checker import InstanceHealthChecker
+
+    instance_health_checker = InstanceHealthChecker(async_session_factory)
+    instance_health_checker.start()
+
     from app.services.summary_job import SummaryJob
     summary_job = SummaryJob(async_session_factory)
     summary_job.start()
@@ -490,6 +495,7 @@ async def lifespan(app: FastAPI):
     logger.info("Agent Tunnel 连接将随进程退出自动关闭")
     await summary_job.stop()
     await schedule_runner.stop()
+    await instance_health_checker.stop()
     await health_checker.stop()
     await k8s_manager.close_all()
     logger.info("已关闭所有 K8s 连接")

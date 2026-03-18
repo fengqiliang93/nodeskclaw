@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Protocol
+
+import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -94,3 +99,33 @@ class ComputeProvider(Protocol):
     ) -> ComputeHandle:
         """Scale compute resources."""
         ...
+
+    async def health_check(
+        self, handle: ComputeHandle,
+    ) -> dict:
+        """Check if the service is actually accessible.
+        Returns {"healthy": bool | None, "detail": str}.
+        healthy=True  -> service responding
+        healthy=False -> service unreachable
+        healthy=None  -> cannot determine (no endpoint / no credentials)
+        """
+        ...
+
+
+async def http_probe(endpoint: str, timeout: float = 5.0) -> dict:
+    """HTTP GET probe against an endpoint.
+    Any HTTP response (incl. 401/403/500) = healthy.
+    Connection error / timeout = unhealthy.
+    Empty endpoint = unknown.
+    """
+    if not endpoint:
+        return {"healthy": None, "detail": "no endpoint configured"}
+    url = endpoint if endpoint.startswith(("http://", "https://")) else f"http://{endpoint}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+            resp = await client.get(url)
+            return {"healthy": True, "detail": f"HTTP {resp.status_code}"}
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return {"healthy": False, "detail": "connection refused or timeout"}
+    except Exception as e:
+        return {"healthy": False, "detail": str(e)[:200]}

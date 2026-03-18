@@ -35,6 +35,8 @@ const zhCN = {
   },
   status: {
     running: "运行中",
+    running_unhealthy: "运行中(不可访问)",
+    running_unknown: "运行中(检查中)",
     learning: "学习中",
     deploying: "部署中",
     creating: "创建中",
