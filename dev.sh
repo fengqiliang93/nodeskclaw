@@ -221,7 +221,7 @@ if [ -z "${DATABASE_URL:-}" ]; then
   export DATABASE_URL
 fi
 
-(cd "$LLM_PROXY_DIR" && uv run uvicorn app.main:app --port 8080 --timeout-graceful-shutdown 3) \
+(cd "$LLM_PROXY_DIR" && uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --timeout-graceful-shutdown 3) \
   2>&1 | prefix_output "$CYAN" "llm-prx" &
 PIDS+=($!)
 
