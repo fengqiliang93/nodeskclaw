@@ -17,6 +17,7 @@ import AgentCollaborationPanel from '@/components/workspace/AgentCollaborationPa
 import AgentDetailDialog from '@/components/workspace/AgentDetailDialog.vue'
 import CollaborationTimeline from '@/components/workspace/CollaborationTimeline.vue'
 import DecorationPanel from '@/components/workspace/DecorationPanel.vue'
+import AddAgentDialog from '@/components/workspace/AddAgentDialog.vue'
 import { findFloorAssetById, findAssetById } from '@/config/decorationAssets'
 import type { HexDecoration } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
@@ -426,7 +427,7 @@ function onHexClick(payload: { q: number, r: number, type: 'empty' | 'agent' | '
   if (isPickingHexForAgent.value) {
     if (payload.type === 'empty') {
       cancelPickHexMode()
-      router.push({ path: `/workspace/${workspaceId.value}/add-agent`, query: { hex_q: String(payload.q), hex_r: String(payload.r) } })
+      openAddAgentDialog(payload.q, payload.r)
     }
     return
   }
@@ -468,9 +469,8 @@ function onHexAction(action: string) {
     case 'add-agent': {
       const q = selectedHex.value?.q
       const r = selectedHex.value?.r
-      const query: Record<string, string> = {}
-      if (q !== undefined && r !== undefined) { query.hex_q = String(q); query.hex_r = String(r) }
-      router.push({ path: `/workspace/${workspaceId.value}/add-agent`, query })
+      hexDrawerOpen.value = false
+      openAddAgentDialog(q, r)
       break
     }
     case 'open-chat':
@@ -811,6 +811,20 @@ async function moveHexTo(targetQ: number, targetR: number) {
 }
 
 const isPickingHexForAgent = ref(false)
+
+const addAgentDialogVisible = ref(false)
+const addAgentHexQ = ref<number | undefined>()
+const addAgentHexR = ref<number | undefined>()
+
+function openAddAgentDialog(hexQ?: number, hexR?: number) {
+  addAgentHexQ.value = hexQ
+  addAgentHexR.value = hexR
+  addAgentDialogVisible.value = true
+}
+
+function onAgentAdded() {
+  addAgentDialogVisible.value = false
+}
 
 function enterPickHexMode() {
   cancelMoveMode()
@@ -1525,6 +1539,14 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
       </Transition>
     </Teleport>
+
+    <AddAgentDialog
+      v-model:visible="addAgentDialogVisible"
+      :workspace-id="workspaceId"
+      :target-hex-q="addAgentHexQ"
+      :target-hex-r="addAgentHexR"
+      @added="onAgentAdded"
+    />
   </div>
 </template>
 

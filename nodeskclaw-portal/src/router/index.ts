@@ -43,11 +43,6 @@ const ceRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/WorkspaceSettings.vue'),
   },
   {
-    path: '/workspace/:id/add-agent',
-    name: 'AddAgent',
-    component: () => import('@/views/AddAgent.vue'),
-  },
-  {
     path: '/instances',
     name: 'InstanceList',
     component: () => import('@/views/InstanceList.vue'),
