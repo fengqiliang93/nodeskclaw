@@ -172,6 +172,8 @@ async def _fetch_openrouter(api_key: str) -> list[ModelInfo]:
 
 
 _MINIMAX_TEXT_MODELS: list[ModelInfo] = [
+    ModelInfo(id="MiniMax-M2.7", name="MiniMax-M2.7", context_window=204800),
+    ModelInfo(id="MiniMax-M2.7-highspeed", name="MiniMax-M2.7 Highspeed", context_window=204800),
     ModelInfo(id="MiniMax-M2.5", name="MiniMax-M2.5", context_window=204800),
     ModelInfo(id="MiniMax-M2.5-highspeed", name="MiniMax-M2.5 Highspeed", context_window=204800),
     ModelInfo(id="MiniMax-M2.1", name="MiniMax-M2.1", context_window=204800),
