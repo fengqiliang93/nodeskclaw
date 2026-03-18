@@ -32,6 +32,10 @@ class NoDeskClawChannel(BaseChannel):  # type: ignore[misc]
         self._tunnel_task: asyncio.Task | None = None
 
     async def start(self) -> None:
+        if hasattr(self, "_client") and self._client:
+            logger.warning("NoDeskClaw channel: stopping previous tunnel client before restart")
+            await self._client.close()
+
         from .client import TunnelClient
 
         self._client = TunnelClient(on_chat_request=self._handle_chat_request)
@@ -42,7 +46,7 @@ class NoDeskClawChannel(BaseChannel):  # type: ignore[misc]
     async def stop(self) -> None:
         self._running = False
         if hasattr(self, "_client"):
-            self._client.close()
+            await self._client.close()
 
     async def send(self, msg: OutboundMessage) -> None:
         """Called by NanoBot's ChannelManager when AgentLoop produces a response."""

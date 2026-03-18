@@ -216,9 +216,14 @@ class TunnelClient:
         except asyncio.CancelledError:
             pass
 
-    def close(self) -> None:
+    async def close(self) -> None:
         self._closed = True
         self._stop_ping()
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
 
 
 def _now_ms() -> int:
