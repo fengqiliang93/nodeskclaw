@@ -577,12 +577,20 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
     total = len(DOCKER_DEPLOY_STEPS)
     step_names = list(DOCKER_DEPLOY_STEPS)
 
+    env_vars = dict(ctx.env_vars or {})
+    if "DOCKER_IMAGE" not in env_vars:
+        async with async_session_factory() as db:
+            from app.services.registry_service import resolve_image_registry
+            image_registry = await resolve_image_registry(db, ctx.runtime) or ctx.runtime or "openclaw"
+            env_vars["DOCKER_IMAGE"] = f"{image_registry}:{ctx.image_version}"
+
     config = InstanceComputeConfig(
         instance_id=ctx.instance_id,
         name=ctx.name,
         slug=ctx.name,
         namespace=ctx.namespace,
         image_version=ctx.image_version,
+        runtime=ctx.runtime,
         replicas=ctx.replicas,
         cpu_request=ctx.cpu_request,
         cpu_limit=ctx.cpu_limit,
@@ -590,7 +598,7 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
         mem_limit=ctx.mem_limit,
         storage_class=ctx.storage_class,
         storage_size=ctx.storage_size,
-        env_vars=ctx.env_vars or {},
+        env_vars=env_vars,
         advanced_config=ctx.advanced_config or {},
     )
 
