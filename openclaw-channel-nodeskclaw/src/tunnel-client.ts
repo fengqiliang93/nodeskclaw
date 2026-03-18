@@ -37,6 +37,12 @@ function deriveTunnelUrl(apiUrl: string): string {
 }
 
 export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
+  if (_instance) {
+    console.log("[tunnel] Shutting down previous TunnelClient before re-init");
+    _instance.disconnect();
+    _instance = null;
+  }
+
   const section = (cfg as Record<string, unknown>).channels?.["nodeskclaw"] as
     | Record<string, unknown>
     | undefined;
