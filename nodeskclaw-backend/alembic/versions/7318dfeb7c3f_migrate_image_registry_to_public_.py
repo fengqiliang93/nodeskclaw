@@ -5,6 +5,7 @@ Revises: 90f0cc94a2c1
 Create Date: 2026-03-18 15:37:27.267484
 
 """
+import uuid
 from typing import Sequence, Union
 
 from alembic import op
@@ -27,6 +28,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     sc = sa.table(
         "system_configs",
+        sa.column("id", sa.String),
         sa.column("key", sa.String),
         sa.column("value", sa.String),
     )
@@ -39,6 +41,7 @@ def upgrade() -> None:
     )
 
     for key, value in [
+        ("image_registry", NEW_OPENCLAW_REGISTRY),
         ("image_registry_zeroclaw", NEW_ZEROCLAW_REGISTRY),
         ("image_registry_nanobot", NEW_NANOBOT_REGISTRY),
     ]:
@@ -46,7 +49,9 @@ def upgrade() -> None:
             sa.select(sa.literal(1)).select_from(sc).where(sc.c.key == key)
         ).scalar()
         if not exists:
-            conn.execute(sa.insert(sc).values(key=key, value=value))
+            conn.execute(sa.insert(sc).values(
+                id=str(uuid.uuid4()), key=key, value=value,
+            ))
 
 
 def downgrade() -> None:

@@ -132,7 +132,6 @@ async def list_image_tags(
                 www_auth = resp.headers.get("www-authenticate", "")
 
                 if "bearer" in www_auth.lower():
-                    # Harbor / 容器镜像仓库 风格：Bearer Token 认证
                     token = await _get_bearer_token(client, www_auth, repo, credentials)
                     if token:
                         resp = await client.get(
