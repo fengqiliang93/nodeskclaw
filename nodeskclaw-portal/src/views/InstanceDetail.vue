@@ -51,12 +51,18 @@ interface InstanceDetail {
 const instance = ref<InstanceDetail | null>(null)
 const isDocker = computed(() => instance.value?.compute_provider === 'docker')
 
-const ENGINE_NAMES: Record<string, string> = {
-  openclaw: '全能工作引擎 (Powered by OpenClaw)',
-  zeroclaw: '高性能工作引擎 (Powered by ZeroClaw)',
-  nanobot: '轻量工作引擎 (Powered by Nanobot)',
+interface EngineInfo {
+  name: string
+  description: string
+  poweredBy: string
+  tags: string[]
 }
-const engineLabel = computed(() => ENGINE_NAMES[instance.value?.runtime ?? 'openclaw'] ?? instance.value?.runtime ?? 'openclaw')
+const ENGINE_INFO: Record<string, EngineInfo> = {
+  openclaw: { name: '全能工作引擎', description: '支持工具调用、基因系统、多技能管理', poweredBy: 'OpenClaw', tags: ['默认'] },
+  zeroclaw: { name: '高性能工作引擎', description: 'Rust 构建，极速响应，适合高并发场景', poweredBy: 'ZeroClaw', tags: [] },
+  nanobot:  { name: '轻量工作引擎', description: '超轻量，快速部署，适合简单对话场景', poweredBy: 'Nanobot', tags: [] },
+}
+const engineInfo = computed(() => ENGINE_INFO[instance.value?.runtime ?? 'openclaw'] ?? null)
 const loading = ref(true)
 const pageError = ref('')
 const gatewayToken = ref('')
@@ -300,7 +306,24 @@ async function handleDelete() {
           </div>
           <div v-if="instance.runtime" class="col-span-2">
             <span class="text-muted-foreground">{{ t('engine.title') }}</span>
-            <span class="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded">{{ engineLabel }}</span>
+            <span class="relative group inline-block ml-2">
+              <span class="text-xs bg-muted px-1.5 py-0.5 rounded cursor-default">{{ engineInfo?.name ?? instance.runtime }}</span>
+              <span
+                v-if="engineInfo"
+                class="invisible group-hover:visible absolute left-0 top-full mt-1.5 z-50 w-56 p-3 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg text-xs"
+              >
+                <span class="flex items-center gap-1.5">
+                  <span class="font-medium text-sm">{{ engineInfo.name }}</span>
+                  <span
+                    v-for="tag in engineInfo.tags"
+                    :key="tag"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary"
+                  >{{ tag }}</span>
+                </span>
+                <span class="block mt-1 text-muted-foreground leading-relaxed">{{ engineInfo.description }}</span>
+                <span class="block mt-1.5 text-[10px] text-muted-foreground/60">Powered by {{ engineInfo.poweredBy }}</span>
+              </span>
+            </span>
           </div>
           <div class="col-span-2">
             <span class="text-muted-foreground">创建时间</span>
