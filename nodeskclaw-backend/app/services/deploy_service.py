@@ -565,6 +565,7 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
     """非 K8s 环境：通过 COMPUTE_REGISTRY 查找对应 provider 并委托部署。"""
     from app.core.deps import async_session_factory
     from app.services.runtime.registries.compute_registry import COMPUTE_REGISTRY
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
     from app.services.runtime.compute.base import InstanceComputeConfig
 
     spec = COMPUTE_REGISTRY.get(ctx.compute_provider)
@@ -584,6 +585,9 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
             image_registry = await resolve_image_registry(db, ctx.runtime) or ctx.runtime or "openclaw"
             env_vars["DOCKER_IMAGE"] = f"{image_registry}:{ctx.image_version}"
 
+    rt_spec = RUNTIME_REGISTRY.get(ctx.runtime)
+    gw_port = rt_spec.gateway_port if rt_spec else 18789
+
     config = InstanceComputeConfig(
         instance_id=ctx.instance_id,
         name=ctx.name,
@@ -591,6 +595,7 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
         namespace=ctx.namespace,
         image_version=ctx.image_version,
         runtime=ctx.runtime,
+        gateway_port=gw_port,
         replicas=ctx.replicas,
         cpu_request=ctx.cpu_request,
         cpu_limit=ctx.cpu_limit,
@@ -780,8 +785,11 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             # Step 5: 创建 Deployment（含镜像拉取凭据）
             _publish(5, steps[4])
             from app.services.registry_service import resolve_image_registry
+            from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY as _RT_REG
             image_registry = await resolve_image_registry(db, ctx.runtime) or "openclaw"
             image = f"{image_registry}:{ctx.image_version}"
+            _rt_spec = _RT_REG.get(ctx.runtime)
+            gw_port = _rt_spec.gateway_port if _rt_spec else 18789
 
             # 创建镜像仓库拉取凭据 Secret（如果配置了仓库用户名密码）
             registry_username = await get_config("registry_username", db)
@@ -808,6 +816,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 cpu_limit=ctx.cpu_limit,
                 mem_request=ctx.mem_request,
                 mem_limit=ctx.mem_limit,
+                port=gw_port,
                 env_vars=ctx.env_vars,
                 advanced_config=ctx.advanced_config,
                 image_pull_secret=pull_secret_name,
@@ -822,7 +831,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
 
             # Step 6: 创建 Service（固定 ClusterIP）
             _publish(6, steps[5])
-            svc = build_service(ctx.name, ctx.namespace, labels)
+            svc = build_service(ctx.name, ctx.namespace, labels, port=gw_port)
             await k8s.create_or_skip(k8s.core.create_namespaced_service, ctx.namespace, svc)
 
             # Step 7: 创建 Ingress（自动子域名路由）
@@ -838,6 +847,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 inst_tls = adapter.get_tls_secret(tls_secret_name, bool(ctx.proxy_endpoint))
                 ing = build_ingress(
                     ctx.name, ctx.namespace, ingress_host, labels,
+                    port=gw_port,
                     tls_secret_name=inst_tls,
                     ingress_class=cluster.ingress_class,
                 )

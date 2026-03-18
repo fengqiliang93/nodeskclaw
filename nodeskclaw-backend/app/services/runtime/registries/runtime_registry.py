@@ -21,6 +21,7 @@ class RuntimeSpec:
     display_description: str = ""
     display_tags: tuple[str, ...] = ()
     display_powered_by: str = ""
+    gateway_port: int = 18789
     order: int = 0
     image_registry_key: str = "image_registry"
 
@@ -72,6 +73,7 @@ def _register_builtins() -> None:
         display_description="Rust 构建，极速响应，适合高并发场景",
         display_tags=(),
         display_powered_by="ZeroClaw",
+        gateway_port=8080,
         order=1,
         image_registry_key="image_registry_zeroclaw",
     ))
@@ -85,6 +87,7 @@ def _register_builtins() -> None:
         display_description="超轻量，快速部署，适合简单对话场景",
         display_tags=(),
         display_powered_by="Nanobot",
+        gateway_port=18790,
         order=2,
         image_registry_key="image_registry_nanobot",
     ))

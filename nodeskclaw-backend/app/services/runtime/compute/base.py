@@ -14,6 +14,7 @@ class InstanceComputeConfig:
     namespace: str
     image_version: str
     runtime: str = "openclaw"
+    gateway_port: int = 18789
     replicas: int = 1
     cpu_request: str = "500m"
     cpu_limit: str = "2000m"
