@@ -11,7 +11,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../common.sh"
 
-REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>/nodeskclaw-openclaw-base"
+REGISTRY="nodesk-center-cn-beijing.cr.volces.com/base-image/nodeskclaw-openclaw-base"
 DOCKERFILE="${SCRIPT_DIR}/Dockerfile"
 
 check_docker

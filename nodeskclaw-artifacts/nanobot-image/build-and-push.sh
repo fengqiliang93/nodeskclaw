@@ -10,7 +10,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../common.sh"
 
-REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>/nodeskclaw-nanobot-base"
+REGISTRY="nodesk-center-cn-beijing.cr.volces.com/base-image/nodeskclaw-nanobot-base"
 
 check_docker
 parse_common_args "$@"
