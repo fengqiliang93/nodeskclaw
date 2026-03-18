@@ -125,7 +125,7 @@ async def http_probe(endpoint: str, timeout: float = 5.0, path: str = "/") -> di
     if path and path != "/":
         url = url.rstrip("/") + path
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=False, trust_env=False) as client:
             resp = await client.get(url)
             logger.debug("http_probe %s -> HTTP %d", url, resp.status_code)
             return {"healthy": True, "detail": f"HTTP {resp.status_code}"}
