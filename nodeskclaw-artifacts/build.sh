@@ -2,11 +2,17 @@
 # build.sh — DeskClaw 统一镜像构建入口
 #
 # 用法:
-#   ./build.sh <engine> --version <ver> [--build-only] [--skip-verify] [--with-security --base-tag <tag>]
+#   ./build.sh <engine> [--version <ver>] [--build-only] [--skip-verify]
+#   ./build.sh <engine> --with-security --base-tag <tag> [--build-only]
+#   ./build.sh all [--build-only] [--skip-verify]
+#
+# 省略 --version 时自动检测各引擎最新稳定版（openclaw→npm, zeroclaw→GitHub, nanobot→PyPI）
 #
 # 示例:
-#   ./build.sh openclaw --version 2026.3.13
-#   ./build.sh zeroclaw --version v0.1.0 --build-only
+#   ./build.sh all                                    # 所有引擎最新版，构建并推送
+#   ./build.sh all --build-only                       # 所有引擎最新版，仅构建
+#   ./build.sh openclaw                               # 自动检测最新 OpenClaw
+#   ./build.sh zeroclaw --version v0.5.0 --build-only
 #   ./build.sh nanobot --version 0.1.4
 #   ./build.sh openclaw --with-security --base-tag v2026.3.13
 set -e
@@ -14,11 +20,56 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
+# ── 自动检测各引擎最新稳定版 ─────────────────────────
+detect_latest_version() {
+  local engine="$1"
+  case "${engine}" in
+    openclaw)
+      npm view openclaw versions --json 2>/dev/null | node -e "
+        const versions = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+        const stable = versions.filter(v => /^\d{4}\.\d{1,2}\.\d{1,2}$/.test(v));
+        if (stable.length > 0) console.log(stable[stable.length - 1]);
+      "
+      ;;
+    zeroclaw)
+      gh api repos/zeroclaw-labs/zeroclaw/releases/latest --jq '.tag_name' 2>/dev/null || echo ""
+      ;;
+    nanobot)
+      curl -sS https://pypi.org/pypi/nanobot-ai/json 2>/dev/null | python3 -c "
+import json, sys, re
+data = json.load(sys.stdin)
+versions = list(data['releases'].keys())
+stable = [v for v in versions if re.match(r'^\d+\.\d+\.\d+$', v)]
+stable.sort(key=lambda v: list(map(int, v.split('.'))))
+print(stable[-1] if stable else '')"
+      ;;
+  esac
+}
+
 ENGINE="$1"; shift || true
 if [ -z "${ENGINE}" ]; then
-  log_error "用法: ./build.sh <engine> --version <ver> [--build-only] [--with-security --base-tag <tag>]"
-  log_info "可用引擎: openclaw, zeroclaw, nanobot"
+  log_error "用法: ./build.sh <engine> [--version <ver>] [--build-only] [--skip-verify]"
+  log_info "可用引擎: openclaw, zeroclaw, nanobot, all"
   exit 1
+fi
+
+# ── all 模式: 依次构建所有引擎 ────────────────────────
+if [ "${ENGINE}" = "all" ]; then
+  FAILED=0
+  for e in openclaw zeroclaw nanobot; do
+    echo ""
+    log_info "==============================="
+    log_info "  构建 ${e}"
+    log_info "==============================="
+    "$0" "${e}" "$@" || { log_error "${e} 构建失败"; FAILED=1; }
+  done
+  echo ""
+  if [ "${FAILED}" = 1 ]; then
+    log_error "部分引擎构建失败"
+    exit 1
+  fi
+  log_success "所有引擎构建完成"
+  exit 0
 fi
 
 ENGINE_DIR="${SCRIPT_DIR}/${ENGINE}-image"
@@ -61,14 +112,14 @@ if [ "${WITH_SECURITY}" = true ]; then
 else
   # --- Base 模式 ---
   if [ -z "${VERSION}" ]; then
-    if [ "${ENGINE}" = "openclaw" ]; then
-      VERSION=$(sed -n 's/^ARG OPENCLAW_VERSION=//p' "${ENGINE_DIR}/Dockerfile")
-    fi
-    if [ -z "${VERSION}" ]; then
-      log_error "必须通过 --version 指定版本"
+    log_info "未指定版本，自动检测 ${ENGINE} 最新稳定版..."
+    DETECTED=$(detect_latest_version "${ENGINE}")
+    if [ -z "${DETECTED}" ]; then
+      log_error "无法自动检测 ${ENGINE} 最新版本，请手动指定 --version"
       exit 1
     fi
-    log_info "使用 Dockerfile 中的默认版本: ${VERSION}"
+    VERSION="${DETECTED#v}"
+    log_success "检测到最新版本: ${DETECTED}"
   fi
 
   if [ "${ENGINE}" = "openclaw" ]; then

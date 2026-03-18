@@ -21,7 +21,8 @@ zeroclaw-image/
 
 ```bash
 cd nodeskclaw-artifacts
-./build.sh zeroclaw --version v0.5.0
+./build.sh zeroclaw                               # 自动检测最新版
+./build.sh zeroclaw --version v0.5.0              # 指定版本
 ./build.sh zeroclaw --version v0.5.0 --build-only
 ./build.sh zeroclaw --version v0.5.0 --skip-verify
 ```

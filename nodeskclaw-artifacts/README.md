@@ -56,26 +56,31 @@ cd nodeskclaw-artifacts/openclaw-image
 
 ### 构建推送
 
-所有引擎使用统一的 `build.sh` 入口：
+所有引擎使用统一的 `build.sh` 入口，省略 `--version` 时自动检测最新稳定版：
 
 ```bash
 cd nodeskclaw-artifacts
 
-# OpenClaw（默认版本 / 指定版本）
+# 一键构建推送所有引擎最新版
+./build.sh all
+
+# 所有引擎仅构建
+./build.sh all --build-only
+
+# 单引擎（自动检测最新版）
 ./build.sh openclaw
+./build.sh zeroclaw
+./build.sh nanobot
+
+# 指定版本
 ./build.sh openclaw --version 2026.3.13
-
-# ZeroClaw
 ./build.sh zeroclaw --version v0.5.0
-
-# Nanobot
-./build.sh nanobot --version 0.1.4
 
 # 仅构建不推送
 ./build.sh openclaw --build-only
 ```
 
-脚本自动完成：版本校验 → `docker build --platform linux/amd64` → 打 `v{version}` tag → 推送 → 验证。
+脚本自动完成：版本检测 → 版本校验 → `docker build --platform linux/amd64` → 打 `v{version}` tag → 推送 → 验证。
 
 ### 安全层镜像构建
 
