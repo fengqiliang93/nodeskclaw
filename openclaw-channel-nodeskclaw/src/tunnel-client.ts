@@ -109,7 +109,10 @@ export class TunnelClient {
       return;
     }
 
-    this.ws.addEventListener("open", () => {
+    const ws = this.ws;
+
+    ws.addEventListener("open", () => {
+      if (this.ws !== ws) return;
       console.log("[tunnel] Connected, sending auth...");
       this.send({
         id: crypto.randomUUID(),
@@ -119,7 +122,8 @@ export class TunnelClient {
       });
     });
 
-    this.ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
+      if (this.ws !== ws) return;
       try {
         const msg: TunnelMessage =
           typeof event.data === "string"
@@ -131,7 +135,11 @@ export class TunnelClient {
       }
     });
 
-    this.ws.addEventListener("close", (event) => {
+    ws.addEventListener("close", (event) => {
+      if (this.ws !== ws) {
+        console.debug("[tunnel] Ignoring close on superseded WebSocket");
+        return;
+      }
       console.warn(
         "[tunnel] Connection closed: code=%d reason=%s",
         event.code,
@@ -141,11 +149,11 @@ export class TunnelClient {
       if (!this.closed) this.scheduleReconnect();
     });
 
-    this.ws.addEventListener("error", (err) => {
+    ws.addEventListener("error", (err) => {
+      if (this.ws !== ws) return;
       console.error("[tunnel] WebSocket error:", err);
-      const failedWs = this.ws;
       setTimeout(() => {
-        if (this.ws === failedWs && !this.closed) {
+        if (this.ws === ws && !this.closed) {
           console.warn("[tunnel] No close event after error, forcing reconnect");
           this.cleanup();
           this.scheduleReconnect();
