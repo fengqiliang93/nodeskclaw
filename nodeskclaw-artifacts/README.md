@@ -6,20 +6,19 @@ DeskClaw 部署制品 -- AI 经营伙伴的运行基础设施。包含 DeskClaw 
 
 ```
 nodeskclaw-artifacts/
-├── common.sh                    # 公共构建函数（日志、Docker 操作、参数解析、--with-security 支持）
+├── common.sh                    # 公共构建函数（OCI 配置、日志、Docker 操作、参数解析）
+├── build.sh                     # 统一镜像构建入口（./build.sh <engine> --version <ver>）
 ├── openclaw-image/              # OpenClaw 工作引擎镜像
 │   ├── Dockerfile               # Base 镜像: node:22-bookworm-slim + npm 全局安装 openclaw
 │   ├── Dockerfile.security      # 安全层镜像: FROM base + COPY TypeScript 插件到 extensions/
 │   ├── docker-entrypoint.sh     # 容器启动脚本（配置生成 + 凭证注入 + 前台启动）
 │   ├── init-container.sh        # Init Container 脚本（PVC 数据初始化 + 版本升级）
 │   ├── openclaw.json.template   # 配置模板，启动时 envsubst 替换占位符
-│   ├── build-and-push.sh        # 一键构建推送脚本（支持 --with-security）
 │   └── check-update.sh          # 版本检测脚本（查询 npm 最新稳定版、自动更新 Dockerfile）
 ├── zeroclaw-image/              # ZeroClaw 高性能工作引擎镜像
 │   ├── Dockerfile               # Base 镜像: debian:bookworm-slim + 预编译二进制下载
 │   ├── Dockerfile.security      # 安全层镜像: 多阶段 Rust 源码构建（git clone + cargo build）
 │   ├── docker-entrypoint.sh     # 容器入口脚本
-│   ├── build-and-push.sh        # 构建推送脚本（支持 --with-security）
 │   ├── check-update.sh          # 版本检测脚本（查询 GitHub Releases 最新版、自动更新 Dockerfile）
 │   └── README.md                # 构建说明
 ├── nanobot-image/               # Nanobot 轻量工作引擎镜像
@@ -27,7 +26,6 @@ nodeskclaw-artifacts/
 │   ├── Dockerfile.security      # 安全层镜像: FROM base + pip install 安全层 + startup wrapper
 │   ├── nanobot.yaml.template    # Nanobot 配置模板
 │   ├── docker-entrypoint.sh     # 容器入口脚本
-│   ├── build-and-push.sh        # 构建推送脚本（支持 --with-security）
 │   ├── check-update.sh          # 版本检测脚本（查询 PyPI 最新稳定版、自动更新 Dockerfile）
 │   └── README.md                # 构建说明
 ├── ingress-controller/          # Nginx Ingress Controller 部署清单
@@ -58,39 +56,46 @@ cd nodeskclaw-artifacts/openclaw-image
 
 ### 构建推送
 
+所有引擎使用统一的 `build.sh` 入口：
+
 ```bash
-cd nodeskclaw-artifacts/openclaw-image
+cd nodeskclaw-artifacts
 
-# 使用 Dockerfile 中的默认版本构建并推送
-./build-and-push.sh
+# OpenClaw（默认版本 / 指定版本）
+./build.sh openclaw
+./build.sh openclaw --version 2026.3.13
 
-# 指定版本
-./build-and-push.sh --version 2026.2.26
+# ZeroClaw
+./build.sh zeroclaw --version v0.1.0
+
+# Nanobot
+./build.sh nanobot --version 0.1.4
 
 # 仅构建不推送
-./build-and-push.sh --build-only
+./build.sh openclaw --build-only
 ```
 
-脚本自动完成：npm 版本校验 → `docker build --platform linux/amd64` → 打 `v{version}` + `latest` tag → 推送 → 验证。
+脚本自动完成：版本校验 → `docker build --platform linux/amd64` → 打 `v{version}` tag → 推送 → 验证。
 
 ### 安全层镜像构建
 
 每个 Runtime 支持 `--with-security` 模式，在 base 镜像基础上追加安全层：
 
 ```bash
-# 1. 先构建 base 镜像
-cd openclaw-image && ./build-and-push.sh --version 2026.2.26 --build-only
-# 2. 再构建安全层镜像（FROM base）
-./build-and-push.sh --with-security --base-tag v2026.2.26 --build-only
+cd nodeskclaw-artifacts
+
+# OpenClaw: 先构建 base，再构建安全层
+./build.sh openclaw --version 2026.3.13 --build-only
+./build.sh openclaw --with-security --base-tag v2026.3.13 --build-only
 
 # Nanobot
-cd ../nanobot-image && ./build-and-push.sh --version 0.1.0 --build-only
-./build-and-push.sh --with-security --base-tag v0.1.0 --build-only
+./build.sh nanobot --version 0.1.4 --build-only
+./build.sh nanobot --with-security --base-tag v0.1.4 --build-only
 
 # ZeroClaw（安全层模式为 Rust 源码构建，耗时较长）
-cd ../zeroclaw-image && ./build-and-push.sh --version v0.1.0 --build-only
+./build.sh zeroclaw --version v0.1.0 --build-only
 ZEROCLAW_REPO=https://github.com/nicholasgasior/zeroclaw.git ZEROCLAW_REF=main \
-  ./build-and-push.sh --with-security --base-tag v0.1.0 --build-only
+  ./build.sh zeroclaw --with-security --base-tag v0.1.0 --build-only
 ```
 
 安全层镜像 Tag 格式: `v{VERSION}-sec`（如 `v2026.2.26-sec`）。
@@ -127,7 +132,6 @@ ZEROCLAW_REPO=https://github.com/nicholasgasior/zeroclaw.git ZEROCLAW_REF=main \
 | `docker-entrypoint.sh` | 容器启动入口。检查 `OPENCLAW_FORCE_RECONFIG` 决定是否从模板重建配置，补全旧配置缺失的 `controlUi` 字段（版本兼容），注入凭证，然后 `exec openclaw gateway` 前台运行 |
 | `init-container.sh` | K8s Init Container 执行。首次部署时将 `/root/.openclaw` 模板拷贝到 PVC；版本升级时合并内置插件、更新版本标记 |
 | `openclaw.json.template` | 配置模板，包含 `${OPENCLAW_GATEWAY_PORT}` 等占位符，由 entrypoint 用 `envsubst` 替换生成 `openclaw.json`。`controlUi` 包含 `allowInsecureAuth`（绕过设备配对）和 `dangerouslyAllowHostHeaderOriginFallback`（非 loopback 绑定时的 Origin 校验回退） |
-| `build-and-push.sh` | 一键构建推送脚本。支持 `--version` 指定版本、`--build-only` 仅构建、npm 版本校验、自动打 tag |
 | `check-update.sh` | 版本检测脚本。查询 npm 最新稳定版（过滤 beta/rc），支持 `--update` 自动更新 Dockerfile |
 
 ### 关键环境变量

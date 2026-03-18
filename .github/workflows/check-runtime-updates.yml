@@ -86,7 +86,7 @@ jobs:
 
             **此 PR 由 GitHub Actions 自动创建。**
 
-            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `build-and-push.sh` 构建并推送新镜像。
+            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `./build.sh <engine> --version <ver>` 构建并推送新镜像。
           labels: |
             dependencies
 
@@ -166,7 +166,7 @@ jobs:
 
             **此 PR 由 GitHub Actions 自动创建。**
 
-            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `build-and-push.sh` 构建并推送新镜像。
+            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `./build.sh <engine> --version <ver>` 构建并推送新镜像。
           labels: |
             dependencies
 
@@ -244,6 +244,6 @@ jobs:
 
             **此 PR 由 GitHub Actions 自动创建。**
 
-            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `build-and-push.sh` 构建并推送新镜像。
+            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `./build.sh <engine> --version <ver>` 构建并推送新镜像。
           labels: |
             dependencies

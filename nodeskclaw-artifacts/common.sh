@@ -1,11 +1,19 @@
 #!/bin/bash
 # common.sh — DeskClaw Docker 镜像构建公共函数
 #
-# 使用方式: 在各 runtime 的 build-and-push.sh 中 source 本文件
-#   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-#   source "${SCRIPT_DIR}/../common.sh"
+# 使用方式: 在 build.sh 中 source 本文件
+#   source "${SCRIPT_DIR}/common.sh"
 
 set -e
+
+# ── OCI 镜像仓库配置 ──────────────────────────────
+REGISTRY_HOST="nodesk-center-cn-beijing.cr.volces.com"
+REGISTRY_NAMESPACE="public"
+
+registry_for() {
+  local runtime="$1"
+  echo "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/deskclaw-${runtime}"
+}
 
 # ── 日志 ────────────────────────────────────────
 log_info()    { echo "[INFO]  $*"; }

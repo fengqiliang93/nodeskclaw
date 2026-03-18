@@ -10,25 +10,29 @@ nanobot-image/
 ├── Dockerfile.security    # 安全层镜像: FROM base + pip install 安全层 + startup wrapper
 ├── nanobot.yaml.template  # Nanobot 配置模板（envsubst 替换环境变量）
 ├── docker-entrypoint.sh   # 容器入口脚本
-├── build-and-push.sh      # 构建和推送脚本（支持 --with-security）
+├── check-update.sh        # 版本检测脚本（查询 PyPI 最新稳定版）
 └── README.md              # 本文件
 ```
 
 ## 构建
 
+所有构建通过上级目录的 `build.sh` 统一入口执行：
+
 ### Base 镜像（无安全层）
 
 ```bash
-./build-and-push.sh --version 0.1.0
-./build-and-push.sh --version 0.1.0 --build-only
-./build-and-push.sh --version 0.1.0 --skip-verify
+cd nodeskclaw-artifacts
+./build.sh nanobot --version 0.1.4
+./build.sh nanobot --version 0.1.4 --build-only
+./build.sh nanobot --version 0.1.4 --skip-verify
 ```
 
 ### 安全层镜像
 
 ```bash
-# 需要先有 base 镜像（v0.1.0）
-./build-and-push.sh --with-security --base-tag v0.1.0 --build-only
+cd nodeskclaw-artifacts
+# 需要先有 base 镜像（v0.1.4）
+./build.sh nanobot --with-security --base-tag v0.1.4 --build-only
 ```
 
 安全层镜像 FROM base，`pip install nanobot-security-layer`，CMD 替换为 `startup.py` wrapper 在同一进程内 monkey-patch `ToolRegistry.execute` 后启动 nanobot CLI。
