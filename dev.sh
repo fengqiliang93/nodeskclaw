@@ -221,12 +221,9 @@ if [ -z "${DATABASE_URL:-}" ]; then
   export DATABASE_URL
 fi
 
-RESOLVED_DB_URL=$(cd "$BACKEND_DIR" && uv run python3 -c "from app.core.config import settings; print(settings.DATABASE_URL)" 2>/dev/null)
-if [ -n "$RESOLVED_DB_URL" ]; then
-  export DATABASE_URL="$RESOLVED_DB_URL"
-fi
+_LLM_PROXY_DB_URL=$(cd "$BACKEND_DIR" && uv run python3 -c "from app.core.config import settings; print(settings.DATABASE_URL)" 2>/dev/null)
 
-(cd "$LLM_PROXY_DIR" && uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --timeout-graceful-shutdown 3) \
+(cd "$LLM_PROXY_DIR" && DATABASE_URL="${_LLM_PROXY_DB_URL:-$DATABASE_URL}" uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --timeout-graceful-shutdown 3) \
   2>&1 | prefix_output "$CYAN" "llm-prx" &
 PIDS+=($!)
 
