@@ -134,6 +134,6 @@ async def http_probe(endpoint: str, timeout: float = 5.0, path: str = "/") -> di
         logger.warning("http_probe %s -> %s (%s)", url, detail, type(e).__name__)
         return {"healthy": False, "detail": detail}
     except Exception as e:
-        detail = str(e)[:200]
-        logger.warning("http_probe %s -> %s", url, detail)
+        detail = str(e)[:200] or type(e).__name__
+        logger.warning("http_probe %s -> %s (%s)", url, detail, type(e).__name__)
         return {"healthy": False, "detail": detail}

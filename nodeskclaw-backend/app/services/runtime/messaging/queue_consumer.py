@@ -22,7 +22,7 @@ _notify_event = asyncio.Event()
 _target_node_hint: str | None = None
 
 
-def on_queue_notify(channel: str, payload: str) -> None:
+async def on_queue_notify(channel: str, payload: str) -> None:
     """Called by PGNotifyService when a message_enqueued notification arrives."""
     global _target_node_hint
     try:
