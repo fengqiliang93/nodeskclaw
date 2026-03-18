@@ -89,6 +89,8 @@ async def _resolve_broadcast(
     targets = []
     for ep in addressable:
         type_spec = NODE_TYPE_REGISTRY.get(ep.endpoint_type)
+        if not (type_spec and type_spec.consumes):
+            continue
         transport = type_spec.transport if type_spec else ""
         targets.append(DeliveryTarget(
             node_id=ep.entity_id,
