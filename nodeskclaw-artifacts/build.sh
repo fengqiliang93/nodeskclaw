@@ -97,8 +97,10 @@ else
 
   print_build_summary "${ENGINE}" "${VERSION}" "${REGISTRY}" "linux/amd64" "base"
 
+  ENGINE_UPPER="$(echo "${ENGINE}" | tr '[:lower:]' '[:upper:]')"
+
   docker_build "${ENGINE_DIR}" "${REGISTRY}:${IMAGE_TAG}" \
-    --build-arg "${ENGINE^^}_VERSION=${BUILD_ARG_VERSION}" \
+    --build-arg "${ENGINE_UPPER}_VERSION=${BUILD_ARG_VERSION}" \
     --build-arg IMAGE_VERSION="${IMAGE_TAG}"
 fi
 
