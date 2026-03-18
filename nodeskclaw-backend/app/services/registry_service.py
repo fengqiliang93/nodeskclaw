@@ -123,7 +123,7 @@ async def list_image_tags(
     credentials = await _get_registry_auth(db)
 
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, verify=False) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, verify=False, trust_env=False) as client:
             # 第一次请求
             resp = await client.get(tags_url)
 
