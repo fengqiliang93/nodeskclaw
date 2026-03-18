@@ -18,11 +18,14 @@ nanobot-image/
 
 所有构建通过上级目录的 `build.sh` 统一入口执行：
 
+源码仓库: [HKUDS/nanobot](https://github.com/HKUDS/nanobot)，PyPI 包名: `nanobot-ai`
+
 ### Base 镜像（无安全层）
 
 ```bash
 cd nodeskclaw-artifacts
-./build.sh nanobot --version 0.1.4
+./build.sh nanobot                               # 自动检测 PyPI 最新稳定版
+./build.sh nanobot --version 0.1.4               # 指定版本
 ./build.sh nanobot --version 0.1.4 --build-only
 ./build.sh nanobot --version 0.1.4 --skip-verify
 ```
