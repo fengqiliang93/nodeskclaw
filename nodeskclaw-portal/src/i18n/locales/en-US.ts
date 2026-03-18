@@ -1205,6 +1205,7 @@ const enUS = {
     apiTypeAnthropic: "Anthropic Compatible",
     modelRequired: "Non-built-in providers require at least one model",
     workingPlanUnavailable: "Working Plan is not available for custom providers",
+    workingPlanNotConfigured: "Working Plan is not configured for this provider. Please contact your admin.",
     defaultBaseUrl: "Default: {url}",
     fetchModelsFailed: "Failed to fetch model list",
     model: "Model",

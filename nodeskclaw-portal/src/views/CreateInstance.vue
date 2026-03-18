@@ -123,7 +123,7 @@ function addProvider(p: string) {
   if (!p) return
   llmConfigs.value.push({
     provider: p,
-    keySource: WORKING_PLAN_PROVIDERS.has(p) ? 'org' : 'personal',
+    keySource: isWorkingPlanAvailable(p) ? 'org' : 'personal',
     personalKey: '',
     baseUrl: '',
     apiType: '',
@@ -162,6 +162,10 @@ function addCustomProvider() {
 
 const BUILTIN_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'openrouter'])
 const WORKING_PLAN_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
+const orgKeyProviders = ref<Set<string>>(new Set())
+
+const isWorkingPlanAvailable = (provider: string) =>
+  WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)
 
 async function handleFetchModels(provider: string, callback: (models: ModelItem[], error?: string) => void) {
   const cfg = llmConfigs.value.find(c => c.provider === provider)
@@ -318,10 +322,19 @@ watch(selectedRuntime, () => {
 
 onMounted(async () => {
   try {
-    const [clustersRes, enginesRes] = await Promise.all([
+    const orgId = authStore.user?.current_org_id
+    const fetches: Promise<any>[] = [
       api.get('/clusters'),
       api.get('/engines'),
-    ])
+    ]
+    if (orgId) {
+      fetches.push(api.get(`/orgs/${orgId}/available-llm-keys`).catch(() => ({ data: { data: [] } })))
+    }
+    const [clustersRes, enginesRes, orgKeysRes] = await Promise.all(fetches)
+    if (orgKeysRes) {
+      const keys = orgKeysRes.data.data ?? []
+      orgKeyProviders.value = new Set(keys.map((k: any) => k.provider))
+    }
     engines.value = (enginesRes.data.data ?? []) as EngineItem[]
     if (engines.value.length > 0 && !engines.value.find(e => e.runtime_id === selectedRuntime.value)) {
       selectedRuntime.value = engines.value[0].runtime_id
@@ -744,14 +757,21 @@ async function handleDeploy() {
 
               <div class="space-y-2">
                 <div v-if="!cfg.isCustom" class="flex gap-4 text-sm">
-                  <label
-                    class="flex items-center gap-1.5"
-                    :class="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
-                    :title="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? '' : t('llm.workingPlanUnavailable')"
-                  >
-                    <input type="radio" :name="`llm-${cfg.provider}`" value="org" v-model="cfg.keySource" class="accent-primary" :disabled="!WORKING_PLAN_PROVIDERS.has(cfg.provider)" />
-                    Working Plan
-                  </label>
+                  <span class="relative group">
+                    <label
+                      class="flex items-center gap-1.5"
+                      :class="isWorkingPlanAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                    >
+                      <input type="radio" :name="`llm-${cfg.provider}`" value="org" v-model="cfg.keySource" class="accent-primary" :disabled="!isWorkingPlanAvailable(cfg.provider)" />
+                      Working Plan
+                    </label>
+                    <span
+                      v-if="!isWorkingPlanAvailable(cfg.provider)"
+                      class="pointer-events-none absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md border border-border invisible group-hover:visible"
+                    >
+                      {{ WORKING_PLAN_PROVIDERS.has(cfg.provider) ? t('llm.workingPlanNotConfigured') : t('llm.workingPlanUnavailable') }}
+                    </span>
+                  </span>
                   <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="radio" :name="`llm-${cfg.provider}`" value="personal" v-model="cfg.keySource" class="accent-primary" />
                     个人 Key

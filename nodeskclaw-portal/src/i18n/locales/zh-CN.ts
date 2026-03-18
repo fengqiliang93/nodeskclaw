@@ -1205,6 +1205,7 @@ const zhCN = {
     apiTypeAnthropic: "Anthropic Compatible",
     modelRequired: "非内置 Provider 需要选择至少一个模型",
     workingPlanUnavailable: "自定义 Provider 暂不支持 Working Plan",
+    workingPlanNotConfigured: "管理员未配置该 Provider 的 Working Plan，请联系管理员",
     defaultBaseUrl: "默认: {url}",
     fetchModelsFailed: "拉取模型列表失败",
     model: "模型",

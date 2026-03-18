@@ -71,6 +71,10 @@ interface ProviderConfig {
 const BUILTIN_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'openrouter'])
 const WORKING_PLAN_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
 const ALL_KNOWN_PROVIDERS: Set<string> = new Set([...PROVIDERS])
+const orgKeyProviders = ref<Set<string>>(new Set())
+
+const isWorkingPlanAvailable = (provider: string) =>
+  WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)
 
 // ── State ──
 
@@ -98,10 +102,18 @@ async function loadAll() {
   successMsg.value = ''
 
   try {
-    const [configsResult, keysResult] = await Promise.allSettled([
+    const orgKeysPromise = instanceOrgId.value
+      ? api.get(`/orgs/${instanceOrgId.value}/available-llm-keys`).catch(() => ({ data: { data: [] } }))
+      : Promise.resolve({ data: { data: [] } })
+    const [configsResult, keysResult, orgKeysResult] = await Promise.allSettled([
       api.get(`/instances/${instanceId.value}/llm-configs`),
       api.get('/users/me/llm-keys'),
+      orgKeysPromise,
     ])
+    if (orgKeysResult.status === 'fulfilled') {
+      const keys = orgKeysResult.value.data.data ?? []
+      orgKeyProviders.value = new Set(keys.map((k: any) => k.provider))
+    }
 
     if (configsResult.status === 'fulfilled') {
       dataSource.value = 'pod'
@@ -139,6 +151,11 @@ async function loadAll() {
       })
     }
 
+    for (const c of configs) {
+      if (c.keySource === 'org' && !isWorkingPlanAvailable(c.provider)) {
+        c.keySource = 'personal'
+      }
+    }
     providerConfigs.value = configs
     dirty.value = false
   } catch (e: any) {
@@ -156,7 +173,7 @@ function addProvider(provider: string) {
   const isCustom = !ALL_KNOWN_PROVIDERS.has(provider)
   providerConfigs.value.push({
     provider,
-    keySource: isCustom ? 'personal' : (WORKING_PLAN_PROVIDERS.has(provider) ? 'org' : 'personal'),
+    keySource: isCustom ? 'personal' : (isWorkingPlanAvailable(provider) ? 'org' : 'personal'),
     personalKeyNew: '',
     personalKeyMasked: pk?.api_key_masked ?? '',
     hasExistingPersonalKey: !!pk,
@@ -458,7 +475,7 @@ watch(() => instanceId.value, (val) => {
                 <span class="relative group">
                   <label
                     class="flex items-center gap-1.5"
-                    :class="WORKING_PLAN_PROVIDERS.has(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                    :class="isWorkingPlanAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
                   >
                     <input
                       type="radio"
@@ -466,16 +483,16 @@ watch(() => instanceId.value, (val) => {
                       value="org"
                       v-model="cfg.keySource"
                       class="accent-primary"
-                      :disabled="!WORKING_PLAN_PROVIDERS.has(cfg.provider)"
+                      :disabled="!isWorkingPlanAvailable(cfg.provider)"
                       @change="markDirty"
                     />
                     Working Plan
                   </label>
                   <span
-                    v-if="!WORKING_PLAN_PROVIDERS.has(cfg.provider)"
+                    v-if="!isWorkingPlanAvailable(cfg.provider)"
                     class="pointer-events-none absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md border border-border invisible group-hover:visible"
                   >
-                    {{ t('llm.workingPlanUnavailable') }}
+                    {{ WORKING_PLAN_PROVIDERS.has(cfg.provider) ? t('llm.workingPlanNotConfigured') : t('llm.workingPlanUnavailable') }}
                   </span>
                 </span>
                 <label class="flex items-center gap-1.5 cursor-pointer">
