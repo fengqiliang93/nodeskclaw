@@ -187,8 +187,11 @@ class TunnelAdapter:
         except Exception as e:
             logger.error("Tunnel: message loop error for %s: %s", instance_id, e)
         finally:
-            self._cleanup_instance(instance_id)
-            self._broadcast_connection_event(instance_id, connected=False)
+            if self._connections.get(instance_id) is conn:
+                self._cleanup_instance(instance_id)
+                self._broadcast_connection_event(instance_id, connected=False)
+            else:
+                logger.info("Tunnel: instance %s handler exited (superseded by newer connection)", instance_id)
 
     async def _message_loop(self, conn: _InstanceConnection) -> None:
         while True:
