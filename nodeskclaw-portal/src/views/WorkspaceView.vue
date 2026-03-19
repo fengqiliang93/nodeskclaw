@@ -265,6 +265,7 @@ interface PerfSummary {
 }
 const perfSummary = ref<PerfSummary | null>(null)
 const perfLoading = ref(true)
+let workspaceBootstrapGeneration = 0
 
 async function loadPerfSummary(wsId: string) {
   perfLoading.value = true
@@ -285,6 +286,40 @@ async function loadPerfSummary(wsId: string) {
   }
 }
 
+async function refreshWorkspaceData(wsId: string) {
+  await Promise.all([
+    store.fetchWorkspace(wsId),
+    store.fetchTopology(wsId),
+    store.fetchBlackboard(wsId),
+    store.fetchDecoration(wsId),
+    loadPerfSummary(wsId),
+  ])
+}
+
+async function bootstrapWorkspaceCritical(wsId: string): Promise<number | null> {
+  const generation = ++workspaceBootstrapGeneration
+  await Promise.all([
+    store.fetchWorkspace(wsId),
+    store.fetchMyPermissions(wsId),
+    store.fetchBlackboard(wsId),
+    store.fetchTopology(wsId),
+  ])
+  if (generation !== workspaceBootstrapGeneration) return null
+  await nextTick()
+  if (generation !== workspaceBootstrapGeneration) return null
+  return generation
+}
+
+async function bootstrapWorkspaceDeferred(wsId: string, generation: number) {
+  await Promise.allSettled([
+    store.fetchMembers(wsId),
+    store.fetchDecoration(wsId),
+    loadPerfSummary(wsId),
+  ])
+  if (generation !== workspaceBootstrapGeneration) return
+  store.connectSSE(wsId, onSSEEvent)
+}
+
 function handleZoomIn() {
   if (activeMode.value === '3d') workspace3dRef.value?.zoomIn()
   else workspace2dRef.value?.zoomIn()
@@ -300,13 +335,7 @@ function handleResetView() {
   else workspace2dRef.value?.resetView()
 
   const wsId = workspaceId.value
-  Promise.all([
-    store.fetchWorkspace(wsId),
-    store.fetchTopology(wsId),
-    store.fetchBlackboard(wsId),
-    store.fetchDecoration(wsId),
-    loadPerfSummary(wsId),
-  ]).then(() => {
+  refreshWorkspaceData(wsId).then(() => {
     if (activeMode.value === '2d') workspace2dRef.value?.flashRefresh()
   })
 }
@@ -314,15 +343,10 @@ function handleResetView() {
 onMounted(async () => {
   store.resetCurrentState()
 
-  await store.fetchWorkspace(workspaceId.value)
-  await store.fetchMyPermissions(workspaceId.value)
-  await store.fetchBlackboard(workspaceId.value)
-  await store.fetchTopology(workspaceId.value)
-  await store.fetchMembers(workspaceId.value)
-  await store.fetchDecoration(workspaceId.value)
-  await loadPerfSummary(workspaceId.value)
+  const wsId = workspaceId.value
+  const generation = await bootstrapWorkspaceCritical(wsId)
+  if (generation === null) return
 
-  store.connectSSE(workspaceId.value, onSSEEvent)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', onWindowResize)
 
@@ -336,6 +360,8 @@ onMounted(async () => {
       workspace3dRef.value?.focusOnPosition(x, y)
     }
   }
+
+  void bootstrapWorkspaceDeferred(wsId, generation)
 })
 
 onUnmounted(() => {
@@ -347,13 +373,9 @@ onUnmounted(() => {
 watch(workspaceId, async (newId, oldId) => {
   if (newId && newId !== oldId) {
     store.resetCurrentState()
-    await store.fetchWorkspace(newId)
-    await store.fetchMyPermissions(newId)
-    await store.fetchBlackboard(newId)
-    await store.fetchTopology(newId)
-    await store.fetchDecoration(newId)
-    loadPerfSummary(newId)
-    store.connectSSE(newId, onSSEEvent)
+    const generation = await bootstrapWorkspaceCritical(newId)
+    if (generation === null) return
+    void bootstrapWorkspaceDeferred(newId, generation)
   }
 })
 
