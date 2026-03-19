@@ -819,6 +819,8 @@ const enUS = {
     webhookHint: "Webhook mode: messages are received via the event callback URL configured in the Feishu app.",
     websocketHint: "WebSocket mode: the backend maintains a persistent connection. Requires App ID and App Secret.",
     privateChatHint: "If the user has signed in via Feishu, private chat notifications are enabled automatically. Group chat mode is an optional advanced configuration.",
+    notApplicable: "N/A for this engine",
+    unsupported: "Not supported",
   },
   orgSettings: {
     navTitle: "Org Settings",

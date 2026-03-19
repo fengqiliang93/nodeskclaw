@@ -10,6 +10,7 @@ import CustomSelect from '@/components/shared/CustomSelect.vue'
 
 const { t } = useI18n()
 const instanceId = inject<ComputedRef<string>>('instanceId')!
+const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
 
 interface SchemaField {
   key: string
@@ -19,6 +20,8 @@ interface SchemaField {
   placeholder?: string
   default?: string | boolean | null
   options?: { value: string; label: string }[]
+  runtime_key?: Record<string, string>
+  applicable?: boolean
 }
 
 interface AvailableChannel {
@@ -29,6 +32,39 @@ interface AvailableChannel {
   order: number
   has_schema: boolean
   schema?: SchemaField[]
+}
+
+const supportsPluginInstall = computed(() => instanceRuntime.value === 'openclaw')
+
+function runtimeBadgeText(ch: AvailableChannel): string | null {
+  if (!ch.schema?.length) return null
+  const runtimes = new Set<string>()
+  for (const field of ch.schema) {
+    if (field.runtime_key) {
+      for (const rt of Object.keys(field.runtime_key)) {
+        runtimes.add(rt)
+      }
+    }
+  }
+  if (runtimes.size === 0 || runtimes.size >= 3) return null
+  const labels: Record<string, string> = {
+    openclaw: 'OpenClaw',
+    nanobot: 'NanoBot',
+    zeroclaw: 'ZeroClaw',
+  }
+  return [...runtimes].map(r => labels[r] || r).join(' / ')
+}
+
+function isChannelSupportedByRuntime(ch: AvailableChannel): boolean {
+  if (!ch.schema?.length) return true
+  const rt = instanceRuntime.value
+  return ch.schema.some(f => !f.runtime_key || rt in f.runtime_key)
+}
+
+function isFieldApplicable(field: SchemaField): boolean {
+  if (field.applicable !== undefined) return field.applicable
+  if (!field.runtime_key) return true
+  return instanceRuntime.value in field.runtime_key
 }
 
 const loading = ref(true)
@@ -337,6 +373,12 @@ watch(() => instanceId.value, (val) => {
               <span class="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
                 {{ ch.origin }}
               </span>
+              <span
+                v-if="runtimeBadgeText(ch)"
+                class="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded"
+              >
+                {{ runtimeBadgeText(ch) }}
+              </span>
             </div>
             <div class="flex items-center gap-2">
               <button
@@ -353,10 +395,21 @@ watch(() => instanceId.value, (val) => {
           <!-- Config form -->
           <div v-if="expandedChannels.has(ch.id)" class="px-4 pb-4 pt-1 border-t border-border space-y-3">
             <template v-if="ch.schema && ch.schema.length > 0">
-              <div v-for="field in ch.schema" :key="field.key" class="space-y-1">
-                <label class="text-xs text-muted-foreground">
+              <div
+                v-for="field in ch.schema"
+                :key="field.key"
+                class="space-y-1"
+                :class="{ 'opacity-40 pointer-events-none': !isFieldApplicable(field) }"
+              >
+                <label class="text-xs text-muted-foreground flex items-center gap-1.5">
                   {{ field.label }}
-                  <span v-if="field.required" class="text-destructive">*</span>
+                  <span v-if="field.required && isFieldApplicable(field)" class="text-destructive">*</span>
+                  <span
+                    v-if="!isFieldApplicable(field)"
+                    class="text-[10px] text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded"
+                  >
+                    {{ t('channel.notApplicable') }}
+                  </span>
                 </label>
 
                 <!-- Select -->
@@ -365,6 +418,7 @@ watch(() => instanceId.value, (val) => {
                   :model-value="editingConfigs[ch.id]?.[field.key] ?? field.default ?? ''"
                   :options="field.options ?? []"
                   trigger-class="w-full"
+                  :disabled="!isFieldApplicable(field)"
                   @update:model-value="(v: string | null) => { editingConfigs[ch.id][field.key] = v; markDirty() }"
                 />
 
@@ -374,6 +428,7 @@ watch(() => instanceId.value, (val) => {
                     type="checkbox"
                     :checked="editingConfigs[ch.id]?.[field.key] ?? field.default ?? false"
                     class="accent-primary"
+                    :disabled="!isFieldApplicable(field)"
                     @change="editingConfigs[ch.id][field.key] = ($event.target as HTMLInputElement).checked; markDirty()"
                   />
                   <span class="text-sm">{{ editingConfigs[ch.id]?.[field.key] ? t('channel.enabled') : t('channel.disabled') }}</span>
@@ -385,6 +440,7 @@ watch(() => instanceId.value, (val) => {
                     :type="visibleSecrets.has(`${ch.id}.${field.key}`) ? 'text' : 'password'"
                     :value="editingConfigs[ch.id]?.[field.key] ?? ''"
                     :placeholder="field.placeholder || ''"
+                    :disabled="!isFieldApplicable(field)"
                     class="w-full px-3 py-1.5 pr-9 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
                     @input="editingConfigs[ch.id][field.key] = ($event.target as HTMLInputElement).value; markDirty()"
                   />
@@ -403,6 +459,7 @@ watch(() => instanceId.value, (val) => {
                   type="text"
                   :value="editingConfigs[ch.id]?.[field.key] ?? ''"
                   :placeholder="field.placeholder || ''"
+                  :disabled="!isFieldApplicable(field)"
                   class="w-full px-3 py-1.5 rounded-md bg-background border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
                   @input="editingConfigs[ch.id][field.key] = ($event.target as HTMLInputElement).value; markDirty()"
                 />
@@ -434,17 +491,31 @@ watch(() => instanceId.value, (val) => {
           <button
             v-for="ch in unconfiguredChannels"
             :key="ch.id"
-            class="px-3 py-3 rounded-lg border border-border bg-card text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
-            @click="startConfiguring(ch)"
+            class="px-3 py-3 rounded-lg border text-left transition-colors"
+            :class="isChannelSupportedByRuntime(ch)
+              ? 'border-border bg-card hover:border-primary/50 hover:bg-primary/5'
+              : 'border-border/50 bg-muted/30 opacity-50 cursor-not-allowed'"
+            :disabled="!isChannelSupportedByRuntime(ch)"
+            @click="isChannelSupportedByRuntime(ch) && startConfiguring(ch)"
           >
-            <span class="text-sm font-medium block">{{ ch.label }}</span>
-            <span class="text-[10px] text-muted-foreground">{{ ch.origin }}</span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-medium">{{ ch.label }}</span>
+              <span
+                v-if="runtimeBadgeText(ch)"
+                class="text-[9px] text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded"
+              >
+                {{ runtimeBadgeText(ch) }}
+              </span>
+            </div>
+            <span class="text-[10px] text-muted-foreground">
+              {{ isChannelSupportedByRuntime(ch) ? ch.origin : t('channel.unsupported') }}
+            </span>
           </button>
         </div>
       </div>
 
-      <!-- Custom install section -->
-      <div class="space-y-3">
+      <!-- Custom install section (OpenClaw only) -->
+      <div v-if="supportsPluginInstall" class="space-y-3">
         <button
           class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           @click="customInstallOpen = !customInstallOpen"

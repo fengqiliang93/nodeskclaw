@@ -14,6 +14,7 @@ interface InstanceBasic {
   id: string
   name: string
   status: string
+  runtime?: string
   org_id: string | null
   my_role: string | null
 }
@@ -49,9 +50,12 @@ async function fetchBasic() {
 
 const instanceOrgId = computed(() => instance.value?.org_id ?? null)
 
+const instanceRuntime = computed(() => instance.value?.runtime ?? 'openclaw')
+
 provide('instanceId', instanceId)
 provide('instanceOrgId', instanceOrgId)
 provide('instanceBasic', instance)
+provide('instanceRuntime', instanceRuntime)
 provide('refreshInstanceBasic', fetchBasic)
 provide('myInstanceRole', myInstanceRole)
 
