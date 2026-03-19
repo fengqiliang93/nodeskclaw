@@ -87,11 +87,13 @@ async def events_recent(
 async def events_stream(
     cluster_id: str = Query(..., description="集群 ID"),
     namespace: str = Query("", description="命名空间，留空则监听所有"),
-    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
     """SSE 流: 实时推送 K8s 事件（deprecated，保留兼容）。"""
-    cluster = await _get_cluster(cluster_id, db)
+    from app.core.deps import async_session_factory
+
+    async with async_session_factory() as db:
+        cluster = await _get_cluster(cluster_id, db)
     k8s = await require_k8s_client(cluster)
 
     async def generate():

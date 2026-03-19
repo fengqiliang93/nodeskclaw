@@ -1259,33 +1259,32 @@ def _broadcast_system_info(workspace_id: str, content: str) -> None:
 @router.get("/{workspace_id}/events")
 async def workspace_events(
     workspace_id: str,
-    db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_from_query_dep()),
 ):
-    await wm_service.check_workspace_member(workspace_id, user, db)
+    import uuid as _uuid
+    conn_id = str(_uuid.uuid4())
 
-    snapshot = await _build_agent_status_snapshot(workspace_id, db)
+    async with async_session_factory() as db:
+        await wm_service.check_workspace_member(workspace_id, user, db)
+        snapshot = await _build_agent_status_snapshot(workspace_id, db)
+        try:
+            from app.services.runtime import sse_registry
+            await sse_registry.register_connection(
+                db,
+                connection_id=conn_id,
+                instance_id=conn_id,
+                target_type="workspace",
+                target_id=workspace_id,
+                workspace_id=workspace_id,
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning("Failed to register SSE connection: %s", e)
 
     queue: asyncio.Queue = asyncio.Queue()
     if workspace_id not in _workspace_queues:
         _workspace_queues[workspace_id] = set()
     _workspace_queues[workspace_id].add(queue)
-
-    import uuid as _uuid
-    conn_id = str(_uuid.uuid4())
-    try:
-        from app.services.runtime import sse_registry
-        await sse_registry.register_connection(
-            db,
-            connection_id=conn_id,
-            instance_id=conn_id,
-            target_type="workspace",
-            target_id=workspace_id,
-            workspace_id=workspace_id,
-        )
-        await db.commit()
-    except Exception as e:
-        logger.warning("Failed to register SSE connection: %s", e)
 
     async def stream():
         try:
@@ -1303,7 +1302,6 @@ async def workspace_events(
         finally:
             _workspace_queues.get(workspace_id, set()).discard(queue)
             try:
-                from app.core.deps import async_session_factory
                 from app.services.runtime import sse_registry
                 async with async_session_factory() as cleanup_db:
                     await sse_registry.unregister_connection(cleanup_db, conn_id)

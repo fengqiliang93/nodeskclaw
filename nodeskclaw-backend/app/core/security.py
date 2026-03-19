@@ -206,10 +206,17 @@ async def get_current_user_unchecked(
 
 async def get_current_user_from_query(
     token: str = Query(..., description="JWT access token (支持 SSE 短时效 token)"),
-    db: AsyncSession = Depends(get_db),
 ) -> User:
-    """SSE 端点专用: 从 query parameter 读 token, 兼容普通 access token 和 SSE token."""
-    return await _get_user_by_token(token, db, allowed_scopes={"sse"})
+    """SSE 端点专用: 从 query parameter 读 token, 兼容普通 access token 和 SSE token.
+
+    使用独立会话而非 Depends(get_db)，避免 SSE 长连接期间占用连接池。
+    """
+    from app.core.deps import async_session_factory
+
+    async with async_session_factory() as db:
+        user = await _get_user_by_token(token, db, allowed_scopes={"sse"})
+        db.expunge(user)
+    return user
 
 
 async def get_current_user_or_agent(
