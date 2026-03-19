@@ -32,6 +32,7 @@ interface AvailableChannel {
   order: number
   has_schema: boolean
   schema?: SchemaField[]
+  supported?: boolean
 }
 
 const supportsPluginInstall = computed(() => instanceRuntime.value === 'openclaw')
@@ -56,6 +57,7 @@ function runtimeBadgeText(ch: AvailableChannel): string | null {
 }
 
 function isChannelSupportedByRuntime(ch: AvailableChannel): boolean {
+  if (ch.supported !== undefined) return ch.supported
   if (!ch.schema?.length) return true
   const rt = instanceRuntime.value
   return ch.schema.some(f => !f.runtime_key || rt in f.runtime_key)
@@ -88,7 +90,7 @@ const deployingRepo = ref(false)
 const SENSITIVE_KEYS = new Set([
   'appSecret', 'botToken', 'appToken', 'token', 'appPassword',
   'accessToken', 'encryptKey', 'verificationToken', 'apiKey',
-  'serviceAccountKeyFile',
+  'serviceAccountKeyFile', 'clientSecret',
 ])
 
 const configuredChannels = computed(() =>
