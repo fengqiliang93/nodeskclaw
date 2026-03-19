@@ -17,6 +17,7 @@ NoDeskClaw/
 ├── nodeskclaw-llm-proxy/          # LLM Proxy 服务（Python + FastAPI）
 ├── nodeskclaw-artifacts/          # 镜像构建 & 部署制品
 ├── openclaw-channel-nodeskclaw/   # DeskClaw channel plugin
+├── openclaw-channel-dingtalk/     # DingTalk channel plugin (Stream protocol)
 ├── features.yaml                   # CE/EE Feature 定义
 ├── ee/                             # Enterprise Edition 模块（私有）
 │   └── nodeskclaw-frontend/       # 管理后台前端（EE-only，Vue 3 + shadcn-vue + Tailwind CSS）

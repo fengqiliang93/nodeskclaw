@@ -440,7 +440,7 @@ Docker Compose 部署注意事项：
 
 ### Docker 构建（单独构建镜像）
 
-后端镜像的 build context 是**项目根目录**（非 `nodeskclaw-backend/`），因为镜像需要包含 `openclaw-channel-nodeskclaw/` 插件源码（工作区 Agent 通信用）。
+后端镜像的 build context 是**项目根目录**（非 `nodeskclaw-backend/`），因为镜像需要包含 `openclaw-channel-nodeskclaw/`、`openclaw-channel-dingtalk/` 等插件源码。
 
 ```bash
 cd /path/to/NoDeskClaw

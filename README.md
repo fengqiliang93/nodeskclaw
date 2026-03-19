@@ -83,6 +83,7 @@ DeskClaw/
 ├── nodeskclaw-llm-proxy/          # LLM Proxy -- Python + FastAPI
 ├── nodeskclaw-artifacts/          # Docker images & deploy manifests
 ├── openclaw-channel-nodeskclaw/   # Cyber Workspace channel plugin
+├── openclaw-channel-dingtalk/     # DingTalk channel plugin (Stream protocol)
 ├── features.yaml                  # CE/EE feature registry
 ├── ee/                            # Enterprise Edition (private)
 │   └── nodeskclaw-frontend/      # Admin Console -- Vue 3 + shadcn-vue (EE-only)
@@ -209,6 +210,7 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE), si
 | [Portal](nodeskclaw-portal/README.md) | User portal frontend |
 | [Artifacts](nodeskclaw-artifacts/README.md) | DeskClaw image build & deploy manifests |
 | [Channel Plugin](openclaw-channel-nodeskclaw/README.md) | Cyber Workspace communication infrastructure |
+| [DingTalk Plugin](openclaw-channel-dingtalk/README.md) | DingTalk channel via Stream protocol |
 | [LLM Proxy](nodeskclaw-llm-proxy/README.md) | AI reasoning capability relay |
 
 ## Community
