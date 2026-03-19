@@ -33,6 +33,7 @@ interface InstanceDetail {
   id: string
   name: string
   status: string
+  runtime?: string
   image_version: string
   ingress_domain: string | null
   namespace: string
