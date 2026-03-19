@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, watch, inject, type ComputedRef, type Ref } from 'vue'
-import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check, Link, Star, X } from 'lucide-vue-next'
+import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check, Link, Star, X, AlertTriangle } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import api from '@/services/api'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 const instanceId = inject<ComputedRef<string>>('instanceId')!
+const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
+const runtimeSupported = computed(() => getRuntimeCaps(instanceRuntime.value).llmConfig)
 const instanceOrgId = inject<Ref<string | null>>('instanceOrgId')!
 const myInstanceRole = inject<Ref<string | null>>('myInstanceRole', ref(null))
 const ROLE_LEVEL: Record<string, number> = { viewer: 10, user: 20, editor: 30, admin: 40 }
@@ -314,9 +317,9 @@ async function handleSave() {
       })),
     })
 
-    // 3. Restart OpenClaw
+    // 3. Restart runtime
     restarting.value = true
-    const res = await api.post(`/instances/${instanceId.value}/restart-openclaw`, null, { timeout: 120000 })
+    const res = await api.post(`/instances/${instanceId.value}/restart-runtime`, null, { timeout: 120000 })
     const result = res.data.data
     if (result?.status === 'ok') {
       successMsg.value = '配置已保存，DeskClaw 已重启'
@@ -347,7 +350,12 @@ watch(() => instanceId.value, (val) => {
 
 <template>
   <div>
-    <div v-if="loading" class="flex items-center justify-center py-20">
+    <div v-if="!runtimeSupported" class="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+      <AlertTriangle class="w-10 h-10 opacity-50" />
+      <p class="text-sm">{{ t('instanceSettings.unsupportedRuntime') }}</p>
+    </div>
+
+    <div v-else-if="loading" class="flex items-center justify-center py-20">
       <Loader2 class="w-6 h-6 animate-spin text-muted-foreground" />
     </div>
 

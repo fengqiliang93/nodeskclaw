@@ -13,7 +13,7 @@ COPY nodeskclaw-tunnel-bridge/ /tmp/nodeskclaw-tunnel-bridge/
 RUN pip install --no-cache-dir /tmp/nodeskclaw-tunnel-bridge/ && \
     rm -rf /tmp/nodeskclaw-tunnel-bridge/
 
-COPY nanobot.yaml.template /opt/nanobot/nanobot.yaml.template
+COPY config.json.template /opt/nanobot/config.json.template
 COPY docker-entrypoint.sh /opt/nanobot/docker-entrypoint.sh
 RUN chmod +x /opt/nanobot/docker-entrypoint.sh
 
@@ -23,4 +23,4 @@ EXPOSE 18790
 WORKDIR /opt/nanobot
 
 ENTRYPOINT ["/opt/nanobot/docker-entrypoint.sh"]
-CMD ["nanobot", "gateway", "--config", "/opt/nanobot/nanobot.yaml"]
+CMD ["nanobot", "gateway"]

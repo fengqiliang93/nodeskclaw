@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, inject, type Ref } from 'vue'
+import { ref, onMounted, computed, watch, inject, type Ref, type ComputedRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ChevronRight, Download, File, FileCode, FileText,
@@ -8,6 +8,7 @@ import {
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { useToast } from '@/composables/useToast'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 interface FileItem {
   name: string
@@ -26,9 +27,11 @@ interface FileListing {
 }
 
 const instanceId = inject<Ref<string>>('instanceId')!
+const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
 const { t, locale } = useI18n()
 const toast = useToast()
 
+const dataRoot = computed(() => getRuntimeCaps(instanceRuntime.value).dataRoot)
 const currentPath = ref('.openclaw')
 const loading = ref(true)
 const error = ref('')
@@ -98,8 +101,15 @@ const filteredItems = computed(() => {
 
 const hasUnsavedChanges = computed(() => editing.value && panelContent.value !== panelOriginalContent.value)
 
+watch(dataRoot, (root) => {
+  if (currentPath.value === '.openclaw' || !currentPath.value) {
+    currentPath.value = root
+    fetchFiles()
+  }
+}, { immediate: true })
+
 function breadcrumbLabel(part: string): string {
-  return part === '.openclaw' ? t('instanceFiles.workspaceRoot') : part
+  return part === dataRoot.value ? t('instanceFiles.workspaceRoot') : part
 }
 
 async function fetchFiles() {

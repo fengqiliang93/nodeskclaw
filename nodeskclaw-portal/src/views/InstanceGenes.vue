@@ -12,11 +12,14 @@ import { useI18n } from 'vue-i18n'
 import GeneMarketDialog from '@/components/gene/GeneMarketDialog.vue'
 import api from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 const { t } = useI18n()
 const route = useRoute()
 const toast = useToast()
 const instanceId = inject<ComputedRef<string>>('instanceId')!
+const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
+const runtimeSupported = computed(() => getRuntimeCaps(instanceRuntime.value).genes)
 const store = useGeneStore()
 
 const initialLoading = ref(true)
@@ -248,6 +251,12 @@ onUnmounted(stopPolling)
 
 <template>
   <div class="space-y-6">
+    <div v-if="!runtimeSupported" class="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+      <AlertTriangle class="w-10 h-10 opacity-50" />
+      <p class="text-sm">{{ t('instanceGenes.unsupportedRuntime') }}</p>
+    </div>
+
+    <template v-else>
     <div class="flex items-center justify-between">
       <h2 class="text-lg font-semibold">{{ t('instanceGenes.title') }}</h2>
       <div class="flex items-center gap-2">
@@ -639,5 +648,6 @@ onUnmounted(stopPolling)
       :installed-skill-names="installedSkillNames"
       @installed="onGeneInstalled"
     />
+    </template>
   </div>
 </template>

@@ -705,7 +705,7 @@ class TunnelAdapter:
             if inst is None:
                 return False
             env_vars = json.loads(inst.env_vars or "{}")
-            expected_token = env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
+            expected_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
             return bool(expected_token and token == expected_token)
 
     async def _send(self, ws: WebSocket, msg: TunnelMessage) -> None:

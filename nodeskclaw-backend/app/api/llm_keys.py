@@ -576,8 +576,8 @@ async def update_instance_llm_configs(
     return ApiResponse(message="配置已写入")
 
 
-@router.post("/instances/{instance_id}/restart-openclaw", response_model=ApiResponse[dict])
-async def restart_openclaw(
+@router.post("/instances/{instance_id}/restart-runtime", response_model=ApiResponse[dict])
+async def restart_runtime(
     instance_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -589,9 +589,9 @@ async def restart_openclaw(
     if instance is None:
         raise NotFoundError("实例不存在")
 
-    from app.services.llm_config_service import restart_openclaw as _restart
+    from app.services.llm_config_service import restart_runtime as _restart
     result_data = await _restart(instance, db)
-    await hooks.emit("operation_audit", action="instance.openclaw_restarted", target_type="instance", target_id=instance_id, actor_id=current_user.id, org_id=instance.org_id)
+    await hooks.emit("operation_audit", action="instance.runtime_restarted", target_type="instance", target_id=instance_id, actor_id=current_user.id, org_id=instance.org_id)
     return ApiResponse(data=result_data)
 
 
@@ -607,6 +607,9 @@ async def get_openclaw_providers(
     instance = result.scalar_one_or_none()
     if instance is None:
         raise NotFoundError("实例不存在")
+
+    if instance.runtime != "openclaw":
+        return ApiResponse(data=OpenClawConfigResponse(data_source="not_applicable", providers=[]))
 
     from app.services.llm_config_service import read_openclaw_providers
     config = await read_openclaw_providers(instance, db)

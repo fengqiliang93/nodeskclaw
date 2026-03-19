@@ -10,6 +10,7 @@ import { resolveApiErrorMessage } from '@/i18n/error'
 import { useAuthStore } from '@/stores/auth'
 import { useOrgStore } from '@/stores/org'
 import { useI18n } from 'vue-i18n'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -360,7 +361,10 @@ onMounted(async () => {
   }
 })
 
+const runtimeHasLlm = computed(() => getRuntimeCaps(selectedRuntime.value).llmConfig)
+
 const llmReady = computed(() => {
+  if (!runtimeHasLlm.value) return true
   if (llmSkipped.value) return true
   if (llmConfigs.value.length === 0) return false
   return llmConfigs.value.every(c => {
@@ -476,19 +480,21 @@ async function handleDeploy() {
         >1</span>
         基本信息
       </button>
-      <div class="flex-1 h-px" :class="currentStep >= 2 ? 'bg-primary' : 'bg-border'" />
-      <button
-        class="flex items-center gap-2 text-sm transition-colors"
-        :class="currentStep === 2 ? 'text-primary font-medium' : 'text-muted-foreground'"
-        :disabled="!canGoNext"
-        @click="canGoNext && (currentStep = 2)"
-      >
-        <span
-          class="w-6 h-6 rounded-full text-xs flex items-center justify-center font-medium transition-colors"
-          :class="currentStep >= 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
-        >2</span>
-        大模型配置
-      </button>
+      <template v-if="runtimeHasLlm">
+        <div class="flex-1 h-px" :class="currentStep >= 2 ? 'bg-primary' : 'bg-border'" />
+        <button
+          class="flex items-center gap-2 text-sm transition-colors"
+          :class="currentStep === 2 ? 'text-primary font-medium' : 'text-muted-foreground'"
+          :disabled="!canGoNext"
+          @click="canGoNext && (currentStep = 2)"
+        >
+          <span
+            class="w-6 h-6 rounded-full text-xs flex items-center justify-center font-medium transition-colors"
+            :class="currentStep >= 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+          >2</span>
+          大模型配置
+        </button>
+      </template>
     </div>
 
     <div v-if="loadingInit" class="flex items-center justify-center py-20">
@@ -705,9 +711,10 @@ async function handleDeploy() {
           </div>
         </div>
 
-        <!-- 下一步 -->
+        <!-- 下一步 / 直接部署 -->
         <div class="pt-4">
           <button
+            v-if="runtimeHasLlm"
             :disabled="!canGoNext"
             class="w-full py-3 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             @click="currentStep = 2"
@@ -715,11 +722,21 @@ async function handleDeploy() {
             下一步
             <ArrowRight class="w-4 h-4" />
           </button>
+          <button
+            v-else
+            :disabled="!canDeploy"
+            class="w-full py-3 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            @click="handleDeploy"
+          >
+            <Loader2 v-if="deploying" class="w-4 h-4 animate-spin" />
+            <Rocket v-else class="w-4 h-4" />
+            {{ deploying ? '部署中...' : '创建AI 员工' }}
+          </button>
         </div>
       </div>
 
       <!-- ══ Step 2: 大模型配置 ══ -->
-      <div v-if="currentStep === 2" class="space-y-6">
+      <div v-if="runtimeHasLlm && currentStep === 2" class="space-y-6">
         <div class="space-y-3">
           <div class="flex items-center gap-2">
             <Brain class="w-4 h-4 text-violet-400" />

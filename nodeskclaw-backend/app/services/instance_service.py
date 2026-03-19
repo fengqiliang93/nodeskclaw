@@ -129,6 +129,7 @@ def _compute_endpoint_url(instance: Instance) -> str | None:
 def _normalize_gateway_env_vars(env_vars: dict[str, str], token: str) -> dict[str, str]:
     """统一实例访问令牌相关环境变量。"""
     normalized = dict(env_vars)
+    normalized["GATEWAY_TOKEN"] = token
     normalized["OPENCLAW_GATEWAY_TOKEN"] = token
     normalized["NODESKCLAW_TOKEN"] = token
     return normalized
@@ -822,12 +823,11 @@ async def _execute_config_update(
 
 
 async def sync_gateway_token(instance_id: str, db: AsyncSession) -> str:
-    """从运行中的 Pod 读取 OPENCLAW_GATEWAY_TOKEN 并回填到 DB 和 ConfigMap。"""
+    """从运行中的 Pod 读取 GATEWAY_TOKEN 并回填到 DB 和 ConfigMap。"""
     instance = await get_instance(instance_id, db)
 
-    # 如果 DB 中已有 Token，补齐关联字段后直接返回
     env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
-    existing_token = env_vars.get("OPENCLAW_GATEWAY_TOKEN")
+    existing_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")
     if existing_token:
         normalized_env_vars = _normalize_gateway_env_vars(env_vars, existing_token)
         changed = normalized_env_vars != env_vars or instance.proxy_token != existing_token
@@ -915,7 +915,7 @@ async def regenerate_gateway_token(instance_id: str, db: AsyncSession) -> str:
     k8s = await require_k8s_client(cluster)
 
     new_token = secrets.token_hex(24)
-    while new_token == old_env_vars.get("OPENCLAW_GATEWAY_TOKEN"):
+    while new_token == (old_env_vars.get("GATEWAY_TOKEN") or old_env_vars.get("OPENCLAW_GATEWAY_TOKEN")):
         new_token = secrets.token_hex(24)
     new_env_vars = _normalize_gateway_env_vars(old_env_vars, new_token)
 

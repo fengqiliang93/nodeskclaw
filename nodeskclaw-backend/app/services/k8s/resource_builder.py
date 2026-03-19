@@ -241,8 +241,9 @@ def build_deployment(
     image_pull_secret: str | None = None,
     health_probe_path: str | None = "/healthz",
     readiness_probe_path: str | None = "/readyz",
+    has_init_script: bool = True,
 ) -> V1Deployment:
-    """Build OpenClaw Deployment manifest with optional advanced config."""
+    """Build Deployment manifest with optional advanced config."""
 
     # Environment variables from ConfigMap
     env = []
@@ -268,7 +269,7 @@ def build_deployment(
     # Init container for first-time setup
     # 注意：当命名空间有 ResourceQuota（设置了 limits）时，所有容器必须指定 resource limits
     init_containers = []
-    if pvc_name:
+    if pvc_name and has_init_script:
         init_containers.append(
             V1Container(
                 name="init-root-data",

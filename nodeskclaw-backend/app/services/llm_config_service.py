@@ -147,7 +147,7 @@ def _mask_key(key: str) -> str:
 
 
 async def _get_running_pod(k8s: K8sClient, instance: Instance) -> str | None:
-    """Find a running Pod for the instance (only used by restart_openclaw for kill)."""
+    """Find a running Pod for the instance (only used by restart_runtime for kill)."""
     label_selector = f"app.kubernetes.io/name={_k8s_name(instance)}"
     pods = await k8s.list_pods(instance.namespace, label_selector)
     running = [p for p in pods if p["phase"] == "Running"]
@@ -616,14 +616,13 @@ def _make_account_entry(instance: Instance, workspace_id: str) -> dict:
     api_url = settings.AGENT_API_BASE_URL
     if instance.compute_provider == "docker":
         api_url = _docker_rewrite_url(api_url)
+    _env = json.loads(instance.env_vars or "{}")
     return {
         "enabled": True,
         "apiUrl": api_url,
         "workspaceId": workspace_id,
         "instanceId": instance.id,
-        "apiToken": json.loads(instance.env_vars or "{}").get(
-            "OPENCLAW_GATEWAY_TOKEN", ""
-        ),
+        "apiToken": _env.get("GATEWAY_TOKEN") or _env.get("OPENCLAW_GATEWAY_TOKEN", ""),
     }
 
 
@@ -931,15 +930,15 @@ async def deploy_learning_channel_plugin(
     logger.info("已部署 learning channel plugin: instance=%s", instance.name)
 
 
-async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
-    """Restart OpenClaw (config is assumed to be already written by the caller).
+async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
+    """Restart runtime process (config is assumed to be already written by the caller).
 
     Strategy: try graceful SIGTERM first; if exec fails (pod crashed / not ready),
     fall back to Deployment rolling restart.
     Docker: delegate to DockerComputeProvider.restart_instance.
     """
     if instance.compute_provider == "docker":
-        return await _restart_openclaw_docker(instance)
+        return await _restart_runtime_docker(instance)
 
     k8s = await _get_k8s_client(instance, db)
     if k8s is None:
@@ -979,20 +978,20 @@ async def restart_openclaw(instance: Instance, db: AsyncSession) -> dict:
             for p in running:
                 ready = all(c.get("ready", False) for c in p.get("containers", []))
                 if ready:
-                    logger.info("实例 %s OpenClaw 重启完成 (via %s)", instance.name, restarted_via)
+                    logger.info("实例 %s Runtime 重启完成 (via %s)", instance.name, restarted_via)
                     return {"status": "ok", "message": "重启完成"}
 
     return {"status": "timeout", "message": "重启超时（60s），请检查实例状态"}
 
 
-async def _restart_openclaw_docker(instance: Instance) -> dict:
-    """Restart an OpenClaw Docker container."""
+async def _restart_runtime_docker(instance: Instance) -> dict:
+    """Restart a runtime Docker container."""
     from app.services.instance_service import _build_docker_handle, _get_docker_provider
     try:
         provider = _get_docker_provider()
         handle = _build_docker_handle(instance)
         await provider.restart_instance(handle)
-        logger.info("Docker 实例 %s OpenClaw 重启完成", instance.name)
+        logger.info("Docker 实例 %s Runtime 重启完成", instance.name)
         return {"status": "ok", "message": "重启完成"}
     except Exception as e:
         logger.error("Docker 实例 %s 重启失败: %s", instance.name, e)
@@ -1036,6 +1035,9 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
     failed = []
 
     for inst in instances:
+        if inst.runtime != "openclaw":
+            skipped.append({"id": inst.id, "name": inst.name, "reason": f"runtime={inst.runtime}"})
+            continue
         try:
             ws_result = await db.execute(
                 select(WorkspaceAgent.workspace_id)

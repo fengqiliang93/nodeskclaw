@@ -14,8 +14,6 @@ from app.services.nfs_mount import NFSMountError, remote_fs
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ROOT = ".openclaw"
-
 BLOCKED_SEGMENTS = frozenset({
     "credentials",
     "node_modules",
@@ -27,8 +25,18 @@ MAX_PREVIEW_BYTES = 1_048_576  # 1 MB
 
 TEXT_MIME_PREFIXES = ("text/", "application/json", "application/xml", "application/yaml")
 
+_DEFAULT_ROOT = ".openclaw"
 
-def _validate_path(rel_path: str) -> str:
+
+def get_allowed_root(runtime: str) -> str:
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+    spec = RUNTIME_REGISTRY.get(runtime)
+    if spec:
+        return spec.config_rel_path.split("/")[0]
+    return _DEFAULT_ROOT
+
+
+def _validate_path(rel_path: str, allowed_root: str = _DEFAULT_ROOT) -> str:
     if ".." in rel_path.split("/"):
         raise AppException(
             code=40000,
@@ -37,9 +45,9 @@ def _validate_path(rel_path: str) -> str:
             status_code=400,
         )
     if not rel_path or rel_path == "/":
-        return ALLOWED_ROOT
-    if not rel_path.startswith(ALLOWED_ROOT):
-        rel_path = f"{ALLOWED_ROOT}/{rel_path.lstrip('/')}"
+        return allowed_root
+    if not rel_path.startswith(allowed_root):
+        rel_path = f"{allowed_root}/{rel_path.lstrip('/')}"
     for segment in rel_path.split("/"):
         if segment in BLOCKED_SEGMENTS:
             raise ForbiddenError(
@@ -125,8 +133,8 @@ async def list_browsable_agents(org_id: str, db: AsyncSession) -> list[dict]:
 async def list_files(
     instance_id: str, rel_path: str, org_id: str, db: AsyncSession,
 ) -> dict:
-    safe_path = _validate_path(rel_path)
     instance = await _get_instance(instance_id, org_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     if instance.status != InstanceStatus.running:
         raise AppException(
@@ -174,8 +182,8 @@ async def list_files(
 async def read_file_content(
     instance_id: str, rel_path: str, org_id: str, db: AsyncSession,
 ) -> dict:
-    safe_path = _validate_path(rel_path)
     instance = await _get_instance(instance_id, org_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     if instance.status != InstanceStatus.running:
         raise AppException(
@@ -234,8 +242,8 @@ async def download_file(
     instance_id: str, rel_path: str, org_id: str, db: AsyncSession,
 ) -> tuple[str, str]:
     """Return (content, filename) for download."""
-    safe_path = _validate_path(rel_path)
     instance = await _get_instance(instance_id, org_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     if instance.status != InstanceStatus.running:
         raise AppException(
@@ -269,8 +277,8 @@ async def download_file(
 async def list_files_for_instance(
     instance_id: str, rel_path: str, db: AsyncSession,
 ) -> dict:
-    safe_path = _validate_path(rel_path)
     instance = await _get_running_instance(instance_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     try:
         async with remote_fs(instance, db) as fs:
@@ -307,8 +315,8 @@ async def list_files_for_instance(
 async def read_file_for_instance(
     instance_id: str, rel_path: str, db: AsyncSession,
 ) -> dict:
-    safe_path = _validate_path(rel_path)
     instance = await _get_running_instance(instance_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     try:
         async with remote_fs(instance, db) as fs:
@@ -346,8 +354,8 @@ async def read_file_for_instance(
 async def download_file_for_instance(
     instance_id: str, rel_path: str, db: AsyncSession,
 ) -> tuple[str, str]:
-    safe_path = _validate_path(rel_path)
     instance = await _get_running_instance(instance_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     try:
         async with remote_fs(instance, db) as fs:
@@ -366,8 +374,8 @@ async def download_file_for_instance(
 async def write_file_content(
     instance_id: str, rel_path: str, content: str, db: AsyncSession,
 ) -> dict:
-    safe_path = _validate_path(rel_path)
     instance = await _get_running_instance(instance_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     try:
         async with remote_fs(instance, db) as fs:
@@ -384,8 +392,8 @@ async def write_file_content_for_org(
     instance_id: str, rel_path: str, content: str, org_id: str, db: AsyncSession,
 ) -> dict:
     """写入文件（企业空间入口，含组织归属校验）。"""
-    safe_path = _validate_path(rel_path)
     instance = await _get_instance(instance_id, org_id, db)
+    safe_path = _validate_path(rel_path, get_allowed_root(instance.runtime))
 
     if instance.status != InstanceStatus.running:
         raise AppException(

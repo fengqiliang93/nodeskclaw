@@ -27,7 +27,7 @@ class WriteFileRequest(BaseModel):
 @router.get("/{instance_id}/files", response_model=ApiResponse)
 async def list_files(
     instance_id: str,
-    path: str = Query(default=".openclaw", alias="path"),
+    path: str = Query(default="", alias="path"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

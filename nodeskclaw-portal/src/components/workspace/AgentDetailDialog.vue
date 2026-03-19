@@ -11,6 +11,7 @@ import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import type { InstanceSkillItem, InstanceGeneItem, GenomeItem } from '@/stores/gene'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 const props = defineProps<{
   visible: boolean
@@ -125,7 +126,7 @@ const maskedGatewayToken = computed(() => {
 })
 
 function syncGatewayToken(detail: InstanceDetail | null) {
-  gatewayToken.value = detail?.env_vars?.OPENCLAW_GATEWAY_TOKEN || ''
+  gatewayToken.value = detail?.env_vars?.GATEWAY_TOKEN || detail?.env_vars?.OPENCLAW_GATEWAY_TOKEN || ''
 }
 
 function close() {
@@ -153,7 +154,9 @@ async function fetchDetail() {
   } finally {
     loading.value = false
   }
-  fetchGenes()
+  if (getRuntimeCaps(instance.value?.runtime ?? 'openclaw').genes) {
+    fetchGenes()
+  }
 }
 
 async function fetchGenes() {
@@ -267,6 +270,7 @@ async function handleResetToken() {
       if (instance.value) {
         instance.value.env_vars = {
           ...(instance.value.env_vars || {}),
+          GATEWAY_TOKEN: token,
           OPENCLAW_GATEWAY_TOKEN: token,
           NODESKCLAW_TOKEN: token,
         }
@@ -451,7 +455,7 @@ onUnmounted(stopPolling)
               </div>
 
               <!-- Installed Genes -->
-              <div class="p-3 rounded-lg border border-border bg-card">
+              <div v-if="getRuntimeCaps(instance?.runtime ?? 'openclaw').genes" class="p-3 rounded-lg border border-border bg-card">
                 <div class="flex items-center justify-between mb-2">
                   <h4 class="text-xs font-medium text-muted-foreground">{{ t('agentDetailDialog.installedGenes') }}</h4>
                   <a
@@ -512,7 +516,7 @@ onUnmounted(stopPolling)
               </div>
 
               <!-- Applied Genomes -->
-              <div v-if="appliedGenomes.length" class="p-3 rounded-lg border border-border bg-card">
+              <div v-if="getRuntimeCaps(instance?.runtime ?? 'openclaw').genes && appliedGenomes.length" class="p-3 rounded-lg border border-border bg-card">
                 <h4 class="text-xs font-medium text-muted-foreground mb-2">{{ t('agentDetailDialog.appliedGenomes') }}</h4>
                 <div class="space-y-1.5">
                   <div

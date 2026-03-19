@@ -101,8 +101,8 @@ class OpenClawConfigAdapter(RuntimeConfigAdapter):
         return config
 
     async def restart(self, instance: Instance, db: AsyncSession) -> dict:
-        from app.services.llm_config_service import restart_openclaw
-        return await restart_openclaw(instance, db)
+        from app.services.llm_config_service import restart_runtime
+        return await restart_runtime(instance, db)
 
     def supported_channels(self) -> list[str]:
         return [

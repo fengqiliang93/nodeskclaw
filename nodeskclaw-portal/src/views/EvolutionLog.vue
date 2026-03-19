@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, type ComputedRef } from 'vue'
+import { ref, computed, onMounted, inject, type ComputedRef } from 'vue'
 import {
   Loader2,
   CheckCircle,
@@ -11,11 +11,17 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  AlertTriangle,
 } from 'lucide-vue-next'
 import { useGeneStore } from '@/stores/gene'
 import type { EvolutionEventItem } from '@/stores/gene'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const instanceId = inject<ComputedRef<string>>('instanceId')!
+const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
+const runtimeSupported = computed(() => getRuntimeCaps(instanceRuntime.value).evolutionLog)
 const store = useGeneStore()
 
 const events = ref<EvolutionEventItem[]>([])
@@ -93,6 +99,12 @@ onMounted(loadEvents)
 
 <template>
   <div class="space-y-6">
+    <div v-if="!runtimeSupported" class="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+      <AlertTriangle class="w-10 h-10 opacity-50" />
+      <p class="text-sm">{{ t('evolutionLog.unsupportedRuntime') }}</p>
+    </div>
+
+    <template v-else>
     <h2 class="text-lg font-semibold">进化日志</h2>
 
     <div v-if="loading" class="flex items-center justify-center py-16">
@@ -162,5 +174,6 @@ onMounted(loadEvents)
         加载更多
       </button>
     </div>
+    </template>
   </div>
 </template>

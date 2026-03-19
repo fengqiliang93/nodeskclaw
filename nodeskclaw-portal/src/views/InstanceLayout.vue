@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, Circle, Loader2, LayoutDashboard, Brain, Dna, History, Radio, FolderOpen, Users } from 'lucide-vue-next'
 import api from '@/services/api'
+import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,14 +62,16 @@ provide('myInstanceRole', myInstanceRole)
 
 onMounted(fetchBasic)
 
+const caps = computed(() => getRuntimeCaps(instanceRuntime.value))
+
 const navItems = computed(() => {
   const items = [
     { name: 'InstanceDetail', label: t('common.overview'), icon: LayoutDashboard },
-    { name: 'InstanceGenes', label: t('common.genes'), icon: Dna },
-    { name: 'EvolutionLog', label: t('common.evolutionLog'), icon: History },
-    { name: 'InstanceChannels', label: t('common.channels'), icon: Radio },
-    { name: 'InstanceSettings', label: t('common.modelConfig'), icon: Brain },
   ]
+  if (caps.value.genes) items.push({ name: 'InstanceGenes', label: t('common.genes'), icon: Dna })
+  if (caps.value.evolutionLog) items.push({ name: 'EvolutionLog', label: t('common.evolutionLog'), icon: History })
+  items.push({ name: 'InstanceChannels', label: t('common.channels'), icon: Radio })
+  if (caps.value.llmConfig) items.push({ name: 'InstanceSettings', label: t('common.modelConfig'), icon: Brain })
   if (myInstanceRole.value === 'admin') {
     items.push({ name: 'InstanceFiles', label: t('common.files'), icon: FolderOpen })
     items.push({ name: 'InstanceMembers', label: t('common.members'), icon: Users })

@@ -1,8 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_TEMPLATE="/opt/nanobot/nanobot.yaml.template"
-CONFIG_FILE="/opt/nanobot/nanobot.yaml"
+CONFIG_TEMPLATE="/opt/nanobot/config.json.template"
+CONFIG_DIR="/root/.nanobot"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
+
+mkdir -p "${CONFIG_DIR}"
 
 if [ -f "${CONFIG_TEMPLATE}" ] && [ ! -f "${CONFIG_FILE}" ]; then
   envsubst < "${CONFIG_TEMPLATE}" > "${CONFIG_FILE}"

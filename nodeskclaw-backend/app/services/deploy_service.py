@@ -388,11 +388,12 @@ async def deploy_instance(
             docker_host_port += 1
         namespace = f"docker-{slug}"
 
-    # 自动注入 OPENCLAW_GATEWAY_TOKEN（用户未提供时自动生成）
     env_vars = dict(req.env_vars) if req.env_vars else {}
-    if "OPENCLAW_GATEWAY_TOKEN" not in env_vars:
-        env_vars["OPENCLAW_GATEWAY_TOKEN"] = _secrets.token_hex(24)
-    gateway_token = env_vars["OPENCLAW_GATEWAY_TOKEN"]
+    gateway_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")
+    if not gateway_token:
+        gateway_token = _secrets.token_hex(24)
+    env_vars["GATEWAY_TOKEN"] = gateway_token
+    env_vars["OPENCLAW_GATEWAY_TOKEN"] = gateway_token
 
     env_vars.setdefault("NODESKCLAW_API_URL", settings.AGENT_API_BASE_URL)
     env_vars.setdefault("NODESKCLAW_TOKEN", gateway_token)
@@ -659,22 +660,23 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
 
         await db.commit()
 
-        from app.services.llm_config_service import (
-            ensure_openclaw_gateway_config,
-            sync_openclaw_llm_config,
-        )
-        try:
-            await ensure_openclaw_gateway_config(instance, db)
-            if ctx.has_llm_configs:
-                await sync_openclaw_llm_config(instance, db)
-        except Exception as e:
-            logger.warning(
-                "Docker 部署后注入配置失败（非致命） [deploy_id=%s, instance_id=%s]: %s",
-                ctx.record_id,
-                ctx.instance_id,
-                e,
-                exc_info=True,
+        if ctx.runtime == "openclaw":
+            from app.services.llm_config_service import (
+                ensure_openclaw_gateway_config,
+                sync_openclaw_llm_config,
             )
+            try:
+                await ensure_openclaw_gateway_config(instance, db)
+                if ctx.has_llm_configs:
+                    await sync_openclaw_llm_config(instance, db)
+            except Exception as e:
+                logger.warning(
+                    "Docker 部署后注入配置失败（非致命） [deploy_id=%s, instance_id=%s]: %s",
+                    ctx.record_id,
+                    ctx.instance_id,
+                    e,
+                    exc_info=True,
+                )
 
     event_bus.publish(
         "deploy_progress",
@@ -805,6 +807,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 logger.info("已创建镜像拉取凭据 Secret: %s/%s", ctx.namespace, REGISTRY_SECRET_NAME)
 
             _has_http = _rt_spec.health_probe_path is not None if _rt_spec else True
+            _has_init = _rt_spec.has_init_script if _rt_spec else True
             dep = build_deployment(
                 name=ctx.name,
                 namespace=ctx.namespace,
@@ -823,6 +826,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 image_pull_secret=pull_secret_name,
                 health_probe_path="/healthz" if _has_http else None,
                 readiness_probe_path="/readyz" if _has_http else None,
+                has_init_script=_has_init,
             )
             await k8s.apply(
                 k8s.apps.create_namespaced_deployment,
@@ -969,25 +973,27 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 instance.available_replicas = dep_status.get("available_replicas", 0)
                 await db.commit()
 
-                from app.services.llm_config_service import (
-                    ensure_openclaw_gateway_config,
-                    sync_openclaw_llm_config,
-                )
                 llm_sync_warning = ""
 
-                if ctx.has_llm_configs:
-                    config_step = len(DEPLOY_STEPS_BASE) + 1
-                    _publish(config_step, "应用实例配置")
-                    try:
+                if ctx.runtime == "openclaw":
+                    from app.services.llm_config_service import (
+                        ensure_openclaw_gateway_config,
+                        sync_openclaw_llm_config,
+                    )
+
+                    if ctx.has_llm_configs:
+                        config_step = len(DEPLOY_STEPS_BASE) + 1
+                        _publish(config_step, "应用实例配置")
+                        try:
+                            await ensure_openclaw_gateway_config(instance, db)
+                            await sync_openclaw_llm_config(instance, db)
+                            _publish(config_step, "应用实例配置", status="success")
+                        except Exception as e:
+                            logger.warning("部署后应用实例配置失败（非致命）: %s", e)
+                            llm_sync_warning = "（LLM 配置注入失败，请在管理后台手动同步）"
+                            _publish(config_step, "应用实例配置", status="failed", message=str(e))
+                    else:
                         await ensure_openclaw_gateway_config(instance, db)
-                        await sync_openclaw_llm_config(instance, db)
-                        _publish(config_step, "应用实例配置", status="success")
-                    except Exception as e:
-                        logger.warning("部署后应用实例配置失败（非致命）: %s", e)
-                        llm_sync_warning = "（LLM 配置注入失败，请在管理后台手动同步）"
-                        _publish(config_step, "应用实例配置", status="failed", message=str(e))
-                else:
-                    await ensure_openclaw_gateway_config(instance, db)
 
                 gene_install_warning = ""
                 if ctx.template_gene_slugs:

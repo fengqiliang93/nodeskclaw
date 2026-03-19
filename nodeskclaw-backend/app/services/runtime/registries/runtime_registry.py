@@ -32,6 +32,7 @@ class RuntimeSpec:
     supports_channel_plugins: bool = True
     data_dir_container_path: str = "/root/.openclaw"
     has_web_ui: bool = True
+    has_init_script: bool = True
 
 
 class RuntimeRegistry:
@@ -92,6 +93,7 @@ def _register_builtins() -> None:
         supports_channel_plugins=False,
         data_dir_container_path="/root/.zeroclaw",
         has_web_ui=False,
+        has_init_script=False,
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
@@ -114,6 +116,7 @@ def _register_builtins() -> None:
         supports_channel_plugins=False,
         data_dir_container_path="/root/.nanobot",
         has_web_ui=False,
+        has_init_script=False,
     ))
 
 

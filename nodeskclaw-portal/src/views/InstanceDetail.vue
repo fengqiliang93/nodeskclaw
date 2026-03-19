@@ -115,7 +115,7 @@ const maskedGatewayToken = computed(() => {
 })
 
 function syncGatewayToken(detail: InstanceDetail | null) {
-  gatewayToken.value = detail?.env_vars?.OPENCLAW_GATEWAY_TOKEN || ''
+  gatewayToken.value = detail?.env_vars?.GATEWAY_TOKEN || detail?.env_vars?.OPENCLAW_GATEWAY_TOKEN || ''
 }
 
 async function copyToken() {
@@ -235,6 +235,7 @@ async function handleResetToken() {
       if (instance.value) {
         instance.value.env_vars = {
           ...(instance.value.env_vars || {}),
+          GATEWAY_TOKEN: token,
           OPENCLAW_GATEWAY_TOKEN: token,
           NODESKCLAW_TOKEN: token,
         }

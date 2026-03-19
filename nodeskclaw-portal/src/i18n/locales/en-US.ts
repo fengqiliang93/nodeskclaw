@@ -242,6 +242,13 @@ const enUS = {
     statusForgetting: "Deep Forgetting",
     statusForgetFailed: "Forget Failed",
     statusSimplified: "Simplified",
+    unsupportedRuntime: "Gene system is not supported by this engine",
+  },
+  instanceSettings: {
+    unsupportedRuntime: "LLM configuration is not supported by this engine",
+  },
+  evolutionLog: {
+    unsupportedRuntime: "Evolution log is not supported by this engine",
   },
   decoration: {
     panel_title: 'Office Decoration',

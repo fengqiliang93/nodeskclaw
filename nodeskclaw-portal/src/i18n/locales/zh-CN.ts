@@ -242,6 +242,13 @@ const zhCN = {
     statusForgetting: "深度遗忘中",
     statusForgetFailed: "遗忘失败",
     statusSimplified: "已简化",
+    unsupportedRuntime: "当前 AI 员工引擎不支持基因系统",
+  },
+  instanceSettings: {
+    unsupportedRuntime: "当前 AI 员工引擎不支持大模型配置",
+  },
+  evolutionLog: {
+    unsupportedRuntime: "当前 AI 员工引擎不支持进化日志",
   },
   decoration: {
     panel_title: '办公室装修',
