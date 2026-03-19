@@ -72,6 +72,39 @@ logging.getLogger("sqlalchemy.engine").setLevel(
     logging.INFO if settings.LOG_SQL else logging.WARNING
 )
 
+
+class _PoolDisconnectFilter(logging.Filter):
+    """CancelledError -> single-line WARNING; GC cleanup -> WARNING; real errors untouched."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and record.exc_info[1]:
+            if isinstance(record.exc_info[1], asyncio.CancelledError):
+                record.levelno = logging.WARNING
+                record.levelname = "WARNING"
+                record.msg = "Client disconnect interrupted connection cleanup (CancelledError)"
+                record.args = None
+                record.exc_info = None
+                record.exc_text = None
+                return True
+        msg = record.getMessage()
+        if "garbage collector" in msg and record.levelno >= logging.ERROR:
+            record.levelno = logging.WARNING
+            record.levelname = "WARNING"
+            return True
+        return True
+
+
+logging.getLogger("sqlalchemy.pool").addFilter(_PoolDisconnectFilter())
+
+import warnings  # noqa: E402
+from sqlalchemy.exc import SAWarning  # noqa: E402
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*garbage collector.*non-checked-in connection.*",
+    category=SAWarning,
+)
+
 for _uv_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _uv_logger = logging.getLogger(_uv_name)
     _uv_logger.handlers.clear()
@@ -521,17 +554,29 @@ app.add_middleware(
 )
 
 # ── API Cache-Control ────────────────────────────────
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request as _StarletteRequest
-from starlette.responses import Response as _StarletteResponse
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
-class _NoCacheAPIMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: _StarletteRequest, call_next: RequestResponseEndpoint) -> _StarletteResponse:
-        response = await call_next(request)
-        if request.url.path.startswith("/api/"):
-            response.headers.setdefault("Cache-Control", "no-store")
-        return response
+class _NoCacheAPIMiddleware:
+    """Pure ASGI middleware — no BaseHTTPMiddleware task-group wrapping."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+
+        async def _send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                if "cache-control" not in headers:
+                    headers.append("Cache-Control", "no-store")
+            await send(message)
+
+        await self.app(scope, receive, _send)
 
 
 app.add_middleware(_NoCacheAPIMiddleware)
