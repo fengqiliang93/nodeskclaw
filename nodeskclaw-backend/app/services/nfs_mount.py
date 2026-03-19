@@ -302,22 +302,25 @@ async def _find_running_pod(
 class DockerFS:
     """Host filesystem proxy for Docker instances — files at DOCKER_DATA_DIR/{slug}/data/."""
 
-    def __init__(self, slug: str):
+    def __init__(self, slug: str, home_prefix: str = ".openclaw"):
         from app.services.docker_constants import DOCKER_DATA_DIR
         self._slug = slug
         self._base = DOCKER_DATA_DIR / slug / "data"
+        self._home_prefix = home_prefix.strip("/")
+        self._abs_prefix = f"/root/{self._home_prefix}"
         import os
         os.makedirs(str(self._base), exist_ok=True)
 
     def _resolve(self, remote_path: str) -> "pathlib.Path":
         import pathlib
-        if remote_path.startswith("/root/.openclaw/"):
-            rel = remote_path[len("/root/.openclaw/"):]
-        elif remote_path.startswith("/root/.openclaw"):
-            rel = remote_path[len("/root/.openclaw"):]
-        elif remote_path.startswith(".openclaw/"):
-            rel = remote_path[len(".openclaw/"):]
-        elif remote_path == ".openclaw":
+        abs_slash = self._abs_prefix + "/"
+        if remote_path.startswith(abs_slash):
+            rel = remote_path[len(abs_slash):]
+        elif remote_path.startswith(self._abs_prefix):
+            rel = remote_path[len(self._abs_prefix):]
+        elif remote_path.startswith(self._home_prefix + "/"):
+            rel = remote_path[len(self._home_prefix) + 1:]
+        elif remote_path == self._home_prefix:
             rel = ""
         else:
             rel = remote_path.lstrip("/")
@@ -426,6 +429,14 @@ class DockerFS:
 RemoteFS = PodFS | DockerFS
 
 
+def _home_prefix_for_runtime(runtime: str) -> str:
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+    spec = RUNTIME_REGISTRY.get(runtime)
+    if spec:
+        return spec.data_dir_container_path.removeprefix("/root/").strip("/")
+    return ".openclaw"
+
+
 @asynccontextmanager
 async def remote_fs(instance: Instance, db: AsyncSession) -> AsyncIterator[RemoteFS]:
     """Yield a filesystem proxy connected to the instance.
@@ -434,7 +445,8 @@ async def remote_fs(instance: Instance, db: AsyncSession) -> AsyncIterator[Remot
     K8s instances use PodFS (kubectl exec).
     """
     if instance.compute_provider == "docker":
-        yield DockerFS(instance.slug)
+        prefix = _home_prefix_for_runtime(instance.runtime)
+        yield DockerFS(instance.slug, home_prefix=prefix)
     else:
         k8s = await _get_k8s_client(instance, db)
         pod_name, container = await _find_running_pod(k8s, instance)

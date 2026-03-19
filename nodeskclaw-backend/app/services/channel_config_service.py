@@ -1,4 +1,4 @@
-"""Channel config service: discover, read/write channel configs in openclaw.json."""
+"""Channel config service: discover, read/write channel configs (runtime-aware)."""
 
 import json
 import logging
@@ -9,12 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException, BadRequestError
 from app.models.instance import Instance
-from app.services.llm_config_service import (
-    _read_config_file,
-    _write_config_file,
-    restart_openclaw,
-)
 from app.services.nfs_mount import RemoteFS, remote_fs
+from app.services.runtime.config_adapter import get_config_adapter
+from app.services.unified_channel_schema import (
+    UNIFIED_CHANNEL_REGISTRY,
+    get_channel_schema,
+    get_legacy_channel_schemas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,99 +71,14 @@ CHANNEL_ORDER: dict[str, int] = {
 }
 
 
-# ── Channel Schema Registry ──────────────────────────────
-
-CHANNEL_SCHEMAS: dict[str, list[dict]] = {
-    "feishu": [
-        {"key": "appId", "label": "App ID", "type": "string", "required": True,
-         "placeholder": "cli_xxxx"},
-        {"key": "appSecret", "label": "App Secret", "type": "password", "required": True,
-         "placeholder": "飞书应用的 App Secret"},
-        {"key": "domain", "label": "Domain（域名）", "type": "select", "required": False,
-         "options": [
-             {"value": "feishu", "label": "feishu（飞书国内）"},
-             {"value": "lark", "label": "lark（海外 Lark）"},
-         ], "default": "feishu"},
-        {"key": "connectionMode", "label": "Connection Mode（连接方式）", "type": "select",
-         "required": False,
-         "options": [
-             {"value": "websocket", "label": "WebSocket（长连接，推荐）"},
-             {"value": "webhook", "label": "Webhook（需公网回调）"},
-         ], "default": "websocket"},
-        {"key": "dmPolicy", "label": "DM Policy（私聊策略）", "type": "select",
-         "required": False,
-         "options": [
-             {"value": "open", "label": "open（所有人可用）"},
-             {"value": "pairing", "label": "pairing（需配对）"},
-             {"value": "allowlist", "label": "allowlist（白名单）"},
-         ], "default": "open"},
-        {"key": "groupPolicy", "label": "Group Policy（群聊策略）", "type": "select",
-         "required": False,
-         "options": [
-             {"value": "open", "label": "open（开放）"},
-             {"value": "allowlist", "label": "allowlist（白名单）"},
-             {"value": "disabled", "label": "disabled（禁用群聊）"},
-         ], "default": "open"},
-        {"key": "requireMention", "label": "Require Mention（需@提及）", "type": "boolean",
-         "required": False, "default": False},
-        {"key": "topicSessionMode", "label": "Topic Session Mode（话题模式）",
-         "type": "select", "required": False,
-         "options": [
-             {"value": "disabled", "label": "disabled"},
-             {"value": "enabled", "label": "enabled"},
-         ], "default": "disabled"},
-        {"key": "encryptKey", "label": "Encrypt Key（事件加密密钥）", "type": "password",
-         "required": False, "placeholder": "可选，Webhook 模式下使用"},
-        {"key": "verificationToken", "label": "Verification Token（验证令牌）",
-         "type": "password", "required": False, "placeholder": "可选，Webhook 模式下使用"},
-    ],
-    "slack": [
-        {"key": "botToken", "label": "Bot Token", "type": "password", "required": True,
-         "placeholder": "xoxb-xxxx"},
-        {"key": "appToken", "label": "App Token", "type": "password", "required": True,
-         "placeholder": "xapp-xxxx"},
-    ],
-    "telegram": [
-        {"key": "botToken", "label": "Bot Token", "type": "password", "required": True,
-         "placeholder": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"},
-    ],
-    "discord": [
-        {"key": "token", "label": "Bot Token", "type": "password", "required": True,
-         "placeholder": "Discord Bot Token"},
-    ],
-    "whatsapp": [
-        {"key": "phoneNumber", "label": "Phone Number（手机号）", "type": "string",
-         "required": False, "placeholder": "关联的手机号"},
-    ],
-    "msteams": [
-        {"key": "appId", "label": "App ID", "type": "string", "required": True,
-         "placeholder": "Azure Bot App ID"},
-        {"key": "appPassword", "label": "App Password", "type": "password",
-         "required": True, "placeholder": "Azure Bot App Password"},
-    ],
-    "googlechat": [
-        {"key": "serviceAccountKeyFile", "label": "Service Account Key File（服务账号密钥路径）",
-         "type": "string", "required": True,
-         "placeholder": "/root/.openclaw/google-sa-key.json"},
-    ],
-    "mattermost": [
-        {"key": "url", "label": "Server URL（服务器地址）", "type": "string",
-         "required": True, "placeholder": "https://mattermost.example.com"},
-        {"key": "token", "label": "Bot Token", "type": "password", "required": True,
-         "placeholder": "Mattermost Bot Access Token"},
-    ],
-    "matrix": [
-        {"key": "homeserverUrl", "label": "Homeserver URL", "type": "string",
-         "required": True, "placeholder": "https://matrix.org"},
-        {"key": "accessToken", "label": "Access Token", "type": "password",
-         "required": True, "placeholder": "Matrix Access Token"},
-    ],
-}
+# Backward-compatible CHANNEL_SCHEMAS generated from UNIFIED_CHANNEL_REGISTRY
+CHANNEL_SCHEMAS: dict[str, list[dict]] = get_legacy_channel_schemas()
 
 SENSITIVE_KEYS = {
     "appSecret", "botToken", "appToken", "token", "appPassword",
     "accessToken", "encryptKey", "verificationToken", "apiKey",
-    "serviceAccountKeyFile",
+    "serviceAccountKeyFile", "app_secret", "bot_token", "app_token",
+    "encrypt_key", "verification_token",
 }
 
 
@@ -270,7 +186,38 @@ _DISCOVER_SCRIPT = textwrap.dedent("""\
 async def discover_available_channels(
     instance: Instance, db: AsyncSession,
 ) -> list[dict]:
-    """Scan Pod/container for available channel plugins and return metadata list."""
+    """Discover available channel plugins (runtime-aware).
+
+    OpenClaw: Node.js exec scan of plugin directories.
+    NanoBot / ZeroClaw: return static list from adapter.supported_channels().
+    """
+    runtime = instance.runtime or "openclaw"
+    adapter = get_config_adapter(runtime)
+
+    if runtime == "openclaw":
+        return await _discover_openclaw_channels(instance, db)
+
+    channels = []
+    for cid in adapter.supported_channels():
+        if cid in SYSTEM_CHANNEL_IDS:
+            continue
+        defn = UNIFIED_CHANNEL_REGISTRY.get(cid)
+        channels.append({
+            "id": cid,
+            "label": defn.label if defn else CHANNEL_LABELS.get(cid, cid),
+            "description": "",
+            "origin": "builtin",
+            "order": defn.order if defn else CHANNEL_ORDER.get(cid, 999),
+            "has_schema": cid in UNIFIED_CHANNEL_REGISTRY or cid in CHANNEL_SCHEMAS,
+        })
+    channels.sort(key=lambda c: (c["order"], c["id"]))
+    return channels
+
+
+async def _discover_openclaw_channels(
+    instance: Instance, db: AsyncSession,
+) -> list[dict]:
+    """OpenClaw-specific: Node.js exec scan of plugin directories."""
     async with remote_fs(instance, db) as fs:
         try:
             if instance.compute_provider == "docker":
@@ -312,7 +259,7 @@ async def discover_available_channels(
             "description": item.get("description", ""),
             "origin": item.get("origin", "unknown"),
             "order": CHANNEL_ORDER.get(cid, item.get("order", 999)),
-            "has_schema": cid in CHANNEL_SCHEMAS,
+            "has_schema": cid in UNIFIED_CHANNEL_REGISTRY or cid in CHANNEL_SCHEMAS,
         })
 
     channels.sort(key=lambda c: (c["order"], c["id"]))
@@ -339,12 +286,15 @@ def _mask_sensitive(config: dict) -> dict:
 async def read_channel_configs(
     instance: Instance, db: AsyncSession,
 ) -> dict:
-    """Read channels section from openclaw.json, excluding system channels."""
+    """Read channels section from config file, excluding system channels (runtime-aware)."""
+    runtime = instance.runtime or "openclaw"
+    adapter = get_config_adapter(runtime)
+
     async with remote_fs(instance, db) as fs:
         try:
-            config = await _read_config_file(fs)
+            config = await adapter.read_config(fs)
         except ValueError as e:
-            logger.warning("读取 openclaw.json 失败: %s", e)
+            logger.warning("读取配置文件失败 (runtime=%s): %s", runtime, e)
             raise AppException(
                 code=50200,
                 message=f"配置文件解析失败: {e}",
@@ -355,12 +305,16 @@ async def read_channel_configs(
     if config is None:
         return {}
 
-    all_channels: dict = config.get("channels", {})
+    all_channels: dict = adapter.extract_channels(config)
     user_channels = {}
     for cid, cfg in all_channels.items():
         if cid in SYSTEM_CHANNEL_IDS:
             continue
-        user_channels[cid] = _mask_sensitive(cfg) if isinstance(cfg, dict) else cfg
+        if isinstance(cfg, dict):
+            canonical = adapter.translate_from_runtime(cfg, cid)
+            user_channels[cid] = _mask_sensitive(canonical)
+        else:
+            user_channels[cid] = cfg
 
     return user_channels
 
@@ -368,13 +322,16 @@ async def read_channel_configs(
 async def write_channel_configs(
     instance: Instance, db: AsyncSession, channel_configs: dict,
 ) -> dict:
-    """Write user channel configs to openclaw.json and restart OpenClaw.
+    """Write user channel configs and restart instance (runtime-aware).
 
     Preserves system channel configs and other non-channel sections.
     """
+    runtime = instance.runtime or "openclaw"
+    adapter = get_config_adapter(runtime)
+
     async with remote_fs(instance, db) as fs:
         try:
-            config = await _read_config_file(fs)
+            config = await adapter.read_config(fs)
         except ValueError as e:
             raise AppException(
                 code=50200,
@@ -386,39 +343,36 @@ async def write_channel_configs(
         if config is None:
             config = {}
 
-        existing_channels = config.get("channels", {})
+        existing_channels = adapter.extract_channels(config)
 
         for cid, new_cfg in channel_configs.items():
             if not isinstance(new_cfg, dict):
                 continue
-            old_cfg = existing_channels.get(cid)
-            if not isinstance(old_cfg, dict):
+            old_native = existing_channels.get(cid)
+            if not isinstance(old_native, dict):
                 continue
+            old_canonical = adapter.translate_from_runtime(old_native, cid)
             for k, v in new_cfg.items():
-                if isinstance(v, str) and "***" in v and k in old_cfg:
-                    new_cfg[k] = old_cfg[k]
+                if isinstance(v, str) and "***" in v and k in old_canonical:
+                    new_cfg[k] = old_canonical[k]
 
         system_configs = {
             cid: cfg for cid, cfg in existing_channels.items()
             if cid in SYSTEM_CHANNEL_IDS
         }
 
-        merged = {**system_configs, **channel_configs}
+        native_channels = {}
+        for cid, cfg in channel_configs.items():
+            if isinstance(cfg, dict):
+                native_channels[cid] = adapter.translate_to_runtime(cfg, cid)
+            else:
+                native_channels[cid] = cfg
 
-        config["channels"] = merged
-
-        plugins = config.setdefault("plugins", {})
-        entries = plugins.setdefault("entries", {})
-        old_user_channels = {
-            cid for cid in existing_channels if cid not in SYSTEM_CHANNEL_IDS
-        }
-        for cid in channel_configs:
-            entries[cid] = {"enabled": True}
-        for cid in old_user_channels - set(channel_configs):
-            entries[cid] = {"enabled": False}
+        merged = {**system_configs, **native_channels}
+        config = adapter.merge_channels(config, merged)
 
         try:
-            await _write_config_file(fs, config)
+            await adapter.write_config(fs, config)
         except AppException:
             raise
         except Exception as e:
@@ -429,26 +383,29 @@ async def write_channel_configs(
                 message_key="errors.channel.config_write_failed",
             )
 
-    logger.info("已写入 Channel 配置: instance=%s channels=%s",
-                instance.name, list(channel_configs.keys()))
+    logger.info("已写入 Channel 配置: instance=%s runtime=%s channels=%s",
+                instance.name, runtime, list(channel_configs.keys()))
 
-    result = await restart_openclaw(instance, db)
+    result = await adapter.restart(instance, db)
     return result
-
-
-# ── Schema ────────────────────────────────────────────────
-
-def get_channel_schema(channel_id: str) -> list[dict] | None:
-    """Return the config form schema for a known channel, or None."""
-    return CHANNEL_SCHEMAS.get(channel_id)
 
 
 # ── Custom Channel Deployment ─────────────────────────────
 
+def _assert_openclaw_runtime(instance: Instance) -> None:
+    runtime = instance.runtime or "openclaw"
+    if runtime != "openclaw":
+        raise BadRequestError(
+            message=f"此操作仅支持 OpenClaw 引擎，当前引擎为 {runtime}",
+            message_key="errors.channel.openclaw_only",
+        )
+
+
 async def deploy_repo_channel(
     instance: Instance, db: AsyncSession, channel_id: str,
 ) -> dict:
-    """Deploy a repo-based channel plugin to the instance Pod."""
+    """Deploy a repo-based channel plugin to the instance Pod (OpenClaw only)."""
+    _assert_openclaw_runtime(instance)
     plugin_info = REPO_CHANNEL_PLUGINS.get(channel_id)
     if not plugin_info:
         raise BadRequestError(
@@ -466,6 +423,7 @@ async def deploy_repo_channel(
             message_key="errors.channel.source_not_found",
         )
 
+    adapter = get_config_adapter("openclaw")
     async with remote_fs(instance, db) as fs:
         target_base = f".openclaw/extensions/{dir_name}"
         for rel_path in plugin_info["files"]:
@@ -480,7 +438,7 @@ async def deploy_repo_channel(
                 src.read_text(encoding="utf-8"),
             )
 
-        config = await _read_config_file(fs) or {}
+        config = await adapter.read_config(fs) or {}
         plugins = config.setdefault("plugins", {})
         load = plugins.setdefault("load", {})
         paths: list = load.setdefault("paths", [])
@@ -493,7 +451,7 @@ async def deploy_repo_channel(
 
         entries = plugins.setdefault("entries", {})
         entries[channel_id] = {"enabled": True}
-        await _write_config_file(fs, config)
+        await adapter.write_config(fs, config)
 
     logger.info("已部署仓库 Channel 插件: instance=%s channel=%s",
                 instance.name, channel_id)
@@ -503,7 +461,8 @@ async def deploy_repo_channel(
 async def install_npm_channel(
     instance: Instance, db: AsyncSession, package_name: str,
 ) -> dict:
-    """Install a third-party channel plugin via openclaw CLI in the Pod."""
+    """Install a third-party channel plugin via openclaw CLI in the Pod (OpenClaw only)."""
+    _assert_openclaw_runtime(instance)
     if not package_name or not package_name.strip():
         raise BadRequestError(
             message="npm 包名不能为空",
@@ -543,16 +502,18 @@ async def upload_channel_plugin(
     plugin_files: dict[str, str],
     plugin_id: str,
 ) -> dict:
-    """Deploy uploaded channel plugin files to the instance Pod.
+    """Deploy uploaded channel plugin files to the instance Pod (OpenClaw only).
 
     plugin_files: dict mapping relative paths to file contents (text).
     """
+    _assert_openclaw_runtime(instance)
     if not plugin_id:
         raise BadRequestError(
             message="插件 ID 不能为空",
             message_key="errors.channel.empty_plugin_id",
         )
 
+    adapter = get_config_adapter("openclaw")
     async with remote_fs(instance, db) as fs:
         target_base = f".openclaw/extensions/{plugin_id}"
         for rel_path, content in plugin_files.items():
@@ -561,7 +522,7 @@ async def upload_channel_plugin(
                 await fs.mkdir(parent)
             await fs.write_text(f"{target_base}/{rel_path}", content)
 
-        config = await _read_config_file(fs) or {}
+        config = await adapter.read_config(fs) or {}
         plugins = config.setdefault("plugins", {})
         load = plugins.setdefault("load", {})
         paths: list = load.setdefault("paths", [])
@@ -574,7 +535,7 @@ async def upload_channel_plugin(
 
         entries = plugins.setdefault("entries", {})
         entries[plugin_id] = {"enabled": True}
-        await _write_config_file(fs, config)
+        await adapter.write_config(fs, config)
 
     logger.info("已部署上传 Channel 插件: instance=%s plugin=%s",
                 instance.name, plugin_id)

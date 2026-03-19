@@ -25,6 +25,12 @@ class RuntimeSpec:
     health_probe_path: str | None = "/"
     order: int = 0
     image_registry_key: str = "image_registry"
+    config_rel_path: str = ".openclaw/openclaw.json"
+    config_format: str = "json"
+    channels_section_key: str = "channels"
+    field_naming: str = "camelCase"
+    supports_channel_plugins: bool = True
+    data_dir_container_path: str = "/root/.openclaw"
 
 
 class RuntimeRegistry:
@@ -78,6 +84,12 @@ def _register_builtins() -> None:
         health_probe_path="/health",
         order=1,
         image_registry_key="image_registry_zeroclaw",
+        config_rel_path=".zeroclaw/config.toml",
+        config_format="toml",
+        channels_section_key="channels_config",
+        field_naming="snake_case",
+        supports_channel_plugins=False,
+        data_dir_container_path="/root/.zeroclaw",
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
@@ -93,6 +105,12 @@ def _register_builtins() -> None:
         health_probe_path=None,
         order=2,
         image_registry_key="image_registry_nanobot",
+        config_rel_path=".nanobot/config.json",
+        config_format="json",
+        channels_section_key="channels",
+        field_naming="camelCase",
+        supports_channel_plugins=False,
+        data_dir_container_path="/root/.nanobot",
     ))
 
 

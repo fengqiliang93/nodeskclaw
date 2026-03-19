@@ -52,12 +52,16 @@ def _build_compose_yaml(config: InstanceComputeConfig) -> dict:
     }
     host_port = env.get("DOCKER_HOST_PORT", "3000")
 
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+    rt_spec = RUNTIME_REGISTRY.get(config.runtime)
+    container_data_dir = rt_spec.data_dir_container_path if rt_spec else "/root/.openclaw"
+
     main_service: dict = {
         "image": env.get("DOCKER_IMAGE", f"deskclaw:{config.image_version}"),
         "container_name": config.slug,
         "environment": env,
         "ports": [f"{host_port}:{config.gateway_port}"],
-        "volumes": [f"{DOCKER_DATA_DIR / config.slug / 'data'}:/root/.openclaw"],
+        "volumes": [f"{DOCKER_DATA_DIR / config.slug / 'data'}:{container_data_dir}"],
         "restart": "unless-stopped",
         "platform": "linux/amd64",
         "networks": [f"{config.slug}-net"],

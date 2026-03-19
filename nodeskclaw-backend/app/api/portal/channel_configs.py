@@ -27,12 +27,12 @@ from app.services.channel_config_service import (
     REPO_CHANNEL_PLUGINS,
     deploy_repo_channel,
     discover_available_channels,
-    get_channel_schema,
     install_npm_channel,
     read_channel_configs,
     upload_channel_plugin,
     write_channel_configs,
 )
+from app.services.unified_channel_schema import get_channel_schema
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,24 +62,26 @@ async def list_available_channels(
         instance_id, current_user, InstanceRole.viewer, db
     )
     instance = await _get_instance(instance_id, db)
+    runtime = instance.runtime or "openclaw"
     channels = await discover_available_channels(instance, db)
 
     for ch in channels:
-        schema = get_channel_schema(ch["id"])
+        schema = get_channel_schema(ch["id"], runtime_id=runtime)
         if schema:
             ch["schema"] = schema
 
     repo_channels = []
-    for cid, info in REPO_CHANNEL_PLUGINS.items():
-        if not any(c["id"] == cid for c in channels):
-            repo_channels.append({
-                "id": cid,
-                "label": info["dir_name"],
-                "description": f"Project repo: {info['dir_name']}",
-                "origin": "repo",
-                "order": 1000,
-                "has_schema": cid in CHANNEL_SCHEMAS,
-            })
+    if runtime == "openclaw":
+        for cid, info in REPO_CHANNEL_PLUGINS.items():
+            if not any(c["id"] == cid for c in channels):
+                repo_channels.append({
+                    "id": cid,
+                    "label": info["dir_name"],
+                    "description": f"Project repo: {info['dir_name']}",
+                    "origin": "repo",
+                    "order": 1000,
+                    "has_schema": cid in CHANNEL_SCHEMAS,
+                })
 
     return _ok(channels + repo_channels)
 
@@ -123,8 +125,10 @@ async def get_channel_schema_endpoint(
     await instance_member_service.check_instance_access(
         instance_id, current_user, InstanceRole.viewer, db
     )
-    schema = get_channel_schema(channel_id)
-    return _ok({"channel_id": channel_id, "schema": schema})
+    instance = await _get_instance(instance_id, db)
+    runtime = instance.runtime or "openclaw"
+    schema = get_channel_schema(channel_id, runtime_id=runtime)
+    return _ok({"channel_id": channel_id, "runtime": runtime, "schema": schema})
 
 
 @router.post("/{instance_id}/channels/install")
