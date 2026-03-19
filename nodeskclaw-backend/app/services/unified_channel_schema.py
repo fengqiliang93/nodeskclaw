@@ -23,6 +23,7 @@ class ChannelDefinition:
     supported_runtimes: tuple[str, ...]
     fields: tuple[FieldDef, ...]
     order: int = 999
+    adapter_runtimes: tuple[str, ...] = ()
 
 
 UNIFIED_CHANNEL_REGISTRY: dict[str, ChannelDefinition] = {
@@ -274,6 +275,77 @@ UNIFIED_CHANNEL_REGISTRY: dict[str, ChannelDefinition] = {
                 key="reactEmoji", label="React Emoji（反应表情）", type="string",
                 required=False, default="eyes",
                 runtime_key={"nanobot": "reactEmoji"},
+            ),
+        ),
+    ),
+
+    # ── DingTalk / 钉钉 ─────────────────────────────────────
+    "dingtalk": ChannelDefinition(
+        label="DingTalk / 钉钉",
+        supported_runtimes=("openclaw", "nanobot", "zeroclaw"),
+        order=36,
+        fields=(
+            FieldDef(
+                key="clientId", label="Client ID（应用凭证）", type="string", required=True,
+                placeholder="dingxxxxxxx",
+                runtime_key={"openclaw": "clientId", "nanobot": "clientId", "zeroclaw": "app_id"},
+            ),
+            FieldDef(
+                key="clientSecret", label="Client Secret（应用密钥）", type="password",
+                required=True, placeholder="钉钉应用的 Client Secret",
+                runtime_key={
+                    "openclaw": "clientSecret", "nanobot": "clientSecret",
+                    "zeroclaw": "app_secret",
+                },
+            ),
+            FieldDef(
+                key="agentId", label="Agent ID（机器人 ID）", type="string", required=False,
+                placeholder="可选，用于主动发消息",
+                runtime_key={"openclaw": "agentId"},
+            ),
+            FieldDef(
+                key="robotCode", label="Robot Code（机器人编码）", type="string",
+                required=False, placeholder="通常与 Client ID 相同",
+                runtime_key={"openclaw": "robotCode"},
+            ),
+            FieldDef(
+                key="corpId", label="Corp ID（企业 ID）", type="string", required=False,
+                placeholder="可选",
+                runtime_key={"openclaw": "corpId"},
+            ),
+            FieldDef(
+                key="allowFrom", label="Allow From（允许列表）", type="string_list",
+                required=False,
+                runtime_key={"nanobot": "allowFrom", "zeroclaw": "allowed_users"},
+            ),
+            FieldDef(
+                key="dmPolicy", label="DM Policy（私聊策略）", type="select",
+                required=False, default="open",
+                options=(
+                    {"value": "open", "label": "open（所有人可用）"},
+                    {"value": "allowFrom", "label": "allowFrom（白名单）"},
+                ),
+                runtime_key={"openclaw": "dmPolicy"},
+            ),
+            FieldDef(
+                key="groupPolicy", label="Group Policy（群聊策略）", type="select",
+                required=False, default="mention",
+                options=(
+                    {"value": "mention", "label": "mention（需@提及）"},
+                    {"value": "open", "label": "open（开放）"},
+                    {"value": "allowlist", "label": "allowlist（白名单）"},
+                    {"value": "disabled", "label": "disabled（禁用群聊）"},
+                ),
+                runtime_key={"openclaw": "groupPolicy"},
+            ),
+            FieldDef(
+                key="messageType", label="Message Type（消息格式）", type="select",
+                required=False, default="markdown",
+                options=(
+                    {"value": "markdown", "label": "Markdown"},
+                    {"value": "card", "label": "Card（交互卡片）"},
+                ),
+                runtime_key={"openclaw": "messageType"},
             ),
         ),
     ),
