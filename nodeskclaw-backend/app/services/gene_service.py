@@ -2805,3 +2805,36 @@ async def get_co_install_analysis(db: AsyncSession, min_count: int = 2) -> list[
         CoInstallPair(gene_a_slug=r[0], gene_b_slug=r[1], co_install_count=r[2])
         for r in result
     ]
+
+
+async def publish_gene_to_market(
+    db: AsyncSession, gene_id: str, user_id: str | None = None,
+) -> dict:
+    result = await db.execute(
+        select(Gene).where(Gene.id == gene_id, not_deleted(Gene))
+    )
+    gene = result.scalar_one_or_none()
+    if not gene:
+        raise NotFoundError(f"技能基因不存在: {gene_id}")
+
+    if gene.source not in ("manual", "agent"):
+        raise ConflictError("仅 manual 或 agent 来源的技能基因可以发布到基因市场")
+
+    if gene.is_published:
+        raise ConflictError("该技能基因已发布")
+
+    gene.is_published = True
+    gene.review_status = GeneReviewStatus.pending_admin
+
+    event = EvolutionEvent(
+        instance_id=gene.created_by_instance_id or "",
+        event_type=EvolutionEventType.variant_published,
+        gene_id=gene.id,
+        gene_slug=gene.slug,
+        gene_name=gene.name,
+        details=json.dumps({"action": "publish_to_market", "user_id": user_id}),
+    )
+    db.add(event)
+    await db.commit()
+
+    return {"id": gene.id, "slug": gene.slug, "is_published": True, "review_status": gene.review_status}

@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, inject, type ComputedRef 
 import { useRoute } from 'vue-router'
 import {
   Loader2, Package, Download, Trash2, Upload, Sparkles, X,
-  AlertTriangle, RefreshCw, Zap, FileText, Save,
+  AlertTriangle, RefreshCw, Zap, FileText, Save, FilePen, Globe,
 } from 'lucide-vue-next'
 import { useGeneStore } from '@/stores/gene'
 import type { InstanceSkillItem, InstanceGeneItem } from '@/stores/gene'
@@ -49,6 +49,13 @@ const displayedSkills = computed(() => {
 const createDialogOpen = ref(false)
 const createPrompt = ref('')
 const creating = ref(false)
+
+const manualDialogOpen = ref(false)
+const manualName = ref('')
+const manualSlug = ref('')
+const manualCategory = ref('')
+const manualSkillContent = ref('')
+const manualCreating = ref(false)
 
 const saveTemplateOpen = ref(false)
 const templateName = ref('')
@@ -231,6 +238,50 @@ async function handleCreate() {
   }
 }
 
+async function handleManualCreate() {
+  if (!manualName.value.trim() || !manualSlug.value.trim() || !manualSkillContent.value.trim()) return
+  manualCreating.value = true
+  try {
+    await store.createManualGene({
+      name: manualName.value.trim(),
+      slug: manualSlug.value.trim(),
+      category: manualCategory.value.trim() || undefined,
+      skill_content: manualSkillContent.value,
+      instance_id: instanceId.value,
+    })
+    manualDialogOpen.value = false
+    manualName.value = ''
+    manualSlug.value = ''
+    manualCategory.value = ''
+    manualSkillContent.value = ''
+    await store.fetchInstanceSkills(instanceId.value)
+    toast.success(t('instanceGenes.manualCreateSuccess'))
+  } catch {
+    toast.error(t('instanceGenes.manualCreateFailed'))
+  } finally {
+    manualCreating.value = false
+  }
+}
+
+async function handlePublishToMarket(item: InstanceSkillItem) {
+  const geneId = item.instance_gene?.gene_id || item.gene?.id
+  if (!geneId) return
+  try {
+    await store.publishGeneToMarket(geneId)
+    await store.fetchInstanceSkills(instanceId.value)
+    toast.success(t('instanceGenes.publishToMarketSuccess'))
+  } catch {
+    toast.error(t('instanceGenes.publishToMarketFailed'))
+  }
+}
+
+function canPublishToMarket(item: InstanceSkillItem): boolean {
+  const src = item.gene?.source
+  return (src === 'manual' || src === 'agent')
+    && item.gene?.is_published === false
+    && item.instance_gene?.status === 'installed'
+}
+
 function renderMd(src: string): string {
   return renderMarkdown(src)
 }
@@ -281,6 +332,13 @@ onUnmounted(stopPolling)
         >
           <Sparkles class="w-4 h-4" />
           {{ t('instanceGenes.createGene') }}
+        </button>
+        <button
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border hover:bg-muted/50 transition-colors"
+          @click="manualDialogOpen = true"
+        >
+          <FilePen class="w-4 h-4" />
+          {{ t('instanceGenes.manualCreate') }}
         </button>
       </div>
     </div>
@@ -364,6 +422,14 @@ onUnmounted(stopPolling)
             </div>
           </div>
           <div v-if="item.instance_gene" class="flex items-center gap-2 shrink-0">
+            <button
+              v-if="canPublishToMarket(item)"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border border-primary/30 text-primary hover:bg-primary/10 transition-colors"
+              @click.stop="handlePublishToMarket(item)"
+            >
+              <Globe class="w-3.5 h-3.5" />
+              {{ t('instanceGenes.publishToMarket') }}
+            </button>
             <button
               v-if="item.instance_gene.learning_output && !item.instance_gene.variant_published && item.instance_gene.status === 'installed'"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border border-border hover:bg-muted/50 transition-colors"
@@ -572,6 +638,80 @@ onUnmounted(stopPolling)
               @click="handleCreate"
             >
               <Loader2 v-if="creating" class="w-4 h-4 animate-spin inline mr-1" />
+              {{ t('common.submit') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Manual Create Gene Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="manualDialogOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        @click.self="manualDialogOpen = false"
+      >
+        <div class="bg-card rounded-xl border border-border shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+          <div class="flex items-center justify-between p-6 pb-4 border-b border-border shrink-0">
+            <div>
+              <h3 class="text-lg font-semibold">{{ t('instanceGenes.manualCreateTitle') }}</h3>
+              <p class="text-sm text-muted-foreground mt-1">{{ t('instanceGenes.manualCreateDesc') }}</p>
+            </div>
+            <button class="text-muted-foreground hover:text-foreground shrink-0" @click="manualDialogOpen = false">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+          <div class="p-6 overflow-y-auto flex-1 space-y-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">{{ t('instanceGenes.manualNameLabel') }}</label>
+              <input
+                v-model="manualName"
+                type="text"
+                class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                :placeholder="t('instanceGenes.manualNamePlaceholder')"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">{{ t('instanceGenes.manualSlugLabel') }}</label>
+              <input
+                v-model="manualSlug"
+                type="text"
+                class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50"
+                :placeholder="t('instanceGenes.manualSlugPlaceholder')"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">{{ t('instanceGenes.manualCategoryLabel') }}</label>
+              <input
+                v-model="manualCategory"
+                type="text"
+                class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                :placeholder="t('instanceGenes.manualCategoryPlaceholder')"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">{{ t('instanceGenes.manualSkillContentLabel') }}</label>
+              <textarea
+                v-model="manualSkillContent"
+                class="w-full h-48 px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                :placeholder="t('instanceGenes.manualSkillContentPlaceholder')"
+              />
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 p-6 pt-4 border-t border-border shrink-0">
+            <button
+              class="px-4 py-2 rounded-lg text-sm border border-border hover:bg-muted/50"
+              @click="manualDialogOpen = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              :disabled="manualCreating || !manualName.trim() || !manualSlug.trim() || !manualSkillContent.trim()"
+              @click="handleManualCreate"
+            >
+              <Loader2 v-if="manualCreating" class="w-4 h-4 animate-spin inline mr-1" />
               {{ t('common.submit') }}
             </button>
           </div>

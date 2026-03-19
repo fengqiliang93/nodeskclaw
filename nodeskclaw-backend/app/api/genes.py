@@ -15,6 +15,7 @@ from app.schemas.gene import (
     GenomeCreateRequest,
     InstallGeneRequest,
     LearningCallbackPayload,
+    ManualGeneCreate,
     PublishVariantRequest,
     RatingRequest,
     ReviewRequest,
@@ -500,4 +501,44 @@ async def admin_delete_genome(
     _current_user: User = Depends(get_current_user),
 ):
     result = await gene_service.soft_delete_genome(db, genome_id)
+    return ApiResponse(data=result)
+
+
+# ═══════════════════════════════════════════════════
+#  Manual Gene Creation & Publishing
+# ═══════════════════════════════════════════════════
+
+
+@router.post("/genes/manual")
+async def create_manual_gene(
+    req: ManualGeneCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    gene_req = GeneCreateRequest(
+        name=req.name,
+        slug=req.slug,
+        description=req.description,
+        short_description=req.short_description,
+        category=req.category,
+        source="manual",
+        is_published=False,
+        manifest={"skill": {"name": req.slug, "content": req.skill_content}},
+    )
+    gene_data = await gene_service.create_gene(
+        db, gene_req, user_id=current_user.id, org_id=current_user.current_org_id,
+    )
+    await gene_service.install_gene_prerestart(req.instance_id, req.slug)
+    return ApiResponse(data=gene_data)
+
+
+@router.post("/genes/{gene_id}/publish-to-market")
+async def publish_gene_to_market(
+    gene_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await gene_service.publish_gene_to_market(
+        db, gene_id, user_id=current_user.id,
+    )
     return ApiResponse(data=result)

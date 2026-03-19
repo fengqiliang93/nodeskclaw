@@ -355,6 +355,24 @@ export const useGeneStore = defineStore('gene', () => {
     return res.data.data
   }
 
+  async function createManualGene(data: {
+    name: string
+    slug: string
+    description?: string
+    short_description?: string
+    skill_content: string
+    category?: string
+    instance_id: string
+  }) {
+    const res = await api.post('/genes/manual', data)
+    return res.data.data
+  }
+
+  async function publishGeneToMarket(geneId: string) {
+    const res = await api.post(`/genes/${geneId}/publish-to-market`)
+    return res.data.data
+  }
+
   // ── Instance Templates ──────────────────────────
 
   async function fetchTemplates(params: { keyword?: string; visibility?: string; page?: number; page_size?: number } = {}) {
@@ -517,6 +535,8 @@ export const useGeneStore = defineStore('gene', () => {
     publishVariant,
     logEffectiveness,
     triggerCreation,
+    createManualGene,
+    publishGeneToMarket,
     fetchEvolutionLog,
 
     fetchGeneStats,

@@ -244,6 +244,16 @@ class CreateGeneRequest(BaseModel):
     creation_prompt: str | None = None
 
 
+class ManualGeneCreate(BaseModel):
+    name: str = Field(..., max_length=128)
+    slug: str = Field(..., max_length=128)
+    description: str | None = None
+    short_description: str | None = Field(None, max_length=256)
+    skill_content: str
+    category: str | None = None
+    instance_id: str
+
+
 # ── Learning Callback ────────────────────────────
 
 

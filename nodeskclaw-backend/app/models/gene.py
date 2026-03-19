@@ -28,6 +28,7 @@ class GeneSource(str, Enum):
     clawhub = "clawhub"
     community = "community"
     agent = "agent"
+    manual = "manual"
 
 
 class GeneReviewStatus(str, Enum):
