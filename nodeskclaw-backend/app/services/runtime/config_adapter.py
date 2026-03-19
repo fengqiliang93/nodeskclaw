@@ -156,10 +156,34 @@ class NanobotConfigAdapter(RuntimeConfigAdapter):
         ]
 
     def translate_to_runtime(self, canonical: dict, channel_id: str) -> dict:
-        return canonical
+        from app.services.unified_channel_schema import UNIFIED_CHANNEL_REGISTRY
+        defn = UNIFIED_CHANNEL_REGISTRY.get(channel_id)
+        if not defn:
+            return canonical
+        result: dict = {}
+        for field_def in defn.fields:
+            runtime_key = field_def.runtime_key.get("nanobot")
+            if runtime_key and field_def.key in canonical:
+                result[runtime_key] = canonical[field_def.key]
+        for k, v in canonical.items():
+            if not any(f.key == k for f in defn.fields):
+                result[k] = v
+        return result
 
     def translate_from_runtime(self, native: dict, channel_id: str) -> dict:
-        return native
+        from app.services.unified_channel_schema import UNIFIED_CHANNEL_REGISTRY
+        defn = UNIFIED_CHANNEL_REGISTRY.get(channel_id)
+        if not defn:
+            return native
+        result: dict = {}
+        reverse_map: dict[str, str] = {}
+        for field_def in defn.fields:
+            runtime_key = field_def.runtime_key.get("nanobot")
+            if runtime_key:
+                reverse_map[runtime_key] = field_def.key
+        for k, v in native.items():
+            result[reverse_map.get(k, k)] = v
+        return result
 
 
 class ZeroClawConfigAdapter(RuntimeConfigAdapter):
