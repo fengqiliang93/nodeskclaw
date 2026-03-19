@@ -828,6 +828,10 @@ const zhCN = {
     privateChatHint: "如果用户已通过飞书登录，私聊通知将自动生效，无需额外配置。群聊模式为可选的高级配置。",
     notApplicable: "当前引擎不适用",
     unsupported: "当前引擎不支持",
+    dingtalkClientId: "Client ID（应用凭证）",
+    dingtalkClientSecret: "Client Secret（应用密钥）",
+    dingtalkAgentId: "Agent ID（机器人 ID）",
+    dingtalkStreamHint: "钉钉推荐使用 Stream 模式（WebSocket 长连接），无需公网 IP。需要提供 Client ID 和 Client Secret。",
   },
   orgSettings: {
     navTitle: "组织设置",

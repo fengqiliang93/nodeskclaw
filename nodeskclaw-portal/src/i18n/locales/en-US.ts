@@ -828,6 +828,10 @@ const enUS = {
     privateChatHint: "If the user has signed in via Feishu, private chat notifications are enabled automatically. Group chat mode is an optional advanced configuration.",
     notApplicable: "N/A for this engine",
     unsupported: "Not supported",
+    dingtalkClientId: "Client ID",
+    dingtalkClientSecret: "Client Secret",
+    dingtalkAgentId: "Agent ID (Robot ID)",
+    dingtalkStreamHint: "DingTalk recommends Stream mode (WebSocket). No public IP required. Provide Client ID and Client Secret.",
   },
   orgSettings: {
     navTitle: "Org Settings",
