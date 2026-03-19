@@ -24,6 +24,7 @@ SYSTEM_CHANNEL_IDS = {"nodeskclaw", "learning"}
 
 CHANNEL_LABELS: dict[str, str] = {
     "feishu": "Feishu / 飞书",
+    "dingtalk": "DingTalk / 钉钉",
     "slack": "Slack",
     "telegram": "Telegram",
     "discord": "Discord",
@@ -48,6 +49,7 @@ CHANNEL_LABELS: dict[str, str] = {
 
 CHANNEL_ORDER: dict[str, int] = {
     "feishu": 35,
+    "dingtalk": 36,
     "slack": 40,
     "telegram": 45,
     "discord": 50,
@@ -77,7 +79,8 @@ CHANNEL_SCHEMAS: dict[str, list[dict]] = get_legacy_channel_schemas()
 SENSITIVE_KEYS = {
     "appSecret", "botToken", "appToken", "token", "appPassword",
     "accessToken", "encryptKey", "verificationToken", "apiKey",
-    "serviceAccountKeyFile", "app_secret", "bot_token", "app_token",
+    "serviceAccountKeyFile", "clientSecret",
+    "app_secret", "bot_token", "app_token", "client_secret",
     "encrypt_key", "verification_token",
 }
 
