@@ -1,0 +1,23 @@
+{
+  "name": "openclaw-channel-dingtalk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw channel plugin for DingTalk messaging",
+  "type": "module",
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "dingtalk",
+      "label": "DingTalk",
+      "selectionLabel": "DingTalk (钉钉)",
+      "docsPath": "/channels/dingtalk",
+      "blurb": "DingTalk enterprise messaging via Stream protocol.",
+      "aliases": ["ding"]
+    }
+  }
+}
