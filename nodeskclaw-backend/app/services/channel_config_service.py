@@ -193,28 +193,53 @@ async def discover_available_channels(
 
     OpenClaw: Node.js exec scan of plugin directories.
     NanoBot / ZeroClaw: return static list from adapter.supported_channels().
+
+    After collecting runtime-native channels, augment with UNIFIED_CHANNEL_REGISTRY
+    entries to ensure a consistent view across all runtimes.
     """
     runtime = instance.runtime or "openclaw"
     adapter = get_config_adapter(runtime)
 
     if runtime == "openclaw":
-        return await _discover_openclaw_channels(instance, db)
+        raw_channels = await _discover_openclaw_channels(instance, db)
+    else:
+        raw_channels = []
+        for cid in adapter.supported_channels():
+            if cid in SYSTEM_CHANNEL_IDS:
+                continue
+            defn = UNIFIED_CHANNEL_REGISTRY.get(cid)
+            raw_channels.append({
+                "id": cid,
+                "label": defn.label if defn else CHANNEL_LABELS.get(cid, cid),
+                "description": "",
+                "origin": "builtin",
+                "order": defn.order if defn else CHANNEL_ORDER.get(cid, 999),
+                "has_schema": cid in UNIFIED_CHANNEL_REGISTRY or cid in CHANNEL_SCHEMAS,
+            })
 
-    channels = []
-    for cid in adapter.supported_channels():
-        if cid in SYSTEM_CHANNEL_IDS:
+    seen_ids = {ch["id"] for ch in raw_channels}
+    native_channels = set(adapter.supported_channels())
+
+    for cid, defn in UNIFIED_CHANNEL_REGISTRY.items():
+        if cid in seen_ids or cid in SYSTEM_CHANNEL_IDS:
             continue
-        defn = UNIFIED_CHANNEL_REGISTRY.get(cid)
-        channels.append({
+        supported = runtime in defn.supported_runtimes
+        raw_channels.append({
             "id": cid,
-            "label": defn.label if defn else CHANNEL_LABELS.get(cid, cid),
+            "label": defn.label,
             "description": "",
             "origin": "builtin",
-            "order": defn.order if defn else CHANNEL_ORDER.get(cid, 999),
-            "has_schema": cid in UNIFIED_CHANNEL_REGISTRY or cid in CHANNEL_SCHEMAS,
+            "order": defn.order,
+            "has_schema": True,
+            "supported": supported,
         })
-    channels.sort(key=lambda c: (c["order"], c["id"]))
-    return channels
+
+    for ch in raw_channels:
+        if "supported" not in ch:
+            ch["supported"] = ch["id"] in native_channels
+
+    raw_channels.sort(key=lambda c: (c["order"], c["id"]))
+    return raw_channels
 
 
 async def _discover_openclaw_channels(
