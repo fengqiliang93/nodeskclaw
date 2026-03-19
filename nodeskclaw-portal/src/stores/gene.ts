@@ -89,7 +89,16 @@ export interface GeneStats {
   agent_created_count: number
 }
 
-export interface TemplateItem {
+export interface TemplateItemRef {
+  type: 'gene' | 'genome'
+  slug: string
+  name: string
+  short_description?: string
+  icon?: string
+  gene_count?: number
+}
+
+export interface TemplateInfo {
   id: string
   name: string
   slug: string
@@ -98,6 +107,7 @@ export interface TemplateItem {
   icon?: string
   gene_slugs: string[]
   genes?: GeneRef[]
+  items: TemplateItemRef[]
   source_instance_id?: string
   is_published: boolean
   is_featured: boolean
@@ -137,9 +147,9 @@ export const useGeneStore = defineStore('gene', () => {
   const instanceGenes = ref<InstanceGeneItem[]>([])
   const instanceSkills = ref<InstanceSkillItem[]>([])
   const geneStats = ref<GeneStats | null>(null)
-  const templates = ref<TemplateItem[]>([])
-  const featuredTemplates = ref<TemplateItem[]>([])
-  const currentTemplate = ref<TemplateItem | null>(null)
+  const templates = ref<TemplateInfo[]>([])
+  const featuredTemplates = ref<TemplateInfo[]>([])
+  const currentTemplate = ref<TemplateInfo | null>(null)
   const totalTemplates = ref(0)
   const loading = ref(false)
   const totalGenes = ref(0)
@@ -387,7 +397,8 @@ export const useGeneStore = defineStore('gene', () => {
     description?: string
     short_description?: string
     icon?: string
-    gene_slugs: string[]
+    items?: { type: 'gene' | 'genome'; slug: string }[]
+    gene_slugs?: string[]
   }) {
     const res = await api.post('/instance-templates', data)
     return res.data.data
@@ -409,6 +420,7 @@ export const useGeneStore = defineStore('gene', () => {
     description?: string
     short_description?: string
     icon?: string
+    items?: { type: 'gene' | 'genome'; slug: string }[]
     gene_slugs?: string[]
   }) {
     const res = await api.put(`/instance-templates/${id}`, data)

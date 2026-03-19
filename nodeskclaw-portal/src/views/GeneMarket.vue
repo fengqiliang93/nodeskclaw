@@ -28,7 +28,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useGeneStore } from '@/stores/gene'
-import type { GeneItem, GenomeItem, TemplateItem } from '@/stores/gene'
+import type { GeneItem, GenomeItem, TemplateInfo } from '@/stores/gene'
 import { useToast } from '@/composables/useToast'
 import CustomSelect from '@/components/shared/CustomSelect.vue'
 

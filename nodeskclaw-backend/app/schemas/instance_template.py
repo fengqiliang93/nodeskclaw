@@ -1,8 +1,23 @@
 """Instance template schemas."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+class TemplateItemInput(BaseModel):
+    type: Literal["gene", "genome"]
+    slug: str
+
+
+class TemplateItemRef(BaseModel):
+    type: Literal["gene", "genome"]
+    slug: str
+    name: str
+    short_description: str | None = None
+    icon: str | None = None
+    gene_count: int | None = None
 
 
 class InstanceTemplateCreate(BaseModel):
@@ -11,7 +26,8 @@ class InstanceTemplateCreate(BaseModel):
     description: str | None = None
     short_description: str | None = Field(None, max_length=256)
     icon: str | None = Field(None, max_length=32)
-    gene_slugs: list[str] = Field(default_factory=list)
+    items: list[TemplateItemInput] = Field(default_factory=list)
+    gene_slugs: list[str] | None = None
 
 
 class InstanceTemplateFromInstance(BaseModel):
@@ -27,6 +43,7 @@ class InstanceTemplateUpdate(BaseModel):
     description: str | None = None
     short_description: str | None = Field(None, max_length=256)
     icon: str | None = Field(None, max_length=32)
+    items: list[TemplateItemInput] | None = None
     gene_slugs: list[str] | None = None
 
 
@@ -47,6 +64,7 @@ class InstanceTemplateInfo(BaseModel):
     icon: str | None = None
     gene_slugs: list[str] = []
     genes: list[GeneRef] = []
+    items: list[TemplateItemRef] = []
     source_instance_id: str | None = None
     is_published: bool = True
     is_featured: bool = False

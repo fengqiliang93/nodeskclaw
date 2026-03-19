@@ -550,7 +550,7 @@ async def execute_deploy_pipeline(ctx: _DeployContext) -> None:
     if ctx.has_llm_configs:
         steps.append("应用实例配置")
     if ctx.template_gene_slugs:
-        steps.append("安装模板基因")
+        steps.append("安装模板技能基因")
     total = len(steps)
 
     try:
@@ -998,7 +998,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 gene_install_warning = ""
                 if ctx.template_gene_slugs:
                     gene_step = len(steps)
-                    _publish(gene_step, "安装模板基因")
+                    _publish(gene_step, "安装模板技能基因")
                     failed_genes: list[str] = []
                     max_retries = 2
                     from app.services.gene_service import install_gene_prerestart
@@ -1035,10 +1035,10 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
 
                     if failed_genes:
                         gene_install_warning = f"（{len(failed_genes)} 个基因安装失败: {', '.join(failed_genes)}）"
-                        _publish(gene_step, "安装模板基因", status="success",
+                        _publish(gene_step, "安装模板技能基因", status="success",
                                  message=f"{len(ctx.template_gene_slugs) - len(failed_genes)}/{len(ctx.template_gene_slugs)} 安装成功")
                     else:
-                        _publish(gene_step, "安装模板基因", status="success")
+                        _publish(gene_step, "安装模板技能基因", status="success")
 
                     if ctx.template_id:
                         try:

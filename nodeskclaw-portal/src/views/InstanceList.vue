@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useGeneStore } from '@/stores/gene'
 import { useClusterStore } from '@/stores/cluster'
 import BaseTooltip from '@/components/shared/BaseTooltip.vue'
-import type { TemplateItem } from '@/stores/gene'
+import type { TemplateInfo } from '@/stores/gene'
 
 interface InstanceInfo {
   id: string
@@ -68,7 +68,7 @@ async function openTemplateSelector() {
   }
 }
 
-function selectTemplate(tpl: TemplateItem) {
+function selectTemplate(tpl: TemplateInfo) {
   templateSelectorOpen.value = false
   router.push(`/instances/create?template_id=${tpl.id}`)
 }

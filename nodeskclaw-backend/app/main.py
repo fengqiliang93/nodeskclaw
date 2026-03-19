@@ -116,7 +116,9 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     import logging
 
-    from sqlalchemy import select
+    import json
+
+    from sqlalchemy import func, select
 
     from app.core.deps import async_session_factory, engine
     from app.models.cluster import Cluster, ClusterStatus
@@ -218,6 +220,48 @@ async def lifespan(app: FastAPI):
     # ── 种子数据（幂等，每次启动执行）──
     from app.startup.seed import run_seed
     _seed_credentials = await run_seed(async_session_factory, is_ee=_fg.is_ee)
+
+    # ── gene_slugs → template_items 迁移（幂等）──
+    async with async_session_factory() as db:
+        from app.models.instance_template import InstanceTemplate, TemplateItem
+
+        _tpl_result = await db.execute(
+            select(InstanceTemplate).where(
+                InstanceTemplate.gene_slugs.isnot(None),
+                InstanceTemplate.gene_slugs != "",
+                InstanceTemplate.gene_slugs != "[]",
+                InstanceTemplate.deleted_at.is_(None),
+            )
+        )
+        _templates_to_migrate = _tpl_result.scalars().all()
+        _migrated = 0
+        for _tpl in _templates_to_migrate:
+            _existing = await db.execute(
+                select(func.count()).where(
+                    TemplateItem.template_id == _tpl.id,
+                    TemplateItem.deleted_at.is_(None),
+                )
+            )
+            if (_existing.scalar() or 0) > 0:
+                continue
+            try:
+                _slugs = json.loads(_tpl.gene_slugs)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(_slugs, list):
+                continue
+            for _idx, _slug in enumerate(_slugs):
+                if isinstance(_slug, str) and _slug:
+                    db.add(TemplateItem(
+                        template_id=_tpl.id,
+                        item_type="gene",
+                        item_slug=_slug,
+                        sort_order=_idx,
+                    ))
+            _migrated += 1
+        if _migrated:
+            await db.commit()
+            logger.info("gene_slugs → template_items 迁移完成: %d 个模板", _migrated)
 
     # 预热 K8s 连接池：从 DB 加载所有已连接集群
     async with async_session_factory() as db:

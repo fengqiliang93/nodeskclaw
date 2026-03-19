@@ -1,10 +1,17 @@
 """AI Employee Template model."""
 
+from enum import Enum
+
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
 from app.models.gene import ContentVisibility
+
+
+class TemplateItemType(str, Enum):
+    gene = "gene"
+    genome = "genome"
 
 
 class InstanceTemplate(BaseModel):
@@ -24,7 +31,7 @@ class InstanceTemplate(BaseModel):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     short_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
     icon: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    gene_slugs: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    gene_slugs: Mapped[str | None] = mapped_column(Text, nullable=True)  # deprecated, use template_items
 
     source_instance_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("instances.id"), nullable=True
@@ -44,3 +51,25 @@ class InstanceTemplate(BaseModel):
         String(16), default=ContentVisibility.public, nullable=False,
         server_default="public",
     )
+
+
+class TemplateItem(BaseModel):
+    __tablename__ = "template_items"
+    __table_args__ = (
+        Index(
+            "uq_template_item_active",
+            "template_id",
+            "item_type",
+            "item_slug",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+    )
+
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("instance_templates.id"),
+        nullable=False, index=True,
+    )
+    item_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    item_slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

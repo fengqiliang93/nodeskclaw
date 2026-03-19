@@ -52,10 +52,10 @@ const selectedRuntime = ref('openclaw')
 
 // ── Template ──
 import { useGeneStore } from '@/stores/gene'
-import type { TemplateItem } from '@/stores/gene'
+import type { TemplateInfo } from '@/stores/gene'
 
 const geneStore = useGeneStore()
-const selectedTemplate = ref<TemplateItem | null>(null)
+const selectedTemplate = ref<TemplateInfo | null>(null)
 
 const nameHasEdgeSpaces = computed(() => name.value.length > 0 && name.value !== name.value.trim())
 
