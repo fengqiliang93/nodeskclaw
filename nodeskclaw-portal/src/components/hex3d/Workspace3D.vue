@@ -122,6 +122,8 @@ const STATUS_COLORS_3D: Record<string, number> = {
   restarting: 0xf97316, deploying: 0xf97316, updating: 0xf97316, creating: 0xf97316,
 }
 const DISCONNECTED_COLOR = 0x555566
+const SHOW_AGENT_ROBOT = false
+const SHOW_AGENT_PHONE = false
 
 function createHexMesh(agent: AgentBrief): THREE.Group {
   const group = new THREE.Group()
@@ -151,17 +153,21 @@ function createHexMesh(agent: AgentBrief): THREE.Group {
   const edgeMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 })
   group.add(new THREE.LineSegments(AGENT_BASE_EDGE_GEO, edgeMat))
 
-  const robot = createGrabby(bodyTheme)
-  robot.position.y = 0.04
-  group.add(robot)
-  group.userData.robot = robot
+  if (SHOW_AGENT_ROBOT) {
+    const robot = createGrabby(bodyTheme)
+    robot.position.y = 0.04
+    group.add(robot)
+    group.userData.robot = robot
+  }
 
-  const phone = createPhoneStation(color)
-  phone.position.set(0.45, 0.02, 0.35)
-  phone.rotation.y = -Math.PI / 6
-  phone.visible = agent.sse_connected
-  group.add(phone)
-  group.userData.phone = phone
+  if (SHOW_AGENT_PHONE) {
+    const phone = createPhoneStation(color)
+    phone.position.set(0.45, 0.02, 0.35)
+    phone.rotation.y = -Math.PI / 6
+    phone.visible = agent.sse_connected
+    group.add(phone)
+    group.userData.phone = phone
+  }
 
   return group
 }
