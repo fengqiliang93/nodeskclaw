@@ -153,6 +153,10 @@ const enUS = {
   gene: {
     backToMarket: "Back to Gene Market",
     registryLocal: "Local",
+    registryClawHub: "ClawHub",
+    registryDeskHub: "DeskHub",
+    registryGenehub: "GeneHub",
+    sourceRegistry: "Source Registry",
     learn: "Learn",
     description: "Description",
     content: "Skill Gene Content",

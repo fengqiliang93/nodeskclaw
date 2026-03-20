@@ -153,6 +153,10 @@ const zhCN = {
   gene: {
     backToMarket: "返回基因市场",
     registryLocal: "本地",
+    registryClawHub: "ClawHub",
+    registryDeskHub: "DeskHub",
+    registryGenehub: "GeneHub",
+    sourceRegistry: "目录来源",
     learn: "学习",
     description: "描述",
     content: "技能基因内容",
