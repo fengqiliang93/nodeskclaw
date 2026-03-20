@@ -114,6 +114,9 @@ class Gene(BaseModel):
     synced_at: Mapped[DateTime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    source_registry: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
 
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
