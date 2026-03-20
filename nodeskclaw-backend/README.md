@@ -405,6 +405,16 @@ EE 平台管理员配置（仅 EE 模式生效）：
 | `EGRESS_DENY_CIDRS` | AI 员工 Pod Egress NetworkPolicy 中拒绝访问的 CIDR 列表（逗号分隔），默认 `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
 | `EGRESS_ALLOW_PORTS` | AI 员工 Pod 公网出站允许的 TCP 端口（逗号分隔），默认 `80,443` |
 
+技能基因 Registry（多源聚合）：
+
+| 变量 | 说明 |
+|------|------|
+| `SKILL_REGISTRIES` | JSON 数组，配置外部技能基因 Registry 列表。为空则仅使用本地数据库。示例：`[{"type":"genehub","id":"deskhub","url":"https://skills.deskclaw.me","api_key":"","name":"DeskHub"}]` |
+| `GENEHUB_REGISTRY_URL` | （旧版兼容）GeneHub Registry 地址。非空时自动注册为 type=genehub 的 adapter |
+| `GENEHUB_API_KEY` | （旧版兼容）GeneHub Registry API Key |
+
+支持的 adapter 类型：`genehub`（GeneHub/DeskHub 协议）、`clawhub`（ClawHub，当前 stub）。系统始终包含本地 LocalAdapter，无外部 Registry 时纯本地运行。
+
 ### 启动
 
 推荐使用项目根目录的一键启动脚本（同时启动后端和前端）：
