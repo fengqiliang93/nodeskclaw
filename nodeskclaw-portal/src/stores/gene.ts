@@ -34,6 +34,8 @@ export interface GeneItem {
   review_status?: string
   is_published: boolean
   visibility?: string
+  source_registry?: string
+  source_registry_name?: string
   created_at?: string
 }
 
