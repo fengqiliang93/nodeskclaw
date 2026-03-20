@@ -326,15 +326,14 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
                     detail.status = InstanceStatus.running
                     logger.info("实例 %s 重启完成，状态恢复为 running", instance_id)
 
-            if instance.status == InstanceStatus.running and pods:
-                all_ready = all(
-                    all(c.get("ready", False) for c in p.get("containers", []))
-                    and len(p.get("containers", [])) > 0
-                    for p in pods
-                )
-                detail.health_status = "healthy" if all_ready else "unhealthy"
-            elif instance.status == InstanceStatus.running:
-                detail.health_status = "unknown"
+            if instance.status == InstanceStatus.running:
+                from app.services.tunnel import tunnel_adapter
+                if instance.id in tunnel_adapter.connected_instances:
+                    detail.health_status = "healthy"
+                elif pods:
+                    detail.health_status = "unhealthy"
+                else:
+                    detail.health_status = "unknown"
         except Exception as e:
             logger.warning("Failed to fetch pods for instance %s: %s", instance_id, e)
 

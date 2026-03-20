@@ -183,29 +183,7 @@ class K8sComputeProvider:
         )
 
     async def health_check(self, handle: ComputeHandle) -> dict:
-        cluster_id = (handle.extra or {}).get("cluster_id")
-        creds = (handle.extra or {}).get("credentials_encrypted")
-        if not cluster_id or not creds:
-            return {"healthy": None, "detail": "no cluster credentials"}
-        try:
-            from app.services.k8s.client_manager import k8s_manager
-            from app.services.k8s.k8s_client import K8sClient
-
-            api_client = await k8s_manager.get_or_create(cluster_id, creds)
-            k8s = K8sClient(api_client)
-            slug = (handle.extra or {}).get("slug", "")
-            label_selector = f"app.kubernetes.io/name={slug}" if slug else ""
-            pods = await k8s.list_pods(handle.namespace, label_selector)
-            if not pods:
-                return {"healthy": None, "detail": "no pods found"}
-            not_ready = []
-            for p in pods:
-                for c in p.get("containers", []):
-                    if not c.get("ready", False):
-                        not_ready.append(c.get("name", "unknown"))
-            if not_ready:
-                return {"healthy": False, "detail": f"containers not ready: {', '.join(not_ready)}"}
-            return {"healthy": True, "detail": "all containers ready"}
-        except Exception as e:
-            logger.warning("K8s health_check failed: %s", e)
-            return {"healthy": None, "detail": str(e)[:200]}
+        from app.services.tunnel import tunnel_adapter
+        if handle.instance_id in tunnel_adapter.connected_instances:
+            return {"healthy": True, "detail": "tunnel connected"}
+        return {"healthy": False, "detail": "tunnel not connected"}

@@ -240,7 +240,7 @@ def build_deployment(
     advanced_config: dict | None = None,
     image_pull_secret: str | None = None,
     health_probe_path: str | None = "/healthz",
-    readiness_probe_path: str | None = "/readyz",
+    readiness_probe_path: str | None = "/healthz",
     has_init_script: bool = True,
 ) -> V1Deployment:
     """Build Deployment manifest with optional advanced config."""
