@@ -264,32 +264,35 @@ async def lifespan(app: FastAPI):
             logger.info("gene_slugs → template_items 迁移完成: %d 个模板", _migrated)
 
     # ── source_registry 回填（幂等）──
-    async with async_session_factory() as _sr_db:
-        from app.models.gene import Gene as _GeneModel
-        from sqlalchemy import text as _sa_text, update as _sa_update
+    try:
+        async with async_session_factory() as _sr_db:
+            from app.models.gene import Gene as _GeneModel
+            from sqlalchemy import update as _sa_update
 
-        _sr_count_ext = await _sr_db.execute(
-            _sa_update(_GeneModel)
-            .where(
-                _GeneModel.source_registry.is_(None),
-                _GeneModel.deleted_at.is_(None),
-                _GeneModel.source.notin_(["manual", "agent"]),
+            _sr_count_ext = await _sr_db.execute(
+                _sa_update(_GeneModel)
+                .where(
+                    _GeneModel.source_registry.is_(None),
+                    _GeneModel.deleted_at.is_(None),
+                    _GeneModel.source.notin_(["manual", "agent"]),
+                )
+                .values(source_registry="genehub")
             )
-            .values(source_registry="genehub")
-        )
-        _sr_count_local = await _sr_db.execute(
-            _sa_update(_GeneModel)
-            .where(
-                _GeneModel.source_registry.is_(None),
-                _GeneModel.deleted_at.is_(None),
-                _GeneModel.source.in_(["manual", "agent"]),
+            _sr_count_local = await _sr_db.execute(
+                _sa_update(_GeneModel)
+                .where(
+                    _GeneModel.source_registry.is_(None),
+                    _GeneModel.deleted_at.is_(None),
+                    _GeneModel.source.in_(["manual", "agent"]),
+                )
+                .values(source_registry="local")
             )
-            .values(source_registry="local")
-        )
-        _sr_total = (_sr_count_ext.rowcount or 0) + (_sr_count_local.rowcount or 0)
-        if _sr_total > 0:
-            await _sr_db.commit()
-            logger.info("source_registry 回填完成: %d 条记录", _sr_total)
+            _sr_total = (_sr_count_ext.rowcount or 0) + (_sr_count_local.rowcount or 0)
+            if _sr_total > 0:
+                await _sr_db.commit()
+                logger.info("source_registry 回填完成: %d 条记录", _sr_total)
+    except Exception as _sr_err:
+        logger.warning("source_registry 回填跳过（列可能尚未创建）: %s", _sr_err)
 
     # 预热 K8s 连接池：从 DB 加载所有已连接集群
     async with async_session_factory() as db:
