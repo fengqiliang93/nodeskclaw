@@ -26,6 +26,8 @@ import {
   FileText,
   Copy,
   Check,
+  Globe,
+  HardDrive,
 } from 'lucide-vue-next'
 import { renderMarkdown } from '@/utils/markdown'
 import { useGeneStore } from '@/stores/gene'
@@ -260,7 +262,23 @@ function selectInstance(instanceId: string) {
             <component :is="resolveIcon(gene.icon)" class="w-6 h-6 text-primary" />
           </div>
           <div class="min-w-0 flex-1">
-            <h1 class="text-xl font-bold">{{ gene.name }}</h1>
+            <div class="flex flex-wrap items-center gap-2">
+              <h1 class="text-xl font-bold">{{ gene.name }}</h1>
+              <span
+                v-if="gene.source_registry && gene.source_registry !== 'local'"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+              >
+                <Globe class="w-3 h-3" />
+                {{ gene.source_registry_name || gene.source_registry }}
+              </span>
+              <span
+                v-else-if="gene.source_registry === 'local'"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+              >
+                <HardDrive class="w-3 h-3" />
+                {{ $t('gene.registryLocal') }}
+              </span>
+            </div>
             <div class="flex flex-wrap gap-2 mt-1">
               <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">v{{ gene.version }}</span>
               <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ gene.source }}</span>

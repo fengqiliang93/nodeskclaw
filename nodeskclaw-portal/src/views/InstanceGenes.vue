@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, inject, type ComputedRef 
 import { useRoute } from 'vue-router'
 import {
   Loader2, Package, Download, Trash2, Upload, Sparkles, X,
-  AlertTriangle, RefreshCw, Zap, FileText, Save, FilePen, Globe,
+  AlertTriangle, RefreshCw, Zap, FileText, Save, FilePen, Globe, HardDrive,
 } from 'lucide-vue-next'
 import { useGeneStore } from '@/stores/gene'
 import type { InstanceSkillItem, InstanceGeneItem } from '@/stores/gene'
@@ -380,13 +380,27 @@ onUnmounted(stopPolling)
         <div v-if="item.type === 'hub'" class="flex items-start justify-between gap-4">
           <div class="min-w-0 flex-1">
             <div class="min-w-0">
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="min-w-0 flex-1 truncate font-medium">{{ item.gene?.name ?? item.name }}</span>
                 <span
                   v-if="item.instance_gene?.installed_version || item.gene?.version"
                   class="shrink-0 text-xs text-muted-foreground"
                 >
                   v{{ item.instance_gene?.installed_version ?? item.gene?.version ?? '-' }}
+                </span>
+                <span
+                  v-if="item.gene?.source_registry && item.gene.source_registry !== 'local'"
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                >
+                  <Globe class="w-3 h-3" />
+                  {{ item.gene.source_registry_name || item.gene.source_registry }}
+                </span>
+                <span
+                  v-else-if="item.gene?.source_registry === 'local'"
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                >
+                  <HardDrive class="w-3 h-3" />
+                  {{ $t('gene.registryLocal') }}
                 </span>
                 <span v-else class="shrink-0 px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-500">
                   {{ t('instanceGenes.statusInstalled') }}

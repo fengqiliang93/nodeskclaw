@@ -24,6 +24,8 @@ import {
   Check,
   FileText,
   AlertTriangle,
+  Globe,
+  HardDrive,
 } from 'lucide-vue-next'
 import { renderMarkdown } from '@/utils/markdown'
 import { useGeneStore } from '@/stores/gene'
@@ -666,6 +668,20 @@ onUnmounted(() => {
                     <div class="flex flex-wrap gap-2 mt-1">
                       <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">v{{ detailGene.version }}</span>
                       <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ detailGene.source }}</span>
+                      <span
+                        v-if="detailGene.source_registry && detailGene.source_registry !== 'local'"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                      >
+                        <Globe class="w-3 h-3" />
+                        {{ detailGene.source_registry_name || detailGene.source_registry }}
+                      </span>
+                      <span
+                        v-else-if="detailGene.source_registry === 'local'"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                      >
+                        <HardDrive class="w-3 h-3" />
+                        {{ $t('gene.registryLocal') }}
+                      </span>
                       <span v-if="detailGene.category" class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ localizeGeneMeta(detailGene.category) }}</span>
                       <span
                         v-if="toolAllowList.length"
