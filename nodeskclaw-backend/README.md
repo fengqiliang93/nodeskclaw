@@ -458,7 +458,7 @@ docker build --platform linux/amd64 -f nodeskclaw-backend/Dockerfile -t nodeskcl
 docker run -d -p 8000:8000 --env-file nodeskclaw-backend/.env nodeskclaw-backend:latest
 ```
 
-生产环境通过统一部署脚本构建：`./deploy/deploy.sh backend`
+生产环境通过统一部署脚本构建：`./deploy/cli.sh deploy backend`
 
 ## 日志
 

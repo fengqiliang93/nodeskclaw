@@ -53,23 +53,23 @@ uv run uvicorn app.main:app --port 8080 --reload
 
 ## 构建部署
 
-### 使用 deploy.sh（推荐）
+### 使用统一 CLI（推荐）
 
 ```bash
-# 构建 + 推送 + 部署
-./nodeskclaw-llm-proxy/deploy.sh --context <CTX>
-
-# 部署到指定 namespace
-./nodeskclaw-llm-proxy/deploy.sh --context <CTX> --namespace nodeskclaw-staging
+# 构建 + 推送 + 部署到 staging
+./deploy/cli.sh deploy proxy
 
 # 仅构建推送，不更新 K8s
-./nodeskclaw-llm-proxy/deploy.sh --context <CTX> --build-only
+./deploy/cli.sh deploy proxy --build-only
 
 # 使用指定 tag 更新 K8s（不重新构建）
-./nodeskclaw-llm-proxy/deploy.sh --context <CTX> --deploy-only --tag v0.1.0-beta.1
+./deploy/cli.sh deploy proxy --deploy-only --tag v0.1.0-beta.1
+
+# 部署到生产
+./deploy/cli.sh deploy proxy --prod
 ```
 
-`deploy.sh` 从 `deploy/.env.local` 读取 REGISTRY 配置。
+`cli.sh` 从 `deploy/.env.local` 读取 REGISTRY 和 KUBE_CONTEXT 配置。
 
 ### 手动部署
 
