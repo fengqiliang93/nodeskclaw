@@ -450,15 +450,6 @@ export class TunnelClient {
   private scheduleReconnect(): void {
     if (this.closed) return;
 
-    if (!this._protocolDowngraded && this.backendUrl.startsWith("wss://")) {
-      this.backendUrl = this.backendUrl.replace(/^wss:\/\//, "ws://");
-      this._protocolDowngraded = true;
-      this.reconnectAttempt = 0;
-      console.log("[tunnel] Downgrading protocol wss->ws: %s", this.backendUrl);
-      this.reconnectTimer = setTimeout(() => this.connect(), 500);
-      return;
-    }
-
     const delay = Math.min(
       RECONNECT_BASE_MS * 2 ** this.reconnectAttempt,
       RECONNECT_MAX_MS,

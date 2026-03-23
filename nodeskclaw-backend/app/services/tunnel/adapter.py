@@ -175,10 +175,7 @@ class TunnelAdapter:
         ping_task = asyncio.create_task(self._ping_loop(instance_id))
         self._ping_tasks[instance_id] = ping_task
 
-        try:
-            await self._replay_pending_messages(instance_id)
-        except Exception as e:
-            logger.warning("Tunnel: offline replay failed for %s: %s", instance_id, e)
+        replay_task = asyncio.create_task(self._safe_replay(instance_id))
 
         try:
             await self._message_loop(conn)
@@ -187,6 +184,7 @@ class TunnelAdapter:
         except Exception as e:
             logger.error("Tunnel: message loop error for %s: %s", instance_id, e)
         finally:
+            replay_task.cancel()
             if self._connections.get(instance_id) is conn:
                 self._cleanup_instance(instance_id)
                 self._broadcast_connection_event(instance_id, connected=False)
@@ -639,6 +637,14 @@ class TunnelAdapter:
         return target_node_id in self._connections
 
     # ── Offline message replay ───────────────────────────────
+
+    async def _safe_replay(self, instance_id: str) -> None:
+        try:
+            await self._replay_pending_messages(instance_id)
+        except asyncio.CancelledError:
+            logger.info("Tunnel: replay cancelled for %s (connection closed)", instance_id)
+        except Exception as e:
+            logger.warning("Tunnel: offline replay failed for %s: %s", instance_id, e)
 
     async def _replay_pending_messages(self, instance_id: str) -> None:
         from app.core.deps import async_session_factory
