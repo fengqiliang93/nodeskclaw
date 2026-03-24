@@ -36,9 +36,15 @@ class NoDeskClawChannel(BaseChannel):  # type: ignore[misc]
             logger.warning("NoDeskClaw channel: stopping previous tunnel client before restart")
             await self._client.close()
 
-        from .client import TunnelClient
+        from .client import TunnelCallbacks, TunnelClient
 
-        self._client = TunnelClient(on_chat_request=self._handle_chat_request)
+        callbacks = TunnelCallbacks(
+            on_auth_ok=lambda: logger.info("NoDeskClaw channel: tunnel authenticated"),
+            on_auth_error=lambda reason: logger.error("NoDeskClaw channel: tunnel auth failed: %s", reason),
+            on_close=lambda: logger.warning("NoDeskClaw channel: tunnel connection closed"),
+            on_reconnecting=lambda attempt: logger.info("NoDeskClaw channel: tunnel reconnecting (attempt #%d)", attempt),
+        )
+        self._client = TunnelClient(on_chat_request=self._handle_chat_request, callbacks=callbacks)
         self._running = True
         logger.info("NoDeskClaw channel starting tunnel client...")
         await self._client.run_forever()

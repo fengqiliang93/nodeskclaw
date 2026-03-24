@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from .client import TunnelClient
+from .client import TunnelCallbacks, TunnelClient
 
 logger = logging.getLogger("nodeskclaw_tunnel_bridge.zeroclaw")
 
@@ -21,7 +21,13 @@ class ZeroClawBridge:
     def __init__(self) -> None:
         self._gateway_url = os.environ.get("ZEROCLAW_GATEWAY_URL", DEFAULT_GATEWAY_URL).rstrip("/")
         self._bearer_token = os.environ.get("ZEROCLAW_BEARER_TOKEN", "")
-        self._client = TunnelClient(on_chat_request=self._handle_chat_request)
+        callbacks = TunnelCallbacks(
+            on_auth_ok=lambda: logger.info("ZeroClaw bridge: tunnel authenticated"),
+            on_auth_error=lambda reason: logger.error("ZeroClaw bridge: tunnel auth failed: %s", reason),
+            on_close=lambda: logger.warning("ZeroClaw bridge: tunnel connection closed"),
+            on_reconnecting=lambda attempt: logger.info("ZeroClaw bridge: tunnel reconnecting (attempt #%d)", attempt),
+        )
+        self._client = TunnelClient(on_chat_request=self._handle_chat_request, callbacks=callbacks)
         self._http: httpx.AsyncClient | None = None
 
     async def run(self) -> None:

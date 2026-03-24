@@ -22,7 +22,8 @@ class RuntimeSpec:
     display_tags: tuple[str, ...] = ()
     display_powered_by: str = ""
     gateway_port: int = 18789
-    health_probe_path: str | None = "/"
+    health_probe_path: str | None = "/healthz"
+    readiness_probe_path: str | None = None
     order: int = 0
     image_registry_key: str = "image_registry"
     config_rel_path: str = ".openclaw/openclaw.json"
@@ -77,6 +78,7 @@ def _register_builtins() -> None:
         display_description="支持工具调用、基因系统、多技能管理",
         display_tags=("默认",),
         display_powered_by="OpenClaw",
+        readiness_probe_path="/readyz",
         order=0,
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(

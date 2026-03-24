@@ -826,7 +826,7 @@ async def sync_gateway_token(instance_id: str, db: AsyncSession) -> str:
     instance = await get_instance(instance_id, db)
 
     env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
-    existing_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")
+    existing_token = env_vars.get("GATEWAY_TOKEN")
     if existing_token:
         normalized_env_vars = _normalize_gateway_env_vars(env_vars, existing_token)
         changed = normalized_env_vars != env_vars or instance.proxy_token != existing_token
@@ -914,7 +914,7 @@ async def regenerate_gateway_token(instance_id: str, db: AsyncSession) -> str:
     k8s = await require_k8s_client(cluster)
 
     new_token = secrets.token_hex(24)
-    while new_token == (old_env_vars.get("GATEWAY_TOKEN") or old_env_vars.get("OPENCLAW_GATEWAY_TOKEN")):
+    while new_token == old_env_vars.get("GATEWAY_TOKEN"):
         new_token = secrets.token_hex(24)
     new_env_vars = _normalize_gateway_env_vars(old_env_vars, new_token)
 

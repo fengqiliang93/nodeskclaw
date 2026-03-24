@@ -10,10 +10,21 @@ OpenClaw 使用 TypeScript channel plugin (`openclaw-channel-nodeskclaw`) 连接
 
 | 模块 | 用途 | 运行方式 |
 |------|------|----------|
-| `client.py` | 核心 WebSocket tunnel 客户端（共享） | 被其他模块引用 |
+| `client.py` | 核心 WebSocket tunnel 客户端 + `TunnelCallbacks`（共享） | 被其他模块引用 |
 | `nanobot_channel.py` | NanoBot `BaseChannel` 插件 | NanoBot 通过 `entry_points` 自动发现 |
 | `zeroclaw_bridge.py` | ZeroClaw 独立桥接 | 作为后台进程运行 |
 | `__main__.py` | CLI 入口 | `python -m nodeskclaw_tunnel_bridge --runtime zeroclaw` |
+
+## TunnelCallbacks
+
+`TunnelClient` 支持通过 `TunnelCallbacks` dataclass 接收连接生命周期事件：
+
+- `on_auth_ok` -- 认证成功
+- `on_auth_error(reason)` -- 认证失败
+- `on_close` -- WebSocket 连接关闭
+- `on_reconnecting(attempt)` -- 开始重连（含尝试次数）
+
+ZeroClaw bridge 和 NanoBot channel 默认传入结构化日志 callbacks。
 
 ## 环境变量
 
@@ -41,6 +52,8 @@ pip install .
 ```bash
 python3 -m nodeskclaw_tunnel_bridge --runtime zeroclaw &
 ```
+
+**注意**：ZeroClaw 安全镜像（`Dockerfile.security`）必须安装 `python3-minimal`、`python3-pip` 和本包，否则 bridge 会静默失败。
 
 ### NanoBot（channel 插件）
 

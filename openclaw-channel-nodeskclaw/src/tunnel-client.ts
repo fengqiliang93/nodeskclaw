@@ -17,6 +17,13 @@ interface TunnelMessage {
 
 type LearningWebhookHandler = (body: unknown) => { ok: boolean };
 
+export interface TunnelCallbacks {
+  onAuthOk?: () => void;
+  onAuthError?: (reason: string) => void;
+  onClose?: (code: number, reason: string) => void;
+  onReconnecting?: (attempt: number) => void;
+}
+
 let _instance: TunnelClient | null = null;
 
 export function getTunnelClient(): TunnelClient {
@@ -36,7 +43,7 @@ function deriveTunnelUrl(apiUrl: string): string {
   return `${wsUrl}/tunnel/connect`;
 }
 
-export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
+export function startTunnelClient(cfg: OpenClawConfig, callbacks?: TunnelCallbacks): TunnelClient {
   if (_instance) {
     console.log("[tunnel] Shutting down previous TunnelClient before re-init");
     _instance.disconnect();
@@ -67,7 +74,7 @@ export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
       instanceId ? "set" : "MISSING",
       token ? "set" : "MISSING",
     );
-    _instance = new TunnelClient(tunnelUrl, instanceId, token);
+    _instance = new TunnelClient(tunnelUrl, instanceId, token, callbacks);
     return _instance;
   }
 
@@ -75,7 +82,7 @@ export function startTunnelClient(cfg: OpenClawConfig): TunnelClient {
     console.log("[tunnel] Derived tunnelUrl from apiUrl: %s", tunnelUrl);
   }
 
-  _instance = new TunnelClient(tunnelUrl, instanceId, token);
+  _instance = new TunnelClient(tunnelUrl, instanceId, token, callbacks);
   _instance.connect();
   return _instance;
 }
@@ -98,6 +105,7 @@ export class TunnelClient {
     private backendUrl: string,
     private instanceId: string,
     private token: string,
+    private callbacks?: TunnelCallbacks,
   ) {}
 
   setLearningHandler(handler: LearningWebhookHandler): void {
@@ -151,6 +159,7 @@ export class TunnelClient {
         event.code,
         event.reason,
       );
+      this.callbacks?.onClose?.(event.code, event.reason);
       this.cleanup();
       if (!this.closed) this.scheduleReconnect();
     });
@@ -211,16 +220,17 @@ export class TunnelClient {
         this.reconnectAttempt = 0;
         this.lastPong = Date.now();
         this.startPingCheck();
+        this.callbacks?.onAuthOk?.();
         break;
 
-      case "auth.error":
-        console.error(
-          "[tunnel] Auth failed:",
-          msg.payload?.reason ?? "unknown",
-        );
+      case "auth.error": {
+        const reason = String(msg.payload?.reason ?? "unknown");
+        console.error("[tunnel] Auth failed:", reason);
         this.closed = true;
         this.ws?.close();
+        this.callbacks?.onAuthError?.(reason);
         break;
+      }
 
       case "ping":
         this.send({
@@ -460,6 +470,7 @@ export class TunnelClient {
       delay,
       this.reconnectAttempt,
     );
+    this.callbacks?.onReconnecting?.(this.reconnectAttempt);
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
   }
 

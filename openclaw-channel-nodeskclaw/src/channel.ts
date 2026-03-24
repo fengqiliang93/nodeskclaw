@@ -5,7 +5,8 @@ import type {
   CollaborationPayload,
 } from "./types.js";
 import { getNoDeskClawRuntime } from "./runtime.js";
-import { getTunnelClient, isProtocolDowngraded } from "./tunnel-client.js";
+import { getTunnelClient, startTunnelClient, isProtocolDowngraded } from "./tunnel-client.js";
+import type { TunnelCallbacks } from "./tunnel-client.js";
 
 const CHANNEL_KEY = "nodeskclaw";
 const DEFAULT_ACCOUNT_ID = "default";
@@ -189,10 +190,54 @@ export const nodeskclawPlugin: ChannelPlugin<ResolvedNoDeskClawAccount> = {
     ],
   },
   status: {
-    buildAccountSnapshot: ({ account }) => ({
+    defaultRuntime: {
+      accountId: DEFAULT_ACCOUNT_ID,
+      running: false,
+      connected: false,
+      lastError: null as string | null,
+    },
+    buildAccountSnapshot: ({ account, runtime }) => ({
       accountId: account.accountId,
       enabled: account.enabled,
       configured: account.configured,
+      mode: "tunnel" as const,
+      connected: (runtime as Record<string, unknown>)?.connected ?? false,
+      lastError: (runtime as Record<string, unknown>)?.lastError ?? null,
     }),
+  },
+  gateway: {
+    startAccount: async (ctx) => {
+      const callbacks: TunnelCallbacks = {
+        onAuthOk: () => {
+          ctx.setStatus({ accountId: ctx.accountId, connected: true, lastError: null });
+        },
+        onAuthError: (reason) => {
+          ctx.log?.error?.(`[${ctx.accountId}] tunnel auth failed: ${reason}`);
+          ctx.setStatus({ accountId: ctx.accountId, connected: false, lastError: reason });
+        },
+        onClose: (_code, _reason) => {
+          ctx.setStatus({ accountId: ctx.accountId, connected: false });
+        },
+        onReconnecting: (attempt) => {
+          ctx.setStatus({ accountId: ctx.accountId, connected: false, reconnectAttempts: attempt });
+        },
+      };
+
+      const tunnelClient = startTunnelClient(ctx.cfg, callbacks);
+
+      try {
+        const { handleWebhook } = require("openclaw-channel-learning/src/channel.js");
+        tunnelClient.setLearningHandler(handleWebhook);
+      } catch {
+        ctx.log?.debug?.("[nodeskclaw] Learning channel not available for tunnel injection");
+      }
+
+      return new Promise<void>((resolve) => {
+        ctx.abortSignal.addEventListener("abort", () => {
+          tunnelClient.disconnect();
+          resolve();
+        });
+      });
+    },
   },
 };

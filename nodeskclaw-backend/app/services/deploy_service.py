@@ -394,9 +394,9 @@ async def deploy_instance(
         gateway_token = _secrets.token_hex(24)
     env_vars["GATEWAY_TOKEN"] = gateway_token
     env_vars["OPENCLAW_GATEWAY_TOKEN"] = gateway_token
+    env_vars["NODESKCLAW_TOKEN"] = gateway_token
 
     env_vars.setdefault("NODESKCLAW_API_URL", settings.AGENT_API_BASE_URL)
-    env_vars.setdefault("NODESKCLAW_TOKEN", gateway_token)
     if settings.TUNNEL_BASE_URL:
         env_vars.setdefault("NODESKCLAW_TUNNEL_URL", settings.TUNNEL_BASE_URL)
 
@@ -806,7 +806,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 pull_secret_name = REGISTRY_SECRET_NAME
                 logger.info("已创建镜像拉取凭据 Secret: %s/%s", ctx.namespace, REGISTRY_SECRET_NAME)
 
-            _has_http = _rt_spec.health_probe_path is not None if _rt_spec else True
+            _liveness_path = _rt_spec.health_probe_path if _rt_spec else "/healthz"
+            _readiness_path = _rt_spec.readiness_probe_path if _rt_spec else None
             _has_init = _rt_spec.has_init_script if _rt_spec else True
             dep = build_deployment(
                 name=ctx.name,
@@ -824,8 +825,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 env_vars=ctx.env_vars,
                 advanced_config=ctx.advanced_config,
                 image_pull_secret=pull_secret_name,
-                health_probe_path="/healthz" if _has_http else None,
-                readiness_probe_path="/healthz" if _has_http else None,
+                health_probe_path=_liveness_path,
+                readiness_probe_path=_readiness_path or _liveness_path,
                 has_init_script=_has_init,
             )
             await k8s.apply(

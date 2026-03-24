@@ -49,8 +49,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 && \
+    ca-certificates libssl3 python3-minimal python3-pip && \
     rm -rf /var/lib/apt/lists/*
+
+COPY nodeskclaw-tunnel-bridge/ /tmp/nodeskclaw-tunnel-bridge/
+RUN pip3 install --no-cache-dir --break-system-packages /tmp/nodeskclaw-tunnel-bridge/ && \
+    rm -rf /tmp/nodeskclaw-tunnel-bridge/
 
 RUN mkdir -p /opt/zeroclaw
 

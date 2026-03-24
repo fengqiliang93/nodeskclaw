@@ -10,10 +10,10 @@
 
 ## 架构概览
 
-本插件使用 **WebSocket 隧道**（Agent Tunnel）与后端通信：
+本插件使用 **WebSocket 隧道**（Agent Tunnel）与后端通信，通过 OpenClaw 的 `gateway.startAccount` 生命周期管理 tunnel 连接：
 
-1. **TunnelClient**：实例启动后主动通过 WebSocket 连接到后端 `/api/v1/tunnel/connect`
-2. **Token 认证**：连接建立后发送 `auth` 消息，由后端验证 `OPENCLAW_GATEWAY_TOKEN`
+1. **生命周期管理**：tunnel 在 `gateway.startAccount` 中启动，由 OpenClaw 框架管理启停和重启。TunnelClient 通过 `TunnelCallbacks` 将连接状态（认证成功/失败、断连、重连）上报给框架，框架据此判断 `/readyz` 的 readiness 状态
+2. **Token 认证**：连接建立后发送 `auth` 消息，由后端验证 `GATEWAY_TOKEN`（环境变量 `NODESKCLAW_TOKEN`）
 3. **消息路由**：`sendText` 被调用时，通过隧道发送 `collaboration.message` 到后端
 4. **Chat 代理**：后端发送 `chat.request` 时，TunnelClient 代理到本地 OpenClaw API（localhost:3000）
 5. **Learning 注入**：后端发送 `learning.task` 时，直接调用 Learning Channel 的 `handleWebhook`
@@ -28,10 +28,10 @@
 openclaw-channel-nodeskclaw/
   package.json              # 包定义，声明 openclaw extensions 入口
   openclaw.plugin.json      # DeskClaw plugin manifest
-  index.ts                  # Plugin 注册入口，启动 TunnelClient
+  index.ts                  # Plugin 注册入口（registerChannel + registerTool）
   src/
-    channel.ts              # ChannelPlugin 核心实现（outbound.sendText 使用 tunnelClient）
-    tunnel-client.ts        # WebSocket 隧道客户端（连接、认证、重连、消息分发）
+    channel.ts              # ChannelPlugin 核心实现（gateway.startAccount 管理 tunnel 生命周期）
+    tunnel-client.ts        # WebSocket 隧道客户端（连接、认证、重连、消息分发、TunnelCallbacks）
     runtime.ts              # DeskClaw PluginRuntime wrapper
     types.ts                # TypeScript 类型定义（CollaborationPayload 等）
     tools.ts                # MCP 工具定义
@@ -75,7 +75,7 @@ openclaw-channel-nodeskclaw/
 | `tunnelUrl` | 后端 WebSocket 隧道地址 |
 | `workspaceId` | 赛博办公室 ID |
 | `instanceId` | 当前实例 ID |
-| `apiToken` | 与后端共享的认证令牌（`OPENCLAW_GATEWAY_TOKEN`） |
+| `apiToken` | 与后端共享的认证令牌（对应环境变量 `NODESKCLAW_TOKEN`） |
 
 ## 使用方式
 

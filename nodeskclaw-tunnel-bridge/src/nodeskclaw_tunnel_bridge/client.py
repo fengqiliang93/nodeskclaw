@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import uuid
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 import websockets
@@ -26,6 +27,14 @@ ChatRequestHandler = Callable[
 ]
 
 
+@dataclass
+class TunnelCallbacks:
+    on_auth_ok: Callable[[], None] | None = None
+    on_auth_error: Callable[[str], None] | None = None
+    on_close: Callable[[], None] | None = None
+    on_reconnecting: Callable[[int], None] | None = None
+
+
 def _derive_tunnel_url(api_url: str) -> str:
     url = api_url.rstrip("/")
     url = url.replace("https://", "wss://").replace("http://", "ws://")
@@ -42,6 +51,7 @@ class TunnelClient:
         instance_id: str = "",
         token: str = "",
         on_chat_request: ChatRequestHandler | None = None,
+        callbacks: TunnelCallbacks | None = None,
     ) -> None:
         api_url = os.environ.get("NODESKCLAW_API_URL", "")
         tunnel_url = os.environ.get("NODESKCLAW_TUNNEL_URL", "")
@@ -50,6 +60,7 @@ class TunnelClient:
         self._instance_id = instance_id or os.environ.get("NODESKCLAW_INSTANCE_ID", "")
         self._token = token or os.environ.get("NODESKCLAW_TOKEN", "")
         self.on_chat_request = on_chat_request
+        self._callbacks = callbacks or TunnelCallbacks()
 
         self._ws: ClientConnection | None = None
         self._closed = False
@@ -86,6 +97,8 @@ class TunnelClient:
             delay = min(RECONNECT_BASE_S * (2 ** self._reconnect_attempt), RECONNECT_MAX_S)
             self._reconnect_attempt += 1
             logger.info("Tunnel bridge: reconnecting in %.1fs (attempt #%d)", delay, self._reconnect_attempt)
+            if self._callbacks.on_reconnecting:
+                self._callbacks.on_reconnecting(self._reconnect_attempt)
             await asyncio.sleep(delay)
 
     async def _connect_once(self) -> None:
@@ -112,6 +125,8 @@ class TunnelClient:
 
         self._ws = None
         self._stop_ping()
+        if self._callbacks.on_close:
+            self._callbacks.on_close()
 
     async def _handle_message(self, msg: dict[str, Any]) -> None:
         msg_type = msg.get("type", "")
@@ -121,11 +136,15 @@ class TunnelClient:
             self._reconnect_attempt = 0
             self._last_pong = time.monotonic()
             self._start_ping()
+            if self._callbacks.on_auth_ok:
+                self._callbacks.on_auth_ok()
 
         elif msg_type == "auth.error":
             reason = msg.get("payload", {}).get("reason", "unknown")
             logger.error("Tunnel bridge: auth failed: %s", reason)
             self._closed = True
+            if self._callbacks.on_auth_error:
+                self._callbacks.on_auth_error(reason)
             if self._ws:
                 await self._ws.close()
 
