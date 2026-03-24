@@ -217,6 +217,9 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE), si
 
 - [Discord](https://discord.gg/y5NKqcP6eY) -- Join the discussion, ask questions, share feedback
 - [GitHub Issues](https://github.com/patchwork-body/nodeskclaw/issues) -- Bug reports and feature requests
+- WeChat -- Scan the QR code below to join the developer group
+
+<img src=".github/wechat-group-qr.jpg" alt="DeskClaw WeChat Developer Group" width="280">
 
 ## Contributing
 
