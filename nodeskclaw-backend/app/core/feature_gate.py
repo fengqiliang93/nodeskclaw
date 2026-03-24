@@ -1,8 +1,12 @@
 """CE/EE Feature Gate — 运行时功能开关。
 
-通过检测项目根目录下 ee/ 子目录是否存在来判断 edition：
-  - ee/ 存在 -> edition = "ee"，所有 feature 启用
-  - ee/ 不存在 -> edition = "ce"，仅 CE feature 启用
+判断优先级：
+  1. 环境变量 NODESKCLAW_EDITION（值为 ce 或 ee）— 最高优先
+  2. 检测项目根目录下 ee/ 子目录是否存在
+
+结果：
+  - edition = "ee" -> 所有 feature 启用
+  - edition = "ce" -> 仅 CE feature 启用
 
 EE feature 清单从 features.yaml 加载，支持 ee/features.yaml 合并扩展。
 """
@@ -34,7 +38,11 @@ class FeatureGate:
         self._load()
 
     def _load(self) -> None:
-        self._edition = "ee" if _EE_DIR.is_dir() else "ce"
+        env_edition = os.getenv("NODESKCLAW_EDITION", "").lower().strip()
+        if env_edition in ("ce", "ee"):
+            self._edition = env_edition
+        else:
+            self._edition = "ee" if _EE_DIR.is_dir() else "ce"
 
         if _FEATURES_YAML.exists():
             with open(_FEATURES_YAML) as f:
@@ -54,8 +62,9 @@ class FeatureGate:
         self._ee_feature_ids = {f["id"] for f in self._all_features}
 
         logger.info(
-            "FeatureGate: edition=%s, ee_features=%d",
+            "FeatureGate: edition=%s%s, ee_features=%d",
             self._edition,
+            " (env override)" if env_edition in ("ce", "ee") else "",
             len(self._ee_feature_ids),
         )
 

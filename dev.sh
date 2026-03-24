@@ -213,6 +213,7 @@ log "执行数据库迁移 (alembic upgrade head)..."
 # ── 启动服务 ──────────────────────────────────────────────
 log "启动服务..."
 
+export NODESKCLAW_EDITION="$MODE"
 export LLM_PROXY_URL="http://localhost:8080"
 export LLM_PROXY_INTERNAL_URL="http://localhost:8080"
 

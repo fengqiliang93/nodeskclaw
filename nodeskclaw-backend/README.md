@@ -396,6 +396,12 @@ EE 平台管理员配置（仅 EE 模式生效）：
 | `INIT_EE_ADMIN_ACCOUNT` | EE Admin 后台管理员 username，默认 `deskclaw-admin`。留空跳过，不能与 `INIT_ADMIN_ACCOUNT` 相同 |
 | `RESET_EE_ADMIN_PASSWORD` | 设为 `true` 后重启可强制重置 EE 管理员密码。默认 `false` |
 
+CE/EE 模式覆盖：
+
+| 变量 | 说明 |
+|------|------|
+| `NODESKCLAW_EDITION` | 强制指定运行版本（`ce` 或 `ee`），优先于 `ee/` 目录自动检测。`./dev.sh ce` 会自动设置此变量 |
+
 可选项：
 
 | 变量 | 说明 |

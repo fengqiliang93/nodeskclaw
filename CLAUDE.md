@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DeskClaw（曾用名 NoDeskClaw）— DeskClaw 实例可视化管理平台，通过 Web 界面管理 K8s 集群上的 DeskClaw 实例，支持一键部署、实时日志、集群健康巡检、飞书 SSO 登录。
 
-采用 CE（社区版）/ EE（企业版）双版本架构：CE 为本仓库开源部分，EE 在私有 `ee/` 目录，运行时通过 `FeatureGate` 自动检测。
+采用 CE（社区版）/ EE（企业版）双版本架构：CE 为本仓库开源部分，EE 在私有 `ee/` 目录。运行时通过 `FeatureGate` 判断版本：优先读取 `NODESKCLAW_EDITION` 环境变量（`ce`/`ee`），未设置时检测 `ee/` 目录是否存在。`./dev.sh ce` 会自动设置此环境变量以确保后端以 CE 模式运行。
 
 ## 项目结构
 
@@ -26,6 +26,14 @@ NoDeskClaw/
 ```
 
 ## 常用命令
+
+### 一键启动
+
+```bash
+./dev.sh         # 自动检测：ee/ 存在 -> EE，否则 -> CE
+./dev.sh ce      # 强制 CE 模式（即使存在 ee/ 目录，后端也以 CE 运行）
+./dev.sh ee      # 强制 EE 模式（backend + portal + admin）
+```
 
 ### 后端（Python）
 
