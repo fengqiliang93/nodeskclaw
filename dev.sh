@@ -59,6 +59,15 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
+  # 兜底：杀死仍在占用服务端口的孤儿进程
+  for port in 8000 8080; do
+    local remaining
+    remaining=$(lsof -ti :"$port" 2>/dev/null || true)
+    if [ -n "$remaining" ]; then
+      log "清理端口 $port 上的残留进程..."
+      echo "$remaining" | xargs kill -9 2>/dev/null || true
+    fi
+  done
   if [ "$DOCKER_PG" = true ]; then
     log "停止 Docker PostgreSQL ($DOCKER_PG_CONTAINER)..."
     docker stop "$DOCKER_PG_CONTAINER" 2>/dev/null || true
@@ -209,6 +218,22 @@ prefix_output() {
 # ── 数据库迁移 ────────────────────────────────────────────
 log "执行数据库迁移 (alembic upgrade head)..."
 (cd "$BACKEND_DIR" && uv run alembic upgrade head)
+
+# ── 端口检查 ──────────────────────────────────────────────
+require_port_free() {
+  local port="$1" label="$2"
+  local pids
+  pids=$(lsof -ti :"$port" 2>/dev/null || true)
+  if [ -n "$pids" ]; then
+    err "端口 $port ($label) 已被占用:"
+    lsof -i :"$port" -P -n 2>/dev/null | head -5 >&2
+    echo "  请先终止占用进程: kill -9 \$(lsof -ti :$port)" >&2
+    exit 1
+  fi
+}
+
+require_port_free 8000 "backend"
+require_port_free 8080 "llm-proxy"
 
 # ── 启动服务 ──────────────────────────────────────────────
 log "启动服务..."
