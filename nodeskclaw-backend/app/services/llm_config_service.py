@@ -554,6 +554,14 @@ async def ensure_openclaw_gateway_config(instance: Instance, db: AsyncSession) -
 
 
 CHANNEL_PLUGIN_DIR = "openclaw-channel-nodeskclaw"
+NODESKCLAW_CHANNEL_TOOLS = (
+    "nodeskclaw_blackboard",
+    "nodeskclaw_topology",
+    "nodeskclaw_performance",
+    "nodeskclaw_proposals",
+    "nodeskclaw_gene_discovery",
+    "nodeskclaw_shared_files",
+)
 PLUGIN_FILES = [
     "index.ts",
     "package.json",
@@ -660,14 +668,7 @@ def _inject_channel_config(
 
     tools_cfg = config.setdefault("tools", {})
     allow = tools_cfg.setdefault("allow", [])
-    for tool_name in (
-        "nodeskclaw_blackboard",
-        "nodeskclaw_topology",
-        "nodeskclaw_performance",
-        "nodeskclaw_proposals",
-        "nodeskclaw_gene_discovery",
-        "nodeskclaw_shared_files",
-    ):
+    for tool_name in NODESKCLAW_CHANNEL_TOOLS:
         if tool_name not in allow:
             allow.append(tool_name)
 
@@ -733,11 +734,7 @@ async def add_workspace_channel_account(
 
         tools_cfg = existing.setdefault("tools", {})
         allow = tools_cfg.setdefault("allow", [])
-        for tool_name in (
-            "nodeskclaw_blackboard", "nodeskclaw_topology",
-            "nodeskclaw_performance", "nodeskclaw_proposals",
-            "nodeskclaw_gene_discovery",
-        ):
+        for tool_name in NODESKCLAW_CHANNEL_TOOLS:
             if tool_name not in allow:
                 allow.append(tool_name)
 
@@ -1165,11 +1162,7 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
 
                 tools_cfg = config.setdefault("tools", {})
                 allow = tools_cfg.setdefault("allow", [])
-                for tool_name in (
-                    "nodeskclaw_blackboard", "nodeskclaw_topology",
-                    "nodeskclaw_performance", "nodeskclaw_proposals",
-                    "nodeskclaw_gene_discovery",
-                ):
+                for tool_name in NODESKCLAW_CHANNEL_TOOLS:
                     if tool_name not in allow:
                         allow.append(tool_name)
                         changed = True
