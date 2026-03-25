@@ -1275,6 +1275,8 @@ const zhCN = {
     noTagsHint: "未获取到镜像 Tag，请检查镜像仓库配置",
     goToRegistrySettings: "前往配置",
     latestTag: "最新",
+    storageClass: "StorageClass",
+    storageClassDefault: "(默认)",
   },
   auditLogs: {
     title: "操作审计",

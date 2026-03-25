@@ -1275,6 +1275,8 @@ const enUS = {
     noTagsHint: "No image tags found, please check registry settings",
     goToRegistrySettings: "Go to Settings",
     latestTag: "Latest",
+    storageClass: "StorageClass",
+    storageClassDefault: "(default)",
   },
   auditLogs: {
     title: "Audit Logs",

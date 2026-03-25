@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2, Plus, Link, Star, X, Cpu } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2, Plus, Link, Star, X, Cpu, HardDrive } from 'lucide-vue-next'
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import { pinyin } from 'pinyin-pro'
@@ -197,10 +197,25 @@ const storageAnchors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140,
 const storageLabels = [20, 60, 100, 150, 200]
 
 const imageTags = ref<string[]>([])
-const clusters = ref<{ id: string; name: string }[]>([])
+const clusters = ref<{ id: string; name: string; compute_provider: string }[]>([])
 const loadingInit = ref(true)
 const loadingTags = ref(false)
 const imageDropdownOpen = ref(false)
+
+interface StorageClassItem {
+  name: string
+  provisioner: string
+  is_default: boolean
+}
+const storageClasses = ref<StorageClassItem[]>([])
+const selectedStorageClass = ref<string | null>(null)
+const scDropdownOpen = ref(false)
+
+const isK8sCluster = computed(() => {
+  const first = clusters.value[0]
+  return first && first.compute_provider === 'k8s'
+})
+const showStorageClassSelector = computed(() => isK8sCluster.value && storageClasses.value.length > 0)
 
 const specs = [
   { key: 'small', label: '轻量', desc: '写周报、查资料、日常问答', cpu: '2 核', mem: '4 GB' },
@@ -341,6 +356,17 @@ onMounted(async () => {
       selectedRuntime.value = engines.value[0].runtime_id
     }
     clusters.value = (clustersRes.data.data ?? []).filter((c: any) => c.status === 'connected')
+    if (isK8sCluster.value) {
+      try {
+        const scRes = await api.get('/storage-classes?scope=all')
+        const items = (scRes.data.data ?? []) as StorageClassItem[]
+        storageClasses.value = items
+        const def = items.find(sc => sc.is_default)
+        selectedStorageClass.value = def ? def.name : (items[0]?.name ?? null)
+      } catch {
+        // StorageClass 列表获取失败不阻塞创建流程
+      }
+    }
     await fetchImageTags()
   } catch {
     // ignore init errors
@@ -429,6 +455,7 @@ async function handleDeploy() {
       mem_limit: res_spec.mem_lim,
       quota_cpu: res_spec.quota_cpu,
       quota_mem: res_spec.quota_mem,
+      storage_class: selectedStorageClass.value || undefined,
       storage_size: `${storageGi.value}Gi`,
       runtime: selectedRuntime.value,
       description: description.value || undefined,
@@ -690,6 +717,41 @@ async function handleDeploy() {
             </label>
             <span class="text-sm text-muted-foreground">当前：<span class="font-medium text-foreground">{{ storageGi }}Gi</span></span>
           </div>
+
+          <!-- StorageClass 选择器（仅 K8s 集群且有可用 SC 时显示） -->
+          <div v-if="showStorageClassSelector" class="relative">
+            <div class="flex items-center gap-2">
+              <HardDrive class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span class="text-xs text-muted-foreground">StorageClass:</span>
+              <button
+                class="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-card text-xs font-mono hover:border-primary/40 transition-colors"
+                @click.stop="scDropdownOpen = !scDropdownOpen"
+              >
+                <span>{{ selectedStorageClass }}</span>
+                <span v-if="storageClasses.find(sc => sc.name === selectedStorageClass)?.is_default" class="text-muted-foreground">{{ t('engine.storageClassDefault') }}</span>
+                <ChevronDown class="w-3 h-3 text-muted-foreground" />
+              </button>
+            </div>
+            <div
+              v-if="scDropdownOpen"
+              class="absolute left-0 top-full mt-1 z-20 w-72 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
+            >
+              <button
+                v-for="sc in storageClasses"
+                :key="sc.name"
+                class="w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center justify-between"
+                :class="sc.name === selectedStorageClass ? 'bg-accent/50' : ''"
+                @click="selectedStorageClass = sc.name; scDropdownOpen = false"
+              >
+                <span class="flex flex-col">
+                  <span class="font-mono">{{ sc.name }}<span v-if="sc.is_default" class="ml-1 text-muted-foreground">{{ t('engine.storageClassDefault') }}</span></span>
+                  <span class="text-muted-foreground text-[10px]">{{ sc.provisioner }}</span>
+                </span>
+                <Check v-if="sc.name === selectedStorageClass" class="w-3.5 h-3.5 text-primary shrink-0" />
+              </button>
+            </div>
+          </div>
+
           <div class="space-y-2">
             <input
               type="range"
@@ -995,6 +1057,6 @@ async function handleDeploy() {
 
   <!-- 点击外部关闭下拉框 -->
   <Teleport to="body">
-    <div v-if="imageDropdownOpen" class="fixed inset-0 z-5" @click="imageDropdownOpen = false" />
+    <div v-if="imageDropdownOpen || scDropdownOpen" class="fixed inset-0 z-5" @click="imageDropdownOpen = false; scDropdownOpen = false" />
   </Teleport>
 </template>
