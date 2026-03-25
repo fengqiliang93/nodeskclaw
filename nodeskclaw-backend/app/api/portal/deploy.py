@@ -52,10 +52,10 @@ async def deploy(
                     OrgMembership.deleted_at.is_(None),
                 )
             )).scalar_one_or_none()
-            if not ms or ms.role != "admin":
+            if not ms:
                 raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail={
-                    "error_code": 40320, "message_key": "errors.rbac.admin_required",
-                    "message": "Only organization admins can deploy instances",
+                    "error_code": 40312, "message_key": "errors.org.org_member_required",
+                    "message": "You are not a member of this organization",
                 })
 
     effective_org_id = body.org_id or current_user.current_org_id
