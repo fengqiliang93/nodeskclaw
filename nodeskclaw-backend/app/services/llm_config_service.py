@@ -666,6 +666,7 @@ def _inject_channel_config(
         "nodeskclaw_performance",
         "nodeskclaw_proposals",
         "nodeskclaw_gene_discovery",
+        "nodeskclaw_shared_files",
     ):
         if tool_name not in allow:
             allow.append(tool_name)
