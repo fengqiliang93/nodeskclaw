@@ -109,11 +109,12 @@ networks:
 | Delete | `docker compose -f <path> down -v` |
 | Health Check | `docker inspect` + HTTP Probe |
 
-### 2.5 Docker Cluster Limitations
+### 2.5 Resource Limits & Auto-adaptation
 
-- K8s-specific features are unavailable: cluster overview (node/CPU/memory stats), StorageClass selection, Pod Events, kubectl exec
 - All instances share host resources; basic isolation via `mem_limit` / `cpus`
+- **CPU auto-adaptation**: If the requested CPU count (default 2 cores) exceeds the host's available CPUs, the system automatically skips the CPU limit (i.e., no cap, uses all available CPUs) to prevent Docker daemon from rejecting container creation
 - Instance URLs are `localhost:{port}` — no custom domains or HTTPS
+- K8s-specific features are unavailable: cluster overview (node/CPU/memory stats), StorageClass selection, Pod Events, kubectl exec
 
 ---
 
@@ -327,6 +328,12 @@ User Browser → Gateway Cluster Ingress → ExternalName Service → Instance C
 1. Verify the API Server address in the KubeConfig is reachable from the backend network
 2. Verify credentials have not expired (Token / certificate)
 3. Verify `ENCRYPTION_KEY` is configured correctly (mismatched keys will fail to decrypt the KubeConfig)
+
+### Docker deployment failed: Error response from daemon: range of CPUs
+
+**Cause**: Requested CPU count exceeds the host's available CPUs. Older versions used a fixed default of `cpus: 2.0`, which fails on single-core machines.
+
+**Fix**: Upgrade to a version with CPU auto-adaptation. The system automatically detects available CPUs and skips limits that exceed the host capacity.
 
 ### Docker instance inaccessible
 

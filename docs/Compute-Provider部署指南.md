@@ -125,11 +125,12 @@ networks:
 | 删除 | `docker compose -f <path> down -v` |
 | 健康检查 | `docker inspect` + HTTP Probe |
 
-### 2.5 Docker 集群限制
+### 2.5 资源限制与自适应
 
-- 不支持 K8s 特有功能：集群概览（节点/CPU/内存统计）、StorageClass 选择、Pod Events、kubectl exec
 - 所有实例共享宿主机资源，通过 `mem_limit` / `cpus` 做基础隔离
+- **CPU 自适应**：部署时如果请求的 CPU 数（默认 2 核）超过宿主机可用 CPU 数，系统会自动跳过 CPU 限制（即不设上限，使用全部可用 CPU），避免 Docker daemon 拒绝创建容器
 - 实例访问地址为 `localhost:{port}`，不支持自定义域名/HTTPS
+- 不支持 K8s 特有功能：集群概览（节点/CPU/内存统计）、StorageClass 选择、Pod Events、kubectl exec
 
 ---
 
@@ -345,6 +346,12 @@ K8s 集群：
 1. 确认 KubeConfig 中的 API Server 地址从后端网络可达
 2. 确认凭证未过期（Token/证书）
 3. 确认 `ENCRYPTION_KEY` 配置正确（加解密不一致会导致 KubeConfig 无法解密）
+
+### Docker 实例部署失败：Error response from daemon: range of CPUs
+
+**原因**：请求的 CPU 数超过宿主机可用 CPU 数。旧版本使用固定默认值 `cpus: 2.0`，在单核机器上会触发此错误。
+
+**解决**：升级到包含 CPU 自适应修复的版本。系统会自动检测可用 CPU 数并跳过超限配置。
 
 ### Docker 实例无法访问
 
