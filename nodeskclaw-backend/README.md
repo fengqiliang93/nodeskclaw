@@ -199,6 +199,7 @@ API 路由同时挂载在两个前缀下：
 | `image_registry_zeroclaw` | ZeroClaw | ZeroClaw 独立仓库 |
 | `image_registry_nanobot` | Nanobot | Nanobot 独立仓库 |
 
+- **启动时自动内置默认值**：`seed.py` 中 `_seed_default_registry_configs()` 在每次启动时幂等写入上述三个 key 的默认公共仓库地址（仅在 key 不存在时写入，不覆盖管理员修改）
 - 部署和配置更新时通过 `resolve_image_registry(db, runtime)` 自动解析
 - 未配置引擎专属仓库时回退到全局 `image_registry`
 - `GET /registry/tags?runtime=zeroclaw` 按引擎查询对应仓库的 Tag 列表

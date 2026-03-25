@@ -601,14 +601,14 @@ async function handleDeploy() {
 
               <div v-if="selectedRuntime === eng.runtime_id" class="border-t border-border mt-3 pt-3" @click.stop>
                 <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-xs font-medium text-muted-foreground">镜像版本</span>
+                  <span class="text-xs font-medium text-muted-foreground">{{ t('engine.imageVersion') }}</span>
                   <button
                     class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     :disabled="loadingTags"
                     @click="fetchImageTags"
                   >
                     <RefreshCw class="w-3 h-3" :class="loadingTags ? 'animate-spin' : ''" />
-                    刷新
+                    {{ t('engine.refresh') }}
                   </button>
                 </div>
                 <div v-if="imageTags.length > 0" class="relative">
@@ -616,7 +616,7 @@ async function handleDeploy() {
                     class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-card border border-border text-sm hover:border-primary/50 transition-colors text-left"
                     @click="imageDropdownOpen = !imageDropdownOpen"
                   >
-                    <span class="font-mono text-xs">{{ selectedImage || '选择版本' }}</span>
+                    <span class="font-mono text-xs">{{ selectedImage || t('engine.selectVersion') }}</span>
                     <ChevronDown class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="imageDropdownOpen ? 'rotate-180' : ''" />
                   </button>
                   <div
@@ -631,7 +631,7 @@ async function handleDeploy() {
                       @click="selectImage(tag)"
                     >
                       {{ tag }}
-                      <span v-if="tag === imageTags[0]" class="ml-2 text-[10px] font-sans text-muted-foreground">(最新)</span>
+                      <span v-if="tag === imageTags[0]" class="ml-2 text-[10px] font-sans text-muted-foreground">({{ t('engine.latestTag') }})</span>
                     </button>
                   </div>
                 </div>
@@ -639,10 +639,17 @@ async function handleDeploy() {
                   <input
                     v-model="selectedImage"
                     type="text"
-                    :placeholder="loadingTags ? '加载中...' : '手动输入版本号'"
+                    :placeholder="loadingTags ? t('engine.manualInputLoading') : t('engine.manualInputPlaceholder')"
                     class="w-full px-3 py-2 rounded-lg bg-card border border-border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
                   />
-                  <p class="text-[10px] text-muted-foreground mt-1">未获取到镜像仓库 Tag，请手动输入</p>
+                  <p class="text-[10px] text-muted-foreground mt-1">
+                    {{ t('engine.noTagsHint') }}
+                    <button
+                      v-if="authStore.systemInfo?.edition !== 'ee'"
+                      class="text-primary hover:underline ml-1"
+                      @click="router.push({ name: 'OrgSettingsRegistry' })"
+                    >{{ t('engine.goToRegistrySettings') }}</button>
+                  </p>
                 </div>
               </div>
             </div>
