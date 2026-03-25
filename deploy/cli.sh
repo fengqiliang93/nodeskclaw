@@ -340,8 +340,11 @@ generate_changelog() {
 
 cmd_release() {
   require_gh
-  log "=== RELEASE: 创建 GitHub Release ${VERSION} ==="
+  log "=== RELEASE: 构建镜像 + 创建 GitHub Release ${VERSION} ==="
   echo ""
+
+  local targets=(backend admin portal)
+  [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
 
   log "生成 changelog..."
   local notes_file; notes_file="$(generate_changelog "$VERSION")"
@@ -350,8 +353,18 @@ cmd_release() {
   cat "$notes_file"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  confirm "即将创建 git tag ${VERSION} 并发布 GitHub Pre-release"
+  confirm "即将构建镜像（${targets[*]}）、创建 git tag ${VERSION} 并发布 GitHub Pre-release"
 
+  log "构建并推送镜像（标签: $TAG）..."
+  for t in "${targets[@]}"; do
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if ! build_and_push "$t"; then
+      err "[$t] 镜像构建失败，中止 release"
+      exit 1
+    fi
+  done
+
+  echo ""
   log "创建 git tag..."
   git -C "$PROJECT_ROOT" tag "$VERSION"
   git -C "$PROJECT_ROOT" push origin "$VERSION"
@@ -367,6 +380,7 @@ cmd_release() {
 
   echo ""
   ok "GitHub Pre-release 已创建: ${VERSION}"
+  log "镜像已推送: ${REGISTRY}/*:${TAG}"
   log "验证地址: https://github.com/NoDeskAI/nodeskclaw/releases/tag/${VERSION}"
   log "准备好升级生产环境后，运行:"
   echo "  ./deploy/cli.sh promote ${VERSION}"
