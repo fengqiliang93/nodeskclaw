@@ -205,6 +205,14 @@ API 路由同时挂载在两个前缀下：
 - `GET /registry/tags?runtime=zeroclaw` 按引擎查询对应仓库的 Tag 列表
 - Settings API 动态支持 `image_registry_{runtime_id}` 键，新增引擎自动生效
 
+### StorageClass 配置
+
+实例部署时的 PVC StorageClass 选择：
+
+- `Instance.storage_class` 字段为 nullable，默认 `None`（使用 K8s 集群标记为 default 的 StorageClass）
+- 前端创建实例页面会从 `GET /storage-classes?scope=all` 获取集群可用 SC 列表，用户可手动选择
+- Docker Compose 集群无 PVC，不涉及 StorageClass
+
 ### RBAC 双表职责分离
 
 管理平台和 Portal 的角色完全独立，由两张表管理：

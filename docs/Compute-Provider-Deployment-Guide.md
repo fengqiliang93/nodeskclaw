@@ -218,9 +218,9 @@ Instances are exposed via Ingress for HTTP(S) access. The cluster must have a ma
 
 Each instance creates a PVC for data persistence:
 
-- Default StorageClass: `nas-subpath`
+- Default StorageClass: uses the cluster's default SC (user can select manually when creating an instance)
 - Default capacity: `80Gi`
-- Adjustable via advanced configuration at deploy time
+- Adjustable via the create instance page
 
 #### Network Policy
 

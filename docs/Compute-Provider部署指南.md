@@ -218,9 +218,9 @@ NoDeskClaw 需要以下 K8s API 权限来管理实例：
 
 每个实例创建一个 PVC 用于数据持久化：
 
-- 默认 StorageClass：`nas-subpath`
+- 默认 StorageClass：使用集群标记为 default 的 SC（用户可在创建实例时手动选择）
 - 默认容量：`80Gi`
-- 可在部署时通过高级配置调整
+- 可在部署时通过创建实例页面调整
 
 #### 网络策略
 
