@@ -72,7 +72,7 @@ def _build_compose_yaml(config: InstanceComputeConfig) -> dict:
         "container_name": config.slug,
         "environment": env,
         "ports": [f"{host_port}:{config.gateway_port}"],
-        "volumes": [f"{DOCKER_DATA_DIR / config.slug / 'data'}:{container_data_dir}"],
+        "volumes": [f"{(DOCKER_DATA_DIR / config.slug / 'data').as_posix()}:{container_data_dir}"],
         "restart": "unless-stopped",
         "platform": "linux/amd64",
         "networks": [f"{config.slug}-net"],
@@ -269,4 +269,9 @@ class DockerComputeProvider:
             return {"healthy": True, "detail": "container running (no http probe)"}
 
         from app.services.runtime.compute.base import http_probe
-        return await http_probe(handle.endpoint, path=probe_path)
+        endpoint = handle.endpoint
+        if endpoint:
+            host = _docker_endpoint_host()
+            if host != "localhost":
+                endpoint = endpoint.replace("localhost", host).replace("127.0.0.1", host)
+        return await http_probe(endpoint, path=probe_path)

@@ -1200,8 +1200,8 @@ const enUS = {
     cluster: {
       single_cluster_limit: "A cluster is already configured. Only one cluster is supported.",
       docker_cli_not_found: "Docker CLI not installed. Please set up Docker per the deployment guide.",
-      docker_socket_unavailable: "Cannot connect to Docker. Ensure Docker is running and socket is mounted.",
-      docker_check_timeout: "Docker environment check timed out. Ensure Docker daemon is running.",
+      docker_socket_unavailable: "Cannot connect to Docker. Ensure Docker Desktop or Docker daemon is running.",
+      docker_check_timeout: "Docker environment check timed out. Ensure Docker Desktop or Docker daemon is running.",
       docker_unavailable: "Docker Compose is not available.",
     },
     storage: {

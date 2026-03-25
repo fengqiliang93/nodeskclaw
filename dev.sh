@@ -21,6 +21,10 @@ FRESH=false
 DOCKER_PG=false
 DOCKER_PG_CONTAINER="nodeskclaw-pg"
 DOCKER_PG_VOLUME="nodeskclaw_pg_dev"
+IS_MSYS=false
+if [ -n "${MSYSTEM:-}" ] || [ -n "${MINGW_PREFIX:-}" ]; then
+  IS_MSYS=true
+fi
 
 usage() {
   cat <<EOF
@@ -48,6 +52,26 @@ EOF
 log() { echo "${CYAN}[dev]${RESET} $*"; }
 err() { echo "${RED}[dev] ERROR:${RESET} $*" >&2; }
 
+_find_pids_on_port() {
+  local port="$1"
+  if command -v lsof &>/dev/null; then
+    lsof -ti :"$port" 2>/dev/null || true
+  elif command -v ss &>/dev/null; then
+    ss -tlnp 2>/dev/null | grep ":${port} " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' || true
+  fi
+}
+
+_show_port_usage() {
+  local port="$1"
+  if command -v lsof &>/dev/null; then
+    lsof -i :"$port" -P -n 2>/dev/null | head -5 >&2
+  elif command -v ss &>/dev/null; then
+    ss -tlnp 2>/dev/null | grep ":${port} " >&2
+  else
+    echo "  (lsof/ss 均不可用，无法显示占用详情)" >&2
+  fi
+}
+
 cleanup() {
   echo ""
   log "正在停止所有服务..."
@@ -59,10 +83,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
-  # 兜底：杀死仍在占用服务端口的孤儿进程
   for port in 4510 4511; do
     local remaining
-    remaining=$(lsof -ti :"$port" 2>/dev/null || true)
+    remaining=$(_find_pids_on_port "$port")
     if [ -n "$remaining" ]; then
       log "清理端口 $port 上的残留进程..."
       echo "$remaining" | xargs kill -9 2>/dev/null || true
@@ -103,6 +126,12 @@ fi
 if [ "$MODE" = "ee" ] && [ ! -d "$EE_DIR" ]; then
   err "EE 模式需要 ee/ 目录，请先运行 scripts/setup-ee.sh"
   exit 1
+fi
+
+if [ "$IS_MSYS" = true ]; then
+  log "${YELLOW}检测到 MSYS/Git Bash 环境（Windows）${RESET}"
+  log "${YELLOW}  - 如遇端口检测跳过，属正常行为（lsof 不可用）${RESET}"
+  log "${YELLOW}  - 如遇 \\r 报错，请执行: git config core.autocrlf false && git checkout -- dev.sh${RESET}"
 fi
 
 # ── Docker PostgreSQL（可选）──────────────────────────────
@@ -223,11 +252,10 @@ log "执行数据库迁移 (alembic upgrade head)..."
 require_port_free() {
   local port="$1" label="$2"
   local pids
-  pids=$(lsof -ti :"$port" 2>/dev/null || true)
+  pids=$(_find_pids_on_port "$port")
   if [ -n "$pids" ]; then
     err "端口 $port ($label) 已被占用:"
-    lsof -i :"$port" -P -n 2>/dev/null | head -5 >&2
-    echo "  请先终止占用进程: kill -9 \$(lsof -ti :$port)" >&2
+    _show_port_usage "$port"
     exit 1
   fi
 }
