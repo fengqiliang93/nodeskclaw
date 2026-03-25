@@ -19,6 +19,17 @@ logger = logging.getLogger(__name__)
 _LOCALHOST_RE = re.compile(r"(https?://)(localhost|127\.0\.0\.1)(:\d+)?")
 
 
+def _docker_endpoint_host() -> str:
+    """Return the hostname for reaching host-mapped ports from the backend process.
+
+    Inside a container: host.docker.internal (host ports are not on localhost).
+    On the host directly: localhost.
+    """
+    if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_DATA_DIR"):
+        return "host.docker.internal"
+    return "localhost"
+
+
 def _parse_cpu(cpu_str: str) -> float:
     """Convert K8s-style cpu (e.g. '2000m', '2') to Docker cpus float."""
     s = cpu_str.strip().lower()
@@ -140,11 +151,12 @@ class DockerComputeProvider:
             raise RuntimeError("docker compose 未安装")
 
         host_port = config.env_vars.get("DOCKER_HOST_PORT", "3000")
+        host = _docker_endpoint_host()
         return ComputeHandle(
             provider=self.provider_id,
             instance_id=config.instance_id,
             namespace=config.namespace,
-            endpoint=f"http://localhost:{host_port}",
+            endpoint=f"http://{host}:{host_port}",
             status="running",
             extra={"compose_path": compose_path, "slug": config.slug, "runtime": config.runtime},
         )
