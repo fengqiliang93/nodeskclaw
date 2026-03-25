@@ -1196,6 +1196,10 @@ const zhCN = {
     },
     cluster: {
       single_cluster_limit: "已配置集群，当前仅支持单集群",
+      docker_cli_not_found: "Docker CLI 未安装，请参照部署文档配置 Docker 环境",
+      docker_socket_unavailable: "无法连接 Docker，请确认 Docker 已启动且 socket 已挂载",
+      docker_check_timeout: "Docker 环境检查超时，请确认 Docker daemon 正在运行",
+      docker_unavailable: "Docker Compose 不可用",
     },
     storage: {
       not_configured: "文件存储服务未配置",

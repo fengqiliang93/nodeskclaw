@@ -188,11 +188,28 @@ async def _create_docker_cluster(
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
         if proc.returncode != 0:
-            raise RuntimeError(stderr.decode().strip() or "docker compose 不可用")
+            err_text = stderr.decode().strip()
+            if "permission denied" in err_text.lower() or "connect" in err_text.lower():
+                raise BadRequestError(
+                    message="无法连接 Docker daemon，请确认 Docker socket 已挂载到容器（/var/run/docker.sock）",
+                    message_key="errors.cluster.docker_socket_unavailable",
+                )
+            raise BadRequestError(
+                message=err_text or "Docker Compose 不可用",
+                message_key="errors.cluster.docker_unavailable",
+            )
+    except BadRequestError:
+        raise
     except FileNotFoundError:
-        raise BadRequestError("Docker 未安装或不在 PATH 中")
+        raise BadRequestError(
+            message="Docker CLI 未安装，容器化部署需在 Dockerfile 中安装 docker-ce-cli",
+            message_key="errors.cluster.docker_cli_not_found",
+        )
     except asyncio.TimeoutError:
-        raise BadRequestError("Docker 环境检查超时")
+        raise BadRequestError(
+            message="Docker 环境检查超时，请确认 Docker daemon 正在运行",
+            message_key="errors.cluster.docker_check_timeout",
+        )
 
     cluster = Cluster(
         name=name or "local-docker",
@@ -261,16 +278,29 @@ async def _test_docker_connection(
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
         if proc.returncode != 0:
+            err_text = stderr.decode().strip()
+            if "permission denied" in err_text.lower() or "connect" in err_text.lower():
+                err_text = "无法连接 Docker daemon，请确认 Docker socket 已挂载（/var/run/docker.sock）"
             cluster.status = ClusterStatus.disconnected
             cluster.health_status = "unhealthy"
             await db.commit()
-            return ConnectionTestResult(ok=False, message=stderr.decode().strip())
+            return ConnectionTestResult(ok=False, message=err_text)
 
         version_str = stdout.decode().strip()
         cluster.status = ClusterStatus.connected
         cluster.health_status = "healthy"
         await db.commit()
         return ConnectionTestResult(ok=True, version=version_str)
+    except FileNotFoundError:
+        cluster.status = ClusterStatus.disconnected
+        cluster.health_status = "unhealthy"
+        await db.commit()
+        return ConnectionTestResult(ok=False, message="Docker CLI 未安装")
+    except asyncio.TimeoutError:
+        cluster.status = ClusterStatus.disconnected
+        cluster.health_status = "unhealthy"
+        await db.commit()
+        return ConnectionTestResult(ok=False, message="Docker 环境检查超时")
     except Exception as e:
         cluster.status = ClusterStatus.disconnected
         cluster.health_status = "unhealthy"

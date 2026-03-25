@@ -257,12 +257,21 @@ async def precheck(req: DeployRequest, db: AsyncSession) -> PrecheckResult:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
             if proc.returncode == 0:
                 items.append(PrecheckItem(name="Docker", status="pass", message=stdout.decode().strip()))
             else:
-                items.append(PrecheckItem(name="Docker", status="fail", message="Docker Compose 不可用"))
+                err_text = stderr.decode().strip()
+                if "permission denied" in err_text.lower() or "connect" in err_text.lower():
+                    err_text = "无法连接 Docker daemon，请确认 Docker socket 已挂载（/var/run/docker.sock）"
+                items.append(PrecheckItem(name="Docker", status="fail", message=err_text or "Docker Compose 不可用"))
                 return PrecheckResult(passed=False, items=items)
+        except FileNotFoundError:
+            items.append(PrecheckItem(name="Docker", status="fail", message="Docker CLI 未安装"))
+            return PrecheckResult(passed=False, items=items)
+        except asyncio.TimeoutError:
+            items.append(PrecheckItem(name="Docker", status="fail", message="Docker 环境检查超时"))
+            return PrecheckResult(passed=False, items=items)
         except Exception:
             items.append(PrecheckItem(name="Docker", status="fail", message="Docker 环境检查失败"))
             return PrecheckResult(passed=False, items=items)
