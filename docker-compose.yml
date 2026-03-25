@@ -23,7 +23,8 @@ services:
         condition: service_healthy
         required: false
     env_file:
-      - ./nodeskclaw-backend/.env
+      - path: ./nodeskclaw-backend/.env
+        required: false
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $HOME/.nodeskclaw/docker-instances:$HOME/.nodeskclaw/docker-instances
@@ -46,7 +47,8 @@ services:
         condition: service_healthy
         required: false
     env_file:
-      - ./nodeskclaw-llm-proxy/.env
+      - path: ./nodeskclaw-llm-proxy/.env
+        required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://nodeskclaw:nodeskclaw@postgres:5432/nodeskclaw}
       # LLM_LOG_CONTENT: "true"

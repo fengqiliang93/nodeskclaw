@@ -106,14 +106,14 @@ Full-stack internationalization covering Portal, Admin, and Backend.
 Deploy the full platform with a built-in PostgreSQL -- no external database required.
 
 ```bash
-cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env
-# Edit .env -- at least set JWT_SECRET
-
 # CE
 docker compose up -d
 
 # EE (with Admin console)
 docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
+
+# Optional: customise JWT_SECRET, Feishu SSO, etc.
+# cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env && vi nodeskclaw-backend/.env
 ```
 
 | Service | URL |
