@@ -276,50 +276,26 @@ cmd_deploy() {
   [[ -n "$KUBE_CONTEXT" ]] && log "K8s 上下文: $KUBE_CONTEXT"
   echo ""
 
-  local failed=()
-
   for t in "${targets[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if [[ "$DEPLOY_ONLY" != true ]]; then
       if ! build_and_push "$t"; then
-        failed+=("$t:build")
-        continue
+        err "[$t] 构建失败，中止后续组件"
+        exit 1
       fi
     fi
 
     if [[ "$BUILD_ONLY" != true ]]; then
       if ! deploy_to_k8s "$t"; then
-        failed+=("$t:deploy")
+        err "[$t] 部署失败，中止后续组件"
+        exit 1
       fi
     fi
   done
 
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  log "部署摘要"
-  echo "  标签: $TAG"
-  echo "  仓库: $REGISTRY"
-  echo "  Namespace: $NAMESPACE"
-  [[ -n "$KUBE_CONTEXT" ]] && echo "  集群: $KUBE_CONTEXT"
-  for t in "${targets[@]}"; do
-    local_failed=false
-    for f in "${failed[@]+"${failed[@]}"}"; do
-      [[ "$f" == "$t:"* ]] && local_failed=true
-    done
-    if $local_failed; then
-      echo -e "  ${RED}✗${NC} $t"
-    else
-      echo -e "  ${GREEN}✓${NC} $t"
-    fi
-  done
-
-  if [[ ${#failed[@]} -gt 0 ]]; then
-    err "部分组件失败: ${failed[*]}"
-    exit 1
-  fi
-
-  ok "全部完成"
+  ok "全部完成（标签: $TAG, Namespace: $NAMESPACE）"
 }
 
 # ── cmd: release ─────────────────────────────────────────
@@ -411,11 +387,11 @@ cmd_promote() {
   local targets=(backend admin portal)
   [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
 
-  local failed=()
   for t in "${targets[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     if ! deploy_to_k8s "$t"; then
-      failed+=("$t:deploy")
+      err "[$t] 部署失败，中止后续组件"
+      exit 1
     fi
   done
 
@@ -428,10 +404,6 @@ cmd_promote() {
   fi
 
   echo ""
-  if [[ ${#failed[@]} -gt 0 ]]; then
-    err "部分组件失败: ${failed[*]}"
-    exit 1
-  fi
   ok "生产环境部署完成: ${VERSION} -> ${PROD_NS}"
 }
 
