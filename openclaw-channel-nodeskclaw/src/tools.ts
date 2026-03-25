@@ -246,7 +246,8 @@ function createTopologyTool(cfg: ToolConfig): AnyAgentTool {
           const data = topo.data as Record<string, unknown[]> | undefined;
           const nodes = (data?.nodes ?? []) as Record<string, unknown>[];
           const edges = (data?.edges ?? []) as Record<string, unknown>[];
-          const myNode = nodes.find((n) => n.entity_id === p.my_instance_id);
+          const myId = (p.my_instance_id as string) || cfg.instanceId;
+          const myNode = nodes.find((n) => n.entity_id === myId);
           if (!myNode) return jsonResult({ error: "Node not found for this instance" });
 
           const adj = new Map<string, string[]>();
