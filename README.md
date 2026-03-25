@@ -123,6 +123,19 @@ docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
 | LLM Proxy | http://localhost:8080 |
 | Admin (EE) | http://localhost:8001 |
 
+**Initial credentials** -- on first startup the backend creates an admin account with a random password and prints it to the log:
+
+```bash
+docker compose logs nodeskclaw-backend | grep -A4 "Initial"
+```
+
+| Edition | Default account | Env var to customize |
+|---|---|---|
+| CE | `admin` | `INIT_ADMIN_ACCOUNT` |
+| EE (additional) | `deskclaw-admin` | `INIT_EE_ADMIN_ACCOUNT` |
+
+You will be prompted to change the password on first login. The random password is regenerated on every restart until you change it.
+
 To use an external database instead of the built-in PostgreSQL, create a `.env` at project root with your `DATABASE_URL` and start only the services you need:
 
 ```bash
@@ -198,9 +211,20 @@ Admin at `http://localhost:4518` | `/api` and `/stream` auto-proxy to backend.
 
 </details>
 
-#### 3. Go
+#### 3. Sign In
 
-Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE), sign in.
+On first startup the backend prints the initial admin credentials directly in the terminal output:
+
+```
+========================================
+  Initial admin account
+  Account: admin
+  Password: <random>
+  Please change your password after login
+========================================
+```
+
+Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE) and sign in with the printed credentials. You will be prompted to change the password on first login.
 
 ## Documentation
 
