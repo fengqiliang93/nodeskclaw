@@ -295,7 +295,7 @@ cmd_deploy() {
   done
 
   echo ""
-  ok "全部完成（标签: $TAG, Namespace: $NAMESPACE）"
+  ok "全部完成（标签: $TAG${NAMESPACE:+, Namespace: $NAMESPACE}）"
 }
 
 # ── cmd: release ─────────────────────────────────────────
