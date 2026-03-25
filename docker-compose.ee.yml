@@ -2,6 +2,8 @@ services:
   nodeskclaw-backend:
     volumes:
       - ./ee:/app/ee:ro
+    environment:
+      NODESKCLAW_EDITION: ee
 
   nodeskclaw-admin:
     build:
