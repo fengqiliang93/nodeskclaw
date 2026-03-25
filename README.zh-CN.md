@@ -105,14 +105,14 @@ DeskClaw/
 内置 PostgreSQL，无需外部数据库，一键启动完整平台。
 
 ```bash
-cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env
-# 编辑 .env，至少设置 JWT_SECRET
-
 # CE 版
 docker compose up -d
 
 # EE 版（含管理后台）
 docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
+
+# 可选：自定义时区、密钥等
+# cp .env.example .env && vi .env
 ```
 
 | 服务 | 地址 |

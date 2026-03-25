@@ -112,8 +112,8 @@ docker compose up -d
 # EE (with Admin console)
 docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
 
-# Optional: customise JWT_SECRET, Feishu SSO, etc.
-# cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env && vi nodeskclaw-backend/.env
+# Optional: customise timezone, secrets, etc.
+# cp .env.example .env && vi .env
 ```
 
 | Service | URL |
