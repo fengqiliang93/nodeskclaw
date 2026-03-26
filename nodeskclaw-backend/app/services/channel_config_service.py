@@ -9,11 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException, BadRequestError
 from app.models.instance import Instance
-from app.services.nfs_mount import RemoteFS, remote_fs
+from app.services.nfs_mount import remote_fs
 from app.services.runtime.config_adapter import get_config_adapter
 from app.services.unified_channel_schema import (
     UNIFIED_CHANNEL_REGISTRY,
-    get_channel_schema,
     get_legacy_channel_schemas,
 )
 

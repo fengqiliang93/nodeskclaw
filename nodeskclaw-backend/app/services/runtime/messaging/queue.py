@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, text, update
@@ -72,7 +71,7 @@ async def dequeue(
     Lower virtual_time = higher effective priority, preventing starvation
     because old low-priority messages eventually gain precedence.
     """
-    from sqlalchemy import case, extract, func
+    from sqlalchemy import case, extract
 
     weight_expr = case(
         (MessageQueueItem.priority == PRIORITY_WEIGHT[Priority.CRITICAL], 8),

@@ -1,7 +1,6 @@
 """Collaboration message handling — shared by tunnel and (legacy) webhook."""
 
 import asyncio
-import json
 import logging
 from typing import Coroutine
 

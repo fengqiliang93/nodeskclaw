@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -131,7 +131,7 @@ async def oauth_login(
     refreshed = await db.execute(
         select(User)
         .options(selectinload(User.oauth_connections))
-        .where(User.id == user.id)
+        .where(User.id == user.id, User.deleted_at.is_(None))
     )
     user = refreshed.scalar_one()
 
@@ -396,7 +396,9 @@ async def login_with_phone(phone: str, code: str, db: AsyncSession) -> LoginResp
     await db.commit()
 
     refreshed = await db.execute(
-        select(User).options(selectinload(User.oauth_connections)).where(User.id == user.id)
+        select(User)
+        .options(selectinload(User.oauth_connections))
+        .where(User.id == user.id, User.deleted_at.is_(None))
     )
     user = refreshed.scalar_one()
     logger.info("手机登录: %s", phone)

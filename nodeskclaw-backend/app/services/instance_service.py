@@ -78,7 +78,6 @@ def _k8s_name(instance: Instance) -> str:
 
 def _build_docker_handle(instance: Instance) -> "ComputeHandle":
     from app.services.runtime.compute.base import ComputeHandle
-    env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
     advanced = json.loads(instance.advanced_config) if instance.advanced_config else {}
     return ComputeHandle(
         provider="docker", instance_id=instance.id,
@@ -104,6 +103,7 @@ async def _in_deploy_grace(instance_id: str, db: AsyncSession, grace_seconds: in
         .where(
             DeployRecord.instance_id == instance_id,
             DeployRecord.status == DeployStatus.success,
+            DeployRecord.deleted_at.is_(None),
         )
         .order_by(DeployRecord.finished_at.desc())
         .limit(1)
@@ -360,8 +360,6 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
             message_key="errors.instance.still_in_workspace",
         )
 
-    ws_ids = await _get_instance_workspace_ids(db, instance_id)
-
     if delete_k8s:
         if instance.compute_provider == "docker":
             try:
@@ -526,7 +524,12 @@ async def _monitor_restart(
             )
             if has_ready:
                 async with async_session_factory() as db:
-                    result = await db.execute(select(Instance).where(Instance.id == instance_id))
+                    result = await db.execute(
+                        select(Instance).where(
+                            Instance.id == instance_id,
+                            Instance.deleted_at.is_(None),
+                        )
+                    )
                     inst = result.scalar_one_or_none()
                     if inst and inst.status == InstanceStatus.restarting:
                         inst.status = InstanceStatus.running
@@ -544,7 +547,12 @@ async def _monitor_restart(
     logger.warning("重启监控超时 (%ds)，强制恢复状态: instance=%s", _RESTART_TIMEOUT, instance_id)
     try:
         async with async_session_factory() as db:
-            result = await db.execute(select(Instance).where(Instance.id == instance_id))
+            result = await db.execute(
+                select(Instance).where(
+                    Instance.id == instance_id,
+                    Instance.deleted_at.is_(None),
+                )
+            )
             inst = result.scalar_one_or_none()
             if inst and inst.status == InstanceStatus.restarting:
                 inst.status = InstanceStatus.running
@@ -955,7 +963,7 @@ async def rollback_instance(
     instance_id: str, target_revision: int, user_id: str, db: AsyncSession
 ) -> InstanceInfo:
     """回滚实例到指定版本。"""
-    instance = await get_instance(instance_id, db)
+    await get_instance(instance_id, db)
 
     # 查找目标版本记录
     result = await db.execute(
