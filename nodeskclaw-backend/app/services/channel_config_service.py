@@ -291,9 +291,6 @@ async def _discover_openclaw_channels(
 
     channels.sort(key=lambda c: (c["order"], c["id"]))
 
-    for info in REPO_CHANNEL_PLUGINS.values():
-        pass
-
     return channels
 
 
