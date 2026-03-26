@@ -81,9 +81,9 @@ async def serve_local_file(file_key: str, expires: str = "", sig: str = ""):
     from fastapi.responses import FileResponse
     from app.services import storage_service
 
-    if storage_service._use_tos():
+    if storage_service._use_s3():
         from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Local file serving disabled when TOS is active")
+        raise HTTPException(status_code=404, detail="Local file serving disabled when S3 storage is active")
 
     if not expires or not sig:
         from fastapi import HTTPException

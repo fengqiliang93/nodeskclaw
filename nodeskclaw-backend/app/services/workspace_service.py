@@ -1618,7 +1618,7 @@ async def upload_shared_file(
 ) -> FileInfo:
     parent_path = _validate_path(data.parent_path)
     file_bytes = base64.b64decode(data.content)
-    tos_key = await storage_service.upload_file(
+    storage_key = await storage_service.upload_file(
         file_bytes, data.filename, data.content_type,
         workspace_id,
     )
@@ -1632,9 +1632,9 @@ async def upload_shared_file(
     )).scalar_one_or_none()
 
     if existing is not None:
-        if existing.tos_key:
-            await storage_service.delete_file(existing.tos_key)
-        existing.tos_key = tos_key
+        if existing.storage_key:
+            await storage_service.delete_file(existing.storage_key)
+        existing.storage_key = storage_key
         existing.file_size = len(file_bytes)
         existing.content_type = data.content_type
         existing.uploader_type = uploader_type
@@ -1651,7 +1651,7 @@ async def upload_shared_file(
         is_directory=False,
         file_size=len(file_bytes),
         content_type=data.content_type,
-        tos_key=tos_key,
+        storage_key=storage_key,
         uploader_type=uploader_type,
         uploader_id=uploader_id,
         uploader_name=uploader_name,
@@ -1674,9 +1674,9 @@ async def get_shared_file_url(
         )
     )
     f = result.scalar_one_or_none()
-    if f is None or not f.tos_key:
+    if f is None or not f.storage_key:
         return None
-    return await storage_service.get_presigned_url(f.tos_key)
+    return await storage_service.get_presigned_url(f.storage_key)
 
 
 async def read_shared_file(
@@ -1692,10 +1692,10 @@ async def read_shared_file(
         )
     )
     f = result.scalar_one_or_none()
-    if f is None or not f.tos_key:
+    if f is None or not f.storage_key:
         return None
 
-    content = await storage_service.download_file(f.tos_key)
+    content = await storage_service.download_file(f.storage_key)
     return base64.b64encode(content).decode(), f.content_type
 
 
@@ -1721,12 +1721,12 @@ async def delete_shared_file(
             )
         )).scalars().all()
         for child in children:
-            if child.tos_key:
-                await storage_service.delete_file(child.tos_key)
+            if child.storage_key:
+                await storage_service.delete_file(child.storage_key)
             child.soft_delete()
     else:
-        if f.tos_key:
-            await storage_service.delete_file(f.tos_key)
+        if f.storage_key:
+            await storage_service.delete_file(f.storage_key)
     f.soft_delete()
     await db.commit()
     return True

@@ -178,7 +178,7 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/workspaces/templates` | 工作区模板 | 列表、创建、详情、删除、应用到工作区 |
 | `/api/v1/workspaces/{ws}/blackboard/posts` | 黑板讨论区 | 帖子 CRUD、置顶、已读标记、未读计数 |
 | `/api/v1/workspaces/{ws}/blackboard/posts/{id}/replies` | 黑板讨论区 | 帖子回复 |
-| `/api/v1/workspaces/{ws}/blackboard/files` | 共享文件 | 共享文件列表、上传、下载、删除、创建目录（TOS 或本地存储） |
+| `/api/v1/workspaces/{ws}/blackboard/files` | 共享文件 | 共享文件列表、上传、下载、删除、创建目录（S3 或本地存储） |
 | `/api/v1/files/local/{key}` | 文件下载 | 本地存储模式的 HMAC 签名文件下载端点 |
 | `/api/v1/enterprise-files/agents` | 企业空间 | 列出可浏览的 Agent 实例 |
 | `/api/v1/enterprise-files/agents/{id}/files` | 企业空间 | 列出 Agent 目录文件（query: path） |
@@ -435,13 +435,15 @@ CE/EE 模式覆盖：
 
 | 变量 | 说明 |
 |------|------|
-| `TOS_ENDPOINT` | 火山云 TOS 对象存储 Endpoint。与 `TOS_BUCKET` 同时配置后使用 TOS 存储 |
-| `TOS_BUCKET` | TOS Bucket 名称 |
-| `TOS_ACCESS_KEY_ID` | TOS Access Key |
-| `TOS_SECRET_ACCESS_KEY` | TOS Secret Key |
-| `LOCAL_STORAGE_DIR` | 本地文件存储目录。TOS 未配置时自动启用本地存储：Docker 容器内默认 `/nodeskclaw-data/shared-files`，本地开发默认 `~/.nodeskclaw/shared-files` |
+| `S3_ENDPOINT` | S3 兼容对象存储 Endpoint（支持 AWS S3、MinIO、阿里云 OSS、火山云 TOS 等）。与 `S3_BUCKET` 同时配置后启用 |
+| `S3_BUCKET` | S3 Bucket 名称 |
+| `S3_REGION` | S3 Region（可选） |
+| `S3_ACCESS_KEY_ID` | S3 Access Key |
+| `S3_SECRET_ACCESS_KEY` | S3 Secret Key |
+| `S3_KEY_PREFIX` | 对象 key 前缀（本地开发可设为 dev，生产留空） |
+| `LOCAL_STORAGE_DIR` | 本地文件存储目录。S3 未配置时自动启用本地存储：Docker 容器内默认 `/nodeskclaw-data/shared-files`，本地开发默认 `~/.nodeskclaw/shared-files` |
 
-TOS 未配置时系统自动 fallback 到本地文件系统存储，无需额外配置即可使用共享文件和聊天附件功能。
+S3 未配置时系统自动 fallback 到本地文件系统存储，无需额外配置即可使用共享文件和聊天附件功能。
 
 ### 启动
 

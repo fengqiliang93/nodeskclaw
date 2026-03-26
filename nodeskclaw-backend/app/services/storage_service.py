@@ -1,6 +1,6 @@
-"""File storage service with TOS (Volcengine Object Storage) and local filesystem backends.
+"""File storage service with S3-compatible object storage and local filesystem backends.
 
-TOS is used when TOS_ENDPOINT + TOS_BUCKET are configured.
+S3 is used when S3_ENDPOINT + S3_BUCKET are configured.
 Otherwise, falls back to local filesystem storage automatically.
 """
 
@@ -13,17 +13,18 @@ import time
 import uuid
 from pathlib import Path
 
-import tos
+import boto3
+from botocore.config import Config as BotoConfig
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_client: tos.TosClientV2 | None = None
+_client = None
 
 
-def _use_tos() -> bool:
-    return bool(settings.TOS_ENDPOINT and settings.TOS_BUCKET)
+def _use_s3() -> bool:
+    return bool(settings.S3_ENDPOINT and settings.S3_BUCKET)
 
 
 def is_configured() -> bool:
@@ -58,54 +59,54 @@ def verify_signature(key: str, expires_str: str, sig: str) -> bool:
     return hmac.compare_digest(expected, sig)
 
 
-# ── TOS backend ──────────────────────────────────────────
+# ── S3 backend ──────────────────────────────────────────
 
-def _get_tos_client() -> tos.TosClientV2:
+def _get_s3_client():
     global _client
     if _client is None:
-        _client = tos.TosClientV2(
-            ak=settings.TOS_ACCESS_KEY_ID,
-            sk=settings.TOS_SECRET_ACCESS_KEY,
-            endpoint=settings.TOS_ENDPOINT,
-            region=settings.TOS_REGION,
+        _client = boto3.client(
+            "s3",
+            endpoint_url=settings.S3_ENDPOINT,
+            region_name=settings.S3_REGION or None,
+            aws_access_key_id=settings.S3_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
+            config=BotoConfig(signature_version="s3v4"),
         )
     return _client
 
 
-def _tos_upload(file_content: bytes, filename: str, content_type: str, workspace_id: str) -> str:
-    client = _get_tos_client()
-    prefix = settings.TOS_KEY_PREFIX.strip("/")
+def _s3_upload(file_content: bytes, filename: str, content_type: str, workspace_id: str) -> str:
+    client = _get_s3_client()
+    prefix = settings.S3_KEY_PREFIX.strip("/")
     base = f"workspace-files/{workspace_id}/{uuid.uuid4().hex}/{filename}"
     key = f"{prefix}/{base}" if prefix else base
     client.put_object(
-        bucket=settings.TOS_BUCKET,
-        key=key,
-        content=file_content,
-        content_type=content_type,
+        Bucket=settings.S3_BUCKET,
+        Key=key,
+        Body=file_content,
+        ContentType=content_type,
     )
     return key
 
 
-def _tos_presigned_url(tos_key: str, expires: int = 3600) -> str:
-    client = _get_tos_client()
-    out = client.pre_signed_url(
-        http_method=tos.HttpMethodType.Http_Method_Get,
-        bucket=settings.TOS_BUCKET,
-        key=tos_key,
-        expires=expires,
+def _s3_presigned_url(key: str, expires: int = 3600) -> str:
+    client = _get_s3_client()
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.S3_BUCKET, "Key": key},
+        ExpiresIn=expires,
     )
-    return out.signed_url
 
 
-def _tos_download(tos_key: str) -> bytes:
-    client = _get_tos_client()
-    resp = client.get_object(bucket=settings.TOS_BUCKET, key=tos_key)
-    return resp.read()
+def _s3_download(key: str) -> bytes:
+    client = _get_s3_client()
+    resp = client.get_object(Bucket=settings.S3_BUCKET, Key=key)
+    return resp["Body"].read()
 
 
-def _tos_delete(tos_key: str) -> None:
-    client = _get_tos_client()
-    client.delete_object(bucket=settings.TOS_BUCKET, key=tos_key)
+def _s3_delete(key: str) -> None:
+    client = _get_s3_client()
+    client.delete_object(Bucket=settings.S3_BUCKET, Key=key)
 
 
 # ── Local filesystem backend ─────────────────────────────
@@ -142,25 +143,25 @@ def _local_delete(key: str) -> None:
 # ── Public async API ─────────────────────────────────────
 
 async def upload_file(file_content: bytes, filename: str, content_type: str, workspace_id: str) -> str:
-    if _use_tos():
-        return await asyncio.to_thread(_tos_upload, file_content, filename, content_type, workspace_id)
+    if _use_s3():
+        return await asyncio.to_thread(_s3_upload, file_content, filename, content_type, workspace_id)
     return await asyncio.to_thread(_local_upload, file_content, filename, content_type, workspace_id)
 
 
-async def get_presigned_url(tos_key: str, expires: int = 3600) -> str:
-    if _use_tos():
-        return await asyncio.to_thread(_tos_presigned_url, tos_key, expires)
-    return _local_presigned_url(tos_key, expires)
+async def get_presigned_url(key: str, expires: int = 3600) -> str:
+    if _use_s3():
+        return await asyncio.to_thread(_s3_presigned_url, key, expires)
+    return _local_presigned_url(key, expires)
 
 
 async def download_file(key: str) -> bytes:
-    if _use_tos():
-        return await asyncio.to_thread(_tos_download, key)
+    if _use_s3():
+        return await asyncio.to_thread(_s3_download, key)
     return await asyncio.to_thread(_local_download, key)
 
 
-async def delete_file(tos_key: str) -> None:
-    if _use_tos():
-        await asyncio.to_thread(_tos_delete, tos_key)
+async def delete_file(key: str) -> None:
+    if _use_s3():
+        await asyncio.to_thread(_s3_delete, key)
     else:
-        await asyncio.to_thread(_local_delete, tos_key)
+        await asyncio.to_thread(_local_delete, key)

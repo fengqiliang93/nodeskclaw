@@ -127,15 +127,15 @@ class Settings(BaseSettings):
     GENEHUB_API_KEY: str = ""
     GENEHUB_WEB_URL: str = "https://skills.deskclaw.me"
 
-    # ── TOS 对象存储 ─────────────────────────────────────
-    TOS_ENDPOINT: str = ""
-    TOS_REGION: str = ""
-    TOS_BUCKET: str = ""
-    TOS_ACCESS_KEY_ID: str = ""
-    TOS_SECRET_ACCESS_KEY: str = ""
-    TOS_KEY_PREFIX: str = ""
+    # ── S3 兼容对象存储 ─────────────────────────────────
+    S3_ENDPOINT: str = ""
+    S3_REGION: str = ""
+    S3_BUCKET: str = ""
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_KEY_PREFIX: str = ""
 
-    # ── 本地文件存储（TOS 未配置时自动启用）────────────────
+    # ── 本地文件存储（S3 未配置时自动启用）─────────────────
     LOCAL_STORAGE_DIR: str = ""
 
     # ── CORS ─────────────────────────────────────────────

@@ -794,7 +794,7 @@ async def upload_workspace_file(
     from app.models.workspace_file import WorkspaceFile
 
     if not storage_service.is_configured():
-        raise _error(503, 50301, "errors.storage.not_configured", "TOS 对象存储未配置")
+        raise _error(503, 50301, "errors.storage.not_configured", "对象存储未配置")
 
     await wm_service.check_workspace_access(workspace_id, user, "send_chat", db)
 
@@ -802,7 +802,7 @@ async def upload_workspace_file(
     if len(content) > MAX_UPLOAD_SIZE:
         raise _error(400, 40002, "errors.file.too_large", "文件大小超过限制（最大 20MB）")
 
-    tos_key = await storage_service.upload_file(
+    storage_key = await storage_service.upload_file(
         file_content=content,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
@@ -815,7 +815,7 @@ async def upload_workspace_file(
         original_name=file.filename or "unnamed",
         file_size=len(content),
         content_type=file.content_type or "application/octet-stream",
-        tos_key=tos_key,
+        storage_key=storage_key,
     )
     db.add(wf)
     await db.commit()
@@ -841,7 +841,7 @@ async def get_file_presigned_url(
     from app.models.workspace_file import WorkspaceFile
 
     if not storage_service.is_configured():
-        raise _error(503, 50301, "errors.storage.not_configured", "TOS 对象存储未配置")
+        raise _error(503, 50301, "errors.storage.not_configured", "对象存储未配置")
 
     await wm_service.check_workspace_member(workspace_id, user, db)
 
@@ -857,7 +857,7 @@ async def get_file_presigned_url(
         raise _error(404, 40431, "errors.file.not_found", "文件不存在")
 
     try:
-        url = await storage_service.get_presigned_url(wf.tos_key, expires=900)
+        url = await storage_service.get_presigned_url(wf.storage_key, expires=900)
     except Exception:
         logger.warning("生成文件 %s presigned URL 失败", wf.original_name, exc_info=True)
         raise _error(502, 50201, "errors.storage.presign_failed", "生成文件下载链接失败，请稍后重试")
@@ -914,7 +914,7 @@ async def workspace_chat(
         from app.services import storage_service
         for f in attachment_files:
             try:
-                url = await storage_service.get_presigned_url(f.tos_key, expires=3600)
+                url = await storage_service.get_presigned_url(f.storage_key, expires=3600)
                 attachments_with_urls.append({
                     "id": f.id, "name": f.original_name,
                     "size": f.file_size, "content_type": f.content_type,
