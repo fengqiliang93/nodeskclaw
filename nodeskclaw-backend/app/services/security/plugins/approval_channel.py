@@ -103,8 +103,8 @@ class ApprovalChannelPlugin:
                 )
                 return result.scalar_one_or_none() is not None
         except Exception:
-            logger.warning("Trust policy check failed, defaulting to allow", exc_info=True)
-            return True
+            logger.error("Trust policy check failed, defaulting to DENY", exc_info=True)
+            return False
 
     async def _request_approval(self, ctx: ExecutionContext, action_type: str) -> str:
         try:
@@ -130,8 +130,8 @@ class ApprovalChannelPlugin:
 
             return await self._poll_decision(record_id)
         except Exception:
-            logger.warning("Approval request failed, defaulting to allow", exc_info=True)
-            return "allow_once"
+            logger.error("Approval request failed, defaulting to DENY", exc_info=True)
+            return "deny"
 
     async def _poll_decision(self, record_id: str) -> str:
         from sqlalchemy import select
