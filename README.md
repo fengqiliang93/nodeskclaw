@@ -143,6 +143,79 @@ echo 'DATABASE_URL=postgresql+asyncpg://user:pass@your-rds:5432/nodeskclaw' > .e
 docker compose up -d nodeskclaw-backend portal
 ```
 
+### Kubernetes
+
+For production or multi-node environments. Requires a K8s cluster, a container registry, and an external PostgreSQL database.
+
+#### Prerequisites
+
+| Dependency | |
+|---|---|
+| Kubernetes cluster | 1.24+ with Ingress Controller (e.g. ingress-nginx) |
+| Container registry | Any Docker V2 registry (Docker Hub, AWS ECR, GCR, etc.) |
+| PostgreSQL | External database (e.g. AWS RDS, GCP Cloud SQL) |
+| kubectl | Configured with access to your cluster |
+| Docker | For building images locally |
+
+#### 1. Configure Registry & Context
+
+```bash
+# Create deploy/.env.local (git-ignored)
+cat > deploy/.env.local <<'EOF'
+REGISTRY="your-registry.example.com/deskclaw"
+KUBE_CONTEXT="your-kubectl-context"
+EOF
+
+# Login to your container registry
+docker login your-registry.example.com
+```
+
+#### 2. Prepare Backend Environment Variables
+
+```bash
+cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env
+# Edit .env -- fill in DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY, etc.
+# Minimum required:
+#   DATABASE_URL=postgresql+asyncpg://user:pass@your-rds:5432/nodeskclaw
+#   JWT_SECRET=<random-secret>
+#   ENCRYPTION_KEY=<32-byte-base64-key>
+```
+
+#### 3. Initialize the Cluster
+
+Creates the namespace, uploads `.env` as a K8s Secret, and applies base Deployment + Service manifests:
+
+```bash
+./deploy/cli.sh init                    # Default: staging namespace
+./deploy/cli.sh init --prod             # Production namespace
+```
+
+#### 4. Build & Deploy
+
+```bash
+./deploy/cli.sh deploy                  # Build all images + rolling update (staging)
+./deploy/cli.sh deploy --prod           # Deploy to production (interactive confirm)
+./deploy/cli.sh deploy backend          # Deploy a single component
+```
+
+#### 5. Configure Ingress
+
+Edit `deploy/k8s/ingress.yaml` -- replace `example.com` hosts with your actual domains, then apply:
+
+```bash
+kubectl --context <CTX> -n <NS> apply -f deploy/k8s/ingress.yaml
+```
+
+The Ingress defines three hosts (configure as needed):
+
+| Ingress | Default host | Backend service |
+|---|---|---|
+| Portal | `console.example.com` | portal (80) + backend API (8000) |
+| Admin (EE) | `admin.example.com` | admin (80) + backend API (8000) |
+| LLM Proxy | `llm-proxy.example.com` | llm-proxy (80) |
+
+See [deploy/README.md](deploy/README.md) for full CLI reference, image tagging, and the release/promote workflow.
+
 ### Local Development
 
 #### Prerequisites

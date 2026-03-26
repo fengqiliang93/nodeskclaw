@@ -141,8 +141,10 @@ async function loadAll() {
       personalKeys.value = keysResult.value.data.data ?? []
     }
 
-    const podConfigs: { provider: string; key_source: string; selected_models?: any[]; personal_key_masked?: string }[] =
-      configsResult.status === 'fulfilled' ? (configsResult.value.data.data ?? []) : []
+    const podConfigs: {
+      provider: string; key_source: string; selected_models?: any[];
+      personal_key_masked?: string; base_url?: string | null; api_type?: string | null;
+    }[] = configsResult.status === 'fulfilled' ? (configsResult.value.data.data ?? []) : []
 
     const configs: ProviderConfig[] = []
     for (const c of podConfigs) {
@@ -156,10 +158,10 @@ async function loadAll() {
         personalKeyNew: '',
         personalKeyMasked: pk?.api_key_masked ?? c.personal_key_masked ?? '',
         hasExistingPersonalKey: !!pk,
-        baseUrl: pk?.base_url ?? '',
-        apiType: pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
+        baseUrl: c.base_url ?? pk?.base_url ?? '',
+        apiType: c.api_type ?? pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
         isCustom,
-        showBaseUrl: !!pk?.base_url,
+        showBaseUrl: isCustom || !!(c.base_url || pk?.base_url),
         selectedModel: (c.selected_models ?? [])[0] ?? defaultModelForProvider(c.provider),
       })
     }
@@ -330,6 +332,8 @@ async function handleSave() {
           provider: c.provider,
           key_source: c.keySource,
           selected_models: selectedModel ? [selectedModel] : undefined,
+          base_url: isCodexProvider(c.provider) ? null : (c.baseUrl || null),
+          api_type: c.isCustom ? c.apiType : null,
         }
       }),
     })
@@ -655,35 +659,36 @@ watch(() => instanceId.value, (val) => {
             </button>
           </div>
 
-          <!-- Custom Provider form -->
-          <div v-if="showCustomForm" class="rounded-lg border border-violet-400/30 bg-violet-500/5 p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="font-medium text-sm text-violet-400">{{ t('llm.customProvider') }}</span>
-              <button class="text-muted-foreground hover:text-foreground text-xs" @click="showCustomForm = false; customSlug = ''; customSlugError = ''">
-                {{ t('common.cancel') }}
-              </button>
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-xs text-muted-foreground">{{ t('llm.providerSlug') }}</label>
-              <input
-                v-model="customSlug"
-                type="text"
-                maxlength="32"
-                :placeholder="t('llm.providerSlugPlaceholder')"
-                class="w-full px-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                @keydown.enter="addCustomProvider"
-              />
-              <p v-if="customSlugError" class="text-[10px] text-destructive">{{ customSlugError }}</p>
-              <p v-else class="text-[10px] text-muted-foreground">{{ t('llm.providerSlugHint') }}</p>
-            </div>
-            <button
-              class="px-4 py-1.5 rounded-md bg-violet-500/10 text-violet-400 text-sm hover:bg-violet-500/20 transition-colors"
-              :disabled="!customSlug.trim()"
-              @click="addCustomProvider"
-            >
-              {{ t('common.add') }}
+        </div>
+
+        <!-- Custom Provider form -->
+        <div v-if="showCustomForm" class="rounded-lg border border-violet-400/30 bg-violet-500/5 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-sm text-violet-400">{{ t('llm.customProvider') }}</span>
+            <button class="text-muted-foreground hover:text-foreground text-xs" @click="showCustomForm = false; customSlug = ''; customSlugError = ''">
+              {{ t('common.cancel') }}
             </button>
           </div>
+          <div class="space-y-1.5">
+            <label class="text-xs text-muted-foreground">{{ t('llm.providerSlug') }}</label>
+            <input
+              v-model="customSlug"
+              type="text"
+              maxlength="32"
+              :placeholder="t('llm.providerSlugPlaceholder')"
+              class="w-full px-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+              @keydown.enter="addCustomProvider"
+            />
+            <p v-if="customSlugError" class="text-[10px] text-destructive">{{ customSlugError }}</p>
+            <p v-else class="text-[10px] text-muted-foreground">{{ t('llm.providerSlugHint') }}</p>
+          </div>
+          <button
+            class="px-4 py-1.5 rounded-md bg-violet-500/10 text-violet-400 text-sm hover:bg-violet-500/20 transition-colors"
+            :disabled="!customSlug.trim()"
+            @click="addCustomProvider"
+          >
+            {{ t('common.add') }}
+          </button>
         </div>
 
       </template>
