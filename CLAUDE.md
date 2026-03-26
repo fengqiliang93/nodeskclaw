@@ -156,5 +156,6 @@ kubectl get deploy -n <namespace> --context <context-name>
 - type: feat / fix / docs / style / refactor / perf / test / chore
 - subject 必须使用中文
 - 禁止在 commit message 中出现 `Co-authored-by` 标签
+- **社区 PR 必须保留原作者归属**：cherry-pick 保留 author，修复作为独立 commit 叠加，禁止 `--no-commit` 后重新提交
 
 详见 `.cursor/rules/` 下的规则文件。
