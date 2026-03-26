@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.runtime.compute import docker_provider
 
 
@@ -65,6 +67,7 @@ def test_remap_legacy_compose_path_maps_host_path_to_container_path(tmp_path, mo
     assert remapped == str(tmp_path / "demo" / "docker-compose.yml")
 
 
+@pytest.mark.asyncio
 async def test_destroy_instance_falls_back_to_slug_cleanup(monkeypatch) -> None:
     calls = []
 

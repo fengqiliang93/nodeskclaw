@@ -69,14 +69,18 @@ def _extract_docker_error(stderr_text: str) -> str:
     return stderr_text.strip()[:500]
 
 
+def _is_windows_path(path: str) -> bool:
+    return bool(_WINDOWS_HOST_PATH_RE.match(path))
+
+
 def _join_host_path(base: str, *parts: str) -> str:
-    if _WINDOWS_HOST_PATH_RE.match(base) or base.startswith("\\\\"):
+    if _is_windows_path(base):
         return str(PureWindowsPath(base, *parts))
     return str(PurePosixPath(base, *parts))
 
 
 def _pure_host_path(path: str) -> PureWindowsPath | PurePosixPath:
-    if _WINDOWS_HOST_PATH_RE.match(path) or path.startswith("\\\\"):
+    if _is_windows_path(path):
         return PureWindowsPath(path)
     return PurePosixPath(path)
 
