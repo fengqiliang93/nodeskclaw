@@ -141,6 +141,79 @@ echo 'DATABASE_URL=postgresql+asyncpg://user:pass@your-rds:5432/nodeskclaw' > .e
 docker compose up -d nodeskclaw-backend portal
 ```
 
+### Kubernetes 部署
+
+适用于生产环境或多节点部署。需要 K8s 集群、容器镜像仓库和外部 PostgreSQL 数据库。
+
+#### 前置条件
+
+| 依赖 | 说明 |
+|---|---|
+| Kubernetes 集群 | 1.24+，需安装 Ingress Controller（如 ingress-nginx） |
+| 容器镜像仓库 | 任意 Docker V2 仓库（Docker Hub、AWS ECR、GCR 等） |
+| PostgreSQL | 外部数据库（如 AWS RDS、GCP Cloud SQL） |
+| kubectl | 已配置集群访问权限 |
+| Docker | 用于本地构建镜像 |
+
+#### 1. 配置镜像仓库和集群上下文
+
+```bash
+# 创建 deploy/.env.local（已被 .gitignore 忽略）
+cat > deploy/.env.local <<'EOF'
+REGISTRY="your-registry.example.com/deskclaw"
+KUBE_CONTEXT="your-kubectl-context"
+EOF
+
+# 登录容器镜像仓库
+docker login your-registry.example.com
+```
+
+#### 2. 准备后端环境变量
+
+```bash
+cp nodeskclaw-backend/.env.example nodeskclaw-backend/.env
+# 编辑 .env，填写 DATABASE_URL、JWT_SECRET、ENCRYPTION_KEY 等
+# 最少需要配置：
+#   DATABASE_URL=postgresql+asyncpg://user:pass@your-rds:5432/nodeskclaw
+#   JWT_SECRET=<随机密钥>
+#   ENCRYPTION_KEY=<32字节base64密钥>
+```
+
+#### 3. 初始化集群
+
+创建 Namespace、将 `.env` 上传为 K8s Secret、应用基础 Deployment + Service 清单：
+
+```bash
+./deploy/cli.sh init                    # 默认 staging namespace
+./deploy/cli.sh init --prod             # 生产 namespace
+```
+
+#### 4. 构建并部署
+
+```bash
+./deploy/cli.sh deploy                  # 构建全部镜像 + 滚动更新（staging）
+./deploy/cli.sh deploy --prod           # 部署到生产环境（需交互确认）
+./deploy/cli.sh deploy backend          # 只部署单个组件
+```
+
+#### 5. 配置 Ingress
+
+编辑 `deploy/k8s/ingress.yaml`，将 `example.com` 替换为实际域名，然后 apply：
+
+```bash
+kubectl --context <CTX> -n <NS> apply -f deploy/k8s/ingress.yaml
+```
+
+Ingress 定义了三个域名入口（按需配置）：
+
+| Ingress | 默认域名 | 后端服务 |
+|---|---|---|
+| Portal（用户门户） | `console.example.com` | portal (80) + backend API (8000) |
+| Admin（管理后台，EE） | `admin.example.com` | admin (80) + backend API (8000) |
+| LLM Proxy | `llm-proxy.example.com` | llm-proxy (80) |
+
+完整 CLI 用法、镜像标签规则和 release/promote 工作流见 [deploy/README.md](deploy/README.md)。
+
 ### 本地开发
 
 #### 前置条件
