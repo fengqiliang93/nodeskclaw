@@ -78,7 +78,6 @@ def _k8s_name(instance: Instance) -> str:
 
 def _build_docker_handle(instance: Instance) -> "ComputeHandle":
     from app.services.runtime.compute.base import ComputeHandle
-    env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
     advanced = json.loads(instance.advanced_config) if instance.advanced_config else {}
     return ComputeHandle(
         provider="docker", instance_id=instance.id,
@@ -359,8 +358,6 @@ async def delete_instance(instance_id: str, db: AsyncSession, delete_k8s: bool =
             message="该实例已加入办公室，请先从办公室中移除",
             message_key="errors.instance.still_in_workspace",
         )
-
-    ws_ids = await _get_instance_workspace_ids(db, instance_id)
 
     if delete_k8s:
         if instance.compute_provider == "docker":
@@ -955,7 +952,7 @@ async def rollback_instance(
     instance_id: str, target_revision: int, user_id: str, db: AsyncSession
 ) -> InstanceInfo:
     """回滚实例到指定版本。"""
-    instance = await get_instance(instance_id, db)
+    await get_instance(instance_id, db)
 
     # 查找目标版本记录
     result = await db.execute(
