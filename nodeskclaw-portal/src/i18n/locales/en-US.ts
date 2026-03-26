@@ -1240,6 +1240,9 @@ const enUS = {
       docker_check_timeout: "Docker environment check timed out. Ensure Docker Desktop or Docker daemon is running.",
       docker_unavailable: "Docker Compose is not available.",
     },
+    deploy: {
+      localhost_not_reachable: "AGENT_API_BASE_URL is currently localhost, which is unreachable from K8s pods. Set AGENT_API_BASE_URL to an external address reachable by K8s pods in the backend .env, then restart.",
+    },
     storage: {
       not_configured: "File storage service is not configured",
       presign_failed: "Failed to generate file download link, please try again later",
