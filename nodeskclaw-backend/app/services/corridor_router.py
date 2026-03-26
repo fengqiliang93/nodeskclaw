@@ -20,7 +20,6 @@ from app.models.corridor import CorridorHex, HexConnection, HumanHex, ordered_pa
 from app.models.instance import Instance
 from app.models.node_card import NodeCard
 from app.models.workspace_agent import WorkspaceAgent
-from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_message import WorkspaceMessage
 from app.services.runtime.registries.node_type_registry import NODE_TYPE_REGISTRY
 

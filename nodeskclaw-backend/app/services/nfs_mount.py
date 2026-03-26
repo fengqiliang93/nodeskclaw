@@ -102,7 +102,7 @@ class PodFS:
 
     async def exists(self, path: str) -> bool:
         try:
-            result = await self._k8s.exec_in_pod(
+            await self._k8s.exec_in_pod(
                 self._ns, self._pod,
                 ["test", "-e", f"/root/{path}"],
                 container=self._container,
@@ -315,7 +315,6 @@ class DockerFS:
         os.makedirs(str(self._base), exist_ok=True)
 
     def _resolve(self, remote_path: str) -> "pathlib.Path":
-        import pathlib
         abs_slash = self._abs_prefix + "/"
         if remote_path.startswith(abs_slash):
             rel = remote_path[len(abs_slash):]

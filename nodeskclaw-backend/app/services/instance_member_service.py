@@ -4,7 +4,6 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.admin_membership import AdminMembership
@@ -118,7 +117,7 @@ def apply_accessible_filter(query, user_id: str, org_id: str | None, db: AsyncSe
         )
     )
 
-    from sqlalchemy import case, or_
+    from sqlalchemy import or_
     query = query.where(
         or_(
             org_admin_subq,

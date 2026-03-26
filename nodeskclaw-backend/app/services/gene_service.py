@@ -7,8 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Coroutine
 
-import httpx
-from sqlalchemy import Integer, Select, and_, case, cast, func, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException, BadRequestError, ConflictError, NotFoundError
@@ -2172,7 +2171,7 @@ async def refresh_gene_skills(db: AsyncSession, gene_slugs: list[str]) -> dict:
 async def uninstall_gene(db: AsyncSession, instance_id: str, gene_id: str) -> dict:
     from app.services.instance_service import get_instance
 
-    instance = await get_instance(instance_id, db)
+    await get_instance(instance_id, db)
 
     ig_result = await db.execute(
         select(InstanceGene).where(
