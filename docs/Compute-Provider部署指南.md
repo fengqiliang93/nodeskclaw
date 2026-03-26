@@ -255,6 +255,49 @@ NoDeskClaw 需要以下 K8s API 权限来管理实例：
 | `EGRESS_DENY_CIDRS` | 禁止出站的 CIDR 列表 | `10.0.0.0/8,172.16.0.0/12` |
 | `EGRESS_ALLOW_PORTS` | 允许出站的端口列表 | `443,80` |
 
+### 3.7 网络连通性要求（AI 员工 → 后端）
+
+K8s 集群上的 AI 员工 Pod 需要能**主动回连**后端的两个端点：
+
+| 协议 | 用途 | 配置项 |
+|---|---|---|
+| HTTP(S) | Channel 插件 API 调用 | `AGENT_API_BASE_URL` |
+| WebSocket | Tunnel 长连接（消息/状态推送） | `TUNNEL_BASE_URL`（可选，不设则从 `AGENT_API_BASE_URL` 推导） |
+
+#### 后端为 Docker Compose 部署时
+
+Docker Compose 默认监听 `localhost:4510`，K8s Pod 无法访问宿主机 localhost。
+必须将 `AGENT_API_BASE_URL` 改为 K8s Pod 可达的地址：
+
+```bash
+# .env 示例 — 通过公网域名
+AGENT_API_BASE_URL=https://your-nodeskclaw-domain.com/api/v1
+
+# .env 示例 — 通过内网地址（后端和 K8s 集群在同一 VPC）
+AGENT_API_BASE_URL=http://192.168.1.100:4510/api/v1
+```
+
+> 如果 `AGENT_API_BASE_URL` 仍为默认的 `localhost`，部署 K8s 实例时后端会直接返回 400 错误并提示修改。
+
+#### `TUNNEL_BASE_URL`（可选）
+
+通常不需要设置。仅当 WebSocket 需要走独立入口（如独立 wss:// 域名或不同端口）时才需要：
+
+```bash
+TUNNEL_BASE_URL=wss://ws.your-domain.com/api/v1/tunnel/connect
+```
+
+不设置时，OpenClaw channel 插件会将 `AGENT_API_BASE_URL` 中的 `http(s)://` 转换为 `ws(s)://` 并拼接 `/tunnel/connect` 作为 tunnel 地址。
+
+#### NetworkPolicy 对回连端口的影响
+
+默认 NetworkPolicy 只放行 `80` 和 `443` 端口的出站流量（由 `EGRESS_ALLOW_PORTS` 控制）。如果后端运行在非标准端口（如 `4510`），K8s Pod 的出站流量会被 NetworkPolicy 拦截。
+
+解决方法（任选其一）：
+
+1. **推荐**：后端通过 Nginx/ALB 反向代理，使用标准 443 端口对外提供服务
+2. 在 `.env` 中将后端端口加入放行列表：`EGRESS_ALLOW_PORTS=80,443,4510`
+
 ---
 
 ## 四、关键环境变量参考
@@ -278,6 +321,8 @@ NoDeskClaw 需要以下 K8s API 权限来管理实例：
 
 | 变量 | 必填 | 说明 | 默认值 |
 |---|---|---|---|
+| `AGENT_API_BASE_URL` | K8s 集群必填 | AI 员工回连后端的 HTTP 地址，K8s 部署时不能为 localhost | `http://localhost:4510/api/v1` |
+| `TUNNEL_BASE_URL` | 否 | AI 员工 WebSocket tunnel 地址，不设则从 AGENT_API_BASE_URL 推导 | — |
 | `VKE_SUBNET_ID` | 火山云 VKE 集群需要 | VKE 子网 ID | — |
 | `EGRESS_DENY_CIDRS` | 否 | NetworkPolicy 出站拒绝 CIDR | — |
 | `EGRESS_ALLOW_PORTS` | 否 | NetworkPolicy 出站允许端口 | — |
