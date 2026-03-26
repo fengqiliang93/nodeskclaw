@@ -209,6 +209,13 @@ export interface ScheduleInfo {
   created_at: string | null
 }
 
+export interface PresetTemplate {
+  name: string
+  label: string
+  cron_expr: string
+  message_template: string
+}
+
 export type ChatSSECallback = (event: string, data: Record<string, unknown>) => void
 
 export const WORKSPACE_PERMISSIONS = [
@@ -234,6 +241,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentWorkspace = ref<WorkspaceInfo | null>(null)
   const blackboard = ref<BlackboardInfo | null>(null)
   const schedules = ref<ScheduleInfo[]>([])
+  const schedulePresets = ref<PresetTemplate[]>([])
   const members = ref<WorkspaceMemberInfo[]>([])
   const loading = ref(false)
 
@@ -434,6 +442,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       const res = await api.get(`/workspaces/${workspaceId}/schedules`)
       schedules.value = (res.data.data?.schedules || []) as ScheduleInfo[]
+      schedulePresets.value = (res.data.data?.presets || []) as PresetTemplate[]
     } catch (e) {
       console.error('fetchSchedules error:', e)
     }
@@ -443,6 +452,25 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await api.put(`/workspaces/${workspaceId}/schedules/${scheduleId}`, { is_active: isActive })
     const idx = schedules.value.findIndex(s => s.id === scheduleId)
     if (idx >= 0) schedules.value[idx].is_active = isActive
+  }
+
+  async function createSchedule(workspaceId: string, data: {
+    name: string; cron_expr: string; message_template: string; is_active?: boolean
+  }) {
+    await api.post(`/workspaces/${workspaceId}/schedules`, data)
+    await fetchSchedules(workspaceId)
+  }
+
+  async function updateSchedule(workspaceId: string, scheduleId: string, data: {
+    name?: string; cron_expr?: string; message_template?: string; is_active?: boolean
+  }) {
+    await api.put(`/workspaces/${workspaceId}/schedules/${scheduleId}`, data)
+    await fetchSchedules(workspaceId)
+  }
+
+  async function deleteSchedule(workspaceId: string, scheduleId: string) {
+    await api.delete(`/workspaces/${workspaceId}/schedules/${scheduleId}`)
+    await fetchSchedules(workspaceId)
   }
 
   // ── Performance ──────────────────────────────────────
@@ -1217,6 +1245,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentWorkspace.value = null
     blackboard.value = null
     schedules.value = []
+    schedulePresets.value = []
     topology.value = null
     members.value = []
     chatMessages.value = []
@@ -1280,8 +1309,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchObjectives,
     createObjective,
     updateObjective,
+    schedulePresets,
     fetchSchedules,
     toggleScheduleActive,
+    createSchedule,
+    updateSchedule,
+    deleteSchedule,
     fetchPerformance,
     collectPerformance,
     attributeTokens,
