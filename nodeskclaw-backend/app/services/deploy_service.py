@@ -13,12 +13,13 @@ import json as _json
 import secrets as _secrets
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from urllib.parse import urlparse as _urlparse
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import BadRequestError, NotFoundError
 
 from app.models.cluster import Cluster
 from app.models.deploy_record import DeployAction, DeployRecord, DeployStatus
@@ -405,6 +406,15 @@ async def deploy_instance(
         while docker_host_port in used_ports:
             docker_host_port += 1
         namespace = f"docker-{slug}"
+
+    if not is_docker:
+        _parsed = _urlparse(settings.AGENT_API_BASE_URL or "")
+        if _parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            raise BadRequestError(
+                message="AGENT_API_BASE_URL 当前为 localhost，K8s 集群中的 AI 员工无法通过此地址连接后端。"
+                        "请在后端 .env 中将 AGENT_API_BASE_URL 设置为 K8s Pod 可达的外部地址后重启后端。",
+                message_key="errors.deploy.localhost_not_reachable",
+            )
 
     env_vars = dict(req.env_vars) if req.env_vars else {}
     gateway_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")

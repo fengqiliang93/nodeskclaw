@@ -5,12 +5,13 @@ import json
 import logging
 import re
 from pathlib import Path
+from urllib.parse import urlparse as _urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, BadRequestError
 from app.models.base import not_deleted
 from app.models.cluster import Cluster
 from app.models.instance import Instance
@@ -674,6 +675,13 @@ def _make_account_entry(instance: Instance, workspace_id: str) -> dict:
     api_url = settings.AGENT_API_BASE_URL
     if instance.compute_provider == "docker":
         api_url = _docker_rewrite_url(api_url)
+    elif instance.compute_provider == "k8s":
+        parsed = _urlparse(api_url)
+        if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            raise BadRequestError(
+                message="AGENT_API_BASE_URL 当前为 localhost，K8s 实例无法回连。",
+                message_key="errors.deploy.localhost_not_reachable",
+            )
     _env = json.loads(instance.env_vars or "{}")
     return {
         "enabled": True,
