@@ -63,6 +63,46 @@ async def get_recent_messages(
     return messages
 
 
+async def search_messages(
+    db: AsyncSession,
+    workspace_id: str,
+    *,
+    q: str | None = None,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    limit: int = 200,
+) -> list[WorkspaceMessage]:
+    stmt = (
+        select(WorkspaceMessage)
+        .where(
+            WorkspaceMessage.workspace_id == workspace_id,
+            WorkspaceMessage.deleted_at.is_(None),
+        )
+    )
+
+    keyword = (q or "").strip()
+    if keyword:
+        pattern = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                WorkspaceMessage.content.ilike(pattern),
+                WorkspaceMessage.sender_name.ilike(pattern),
+            )
+        )
+
+    if from_at:
+        stmt = stmt.where(WorkspaceMessage.created_at >= from_at)
+    if to_at:
+        stmt = stmt.where(WorkspaceMessage.created_at <= to_at)
+
+    result = await db.execute(
+        stmt.order_by(WorkspaceMessage.created_at.desc()).limit(limit)
+    )
+    messages = list(result.scalars().all())
+    messages.reverse()
+    return messages
+
+
 async def get_collaboration_timeline(
     db: AsyncSession,
     workspace_id: str,
