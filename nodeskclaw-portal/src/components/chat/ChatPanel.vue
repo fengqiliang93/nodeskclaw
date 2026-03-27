@@ -597,10 +597,64 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function highlightText(value: string): string {
   if (!normalizedSearch.value || !value) return value
   const pattern = new RegExp(`(${escapeRegExp(normalizedSearch.value)})`, 'gi')
   return value.replace(pattern, '<mark class="chat-search-hit">$1</mark>')
+}
+
+function highlightPlainText(value: string): string {
+  return highlightText(escapeHtml(value))
+}
+
+function highlightHtml(html: string): string {
+  if (!normalizedSearch.value || !html) return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const pattern = new RegExp(escapeRegExp(normalizedSearch.value), 'gi')
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || ''
+      if (!text.trim() || !pattern.test(text)) return
+      pattern.lastIndex = 0
+
+      const fragment = document.createDocumentFragment()
+      let lastIndex = 0
+      text.replace(pattern, (match, _group, offset: number) => {
+        if (offset > lastIndex) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex, offset)))
+        }
+        const mark = document.createElement('mark')
+        mark.className = 'chat-search-hit'
+        mark.textContent = match
+        fragment.appendChild(mark)
+        lastIndex = offset + match.length
+        return match
+      })
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+      }
+      node.parentNode?.replaceChild(fragment, node)
+      pattern.lastIndex = 0
+      return
+    }
+
+    Array.from(node.childNodes).forEach(walk)
+  }
+
+  Array.from(template.content.childNodes).forEach(walk)
+  return template.innerHTML
 }
 
 // ── Markdown rendering ──────────────────────────────
@@ -616,7 +670,7 @@ function renderMarkdown(content: string): string {
 }
 
 function renderMarkdownHighlighted(content: string): string {
-  return highlightText(renderMarkdown(content))
+  return highlightHtml(renderMarkdown(content))
 }
 
 const feedbackGiven = ref<Record<string, 'up' | 'down'>>({})
@@ -725,7 +779,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
         <div v-if="msg.sender_type === 'system'" class="flex justify-center">
           <span
             class="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-1 whitespace-pre-wrap"
-            v-html="highlightText(msg.content)"
+            v-html="highlightPlainText(msg.content)"
           />
         </div>
 
@@ -827,9 +881,9 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 <span
                   v-if="seg.type === 'mention'"
                   class="inline-block rounded px-1 font-semibold text-xs leading-5 bg-white/30 text-primary-foreground"
-                  v-html="highlightText(seg.value)"
+                  v-html="highlightPlainText(seg.value)"
                 />
-                <span v-else v-html="highlightText(seg.value)" />
+                <span v-else v-html="highlightPlainText(seg.value)" />
               </template>
             </div>
             <FileAttachmentList
