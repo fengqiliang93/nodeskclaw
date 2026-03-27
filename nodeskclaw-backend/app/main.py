@@ -381,6 +381,10 @@ async def lifespan(app: FastAPI):
         except Exception as _seed_err:
             logger.warning("种子基因导入失败: %s", _seed_err)
 
+    # ── 默认工作基因 seed（在 Gene 种子导入之后执行）──
+    from app.startup.seed import seed_default_required_genes
+    await seed_default_required_genes(async_session_factory)
+
     # 预热 K8s 连接池：从 DB 加载所有已连接集群
     async with async_session_factory() as db:
         result = await db.execute(
