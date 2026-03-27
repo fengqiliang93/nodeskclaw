@@ -37,34 +37,16 @@ Instant expansion of operating capacity. One-click deployment of AI operating pa
 - **Gene System** -- Modular capability investment: load new business dimensions onto AI partners from a public or private marketplace
 - **One-Click Scale** -- Expand your operating capacity end-to-end, with SSE real-time progress streaming
 - **Multi-Cluster Operations** -- Cross-cluster orchestration, health checks, and elastic scaling across your business footprint
-- **Enterprise Auth** -- Feishu SSO with automatic org structure sync, bringing your existing organization into the platform
-
-## CE / EE
-
-Dual-edition architecture: Community Edition / Enterprise Edition.
-
-| | CE (Community) | EE (Enterprise) |
-|---|---|---|
-| License | Apache 2.0 | Commercial |
-| Features | Instance deploy, cluster management, log monitoring, gene marketplace | All of CE + multi-org, billing, advanced audit |
-| Code | This repository | Private `ee/` directory |
-
-Runtime auto-detection via `FeatureGate` -- if `ee/` exists it runs as EE, otherwise CE. Feature registry defined in `features.yaml`.
-
-**Technical implementation**: Backend Factory abstraction + Hook event bus; Frontend Stub + Vite Alias Override.
-
 ## Architecture
 
 ```mermaid
 graph TD
-    Human["Human Operators"] --> Portal["Portal (CE + EE)"]
-    Human --> AdminUI["Admin Console (EE)"]
+    Human["Human Operators"] --> Portal["Portal"]
     Portal --> API["Backend API Hub<br>Python 3.12 + FastAPI"]
-    AdminUI --> API
 
     API --> DB[(PostgreSQL)]
     API --> CW["Cyber Workspace<br>Blackboard / Topology / Delegation"]
-    API --> Gene["Gene System<br>Public + Enterprise Marketplace"]
+    API --> Gene["Gene System<br>Public Marketplace"]
     API --> Compute["K8s"]
 
     Compute --> Runtime["AI Runtime<br>OpenClaw / ZeroClaw / Nanobot"]
@@ -78,22 +60,19 @@ graph TD
 
 ```
 DeskClaw/
-├── nodeskclaw-portal/             # User Portal -- Vue 3 + Tailwind CSS (CE + EE)
+├── nodeskclaw-portal/             # User Portal -- Vue 3 + Tailwind CSS
 ├── nodeskclaw-backend/            # API Server -- Python 3.12 + FastAPI + SQLAlchemy
 ├── nodeskclaw-llm-proxy/          # LLM Proxy -- Python + FastAPI
 ├── nodeskclaw-artifacts/          # Docker images & deploy manifests
 ├── openclaw-channel-nodeskclaw/   # Cyber Workspace channel plugin
 ├── openclaw-channel-dingtalk/     # DingTalk channel plugin (Stream protocol)
-├── features.yaml                  # CE/EE feature registry
-├── ee/                            # Enterprise Edition (private)
-│   └── nodeskclaw-frontend/      # Admin Console -- Vue 3 + shadcn-vue (EE-only)
 ├── openclaw/                      # DeskClaw runtime source (external)
 └── vibecraft/                     # VibeCraft source (external)
 ```
 
 ## i18n
 
-Full-stack internationalization covering Portal, Admin, and Backend.
+Full-stack internationalization covering Portal and Backend.
 
 - Language detection: `zh*` -> `zh-CN`, `en*` -> `en-US`, fallback `en-US`
 - Error display: prefer `message_key` local translation, fall back to `message` when missing
@@ -166,12 +145,11 @@ Edit `deploy/k8s/ingress.yaml` -- replace `example.com` hosts with your actual d
 kubectl --context <CTX> -n <NS> apply -f deploy/k8s/ingress.yaml
 ```
 
-The Ingress defines three hosts (configure as needed):
+The Ingress defines two hosts (configure as needed):
 
 | Ingress | Default host | Backend service |
 |---|---|---|
 | Portal | `console.example.com` | portal (80) + backend API (8000) |
-| Admin (EE) | `admin.example.com` | admin (80) + backend API (8000) |
 | LLM Proxy | `llm-proxy.example.com` | llm-proxy (80) |
 
 See [deploy/README.md](deploy/README.md) for full CLI reference, image tagging, and the release/promote workflow.
@@ -197,19 +175,14 @@ cp .env.example .env
 #### 2. One-command Start
 
 ```bash
-./dev.sh              # Auto-detect: ee/ exists -> EE, otherwise -> CE
-./dev.sh ce           # Force CE mode (backend + portal)
-./dev.sh ee           # Force EE mode (backend + portal + admin)
+./dev.sh              # Start all services (backend + portal)
 ./dev.sh --docker-pg  # Start a Docker PostgreSQL (no local PG install needed)
 ./dev.sh --fresh      # Force reinstall all dependencies
 ```
 
 The script handles dependency installation, starts all services with colored log prefixes, and cleans up on Ctrl+C. `--docker-pg` launches a local PostgreSQL container automatically.
 
-| Mode | Services | Ports |
-|------|----------|-------|
-| CE | backend + llm-proxy + portal | 4510, 4511, 4517 |
-| EE | backend + llm-proxy + portal + admin | 4510, 4511, 4517, 4518 |
+Services: backend (4510) + llm-proxy (4511) + portal (4517)
 
 <details>
 <summary>Manual Start (alternative)</summary>
@@ -233,15 +206,6 @@ npm install && npm run dev
 
 Portal at `http://localhost:4517` | `/api` auto-proxy to backend.
 
-**Frontend (Admin, EE-only):**
-
-```bash
-cd ee/nodeskclaw-frontend
-npm install && npm run dev
-```
-
-Admin at `http://localhost:4518` | `/api` and `/stream` auto-proxy to backend.
-
 </details>
 
 #### 3. Sign In
@@ -257,7 +221,7 @@ On first startup the backend prints the initial admin credentials directly in th
 ========================================
 ```
 
-Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE) and sign in with the printed credentials. You will be prompted to change the password on first login.
+Open `http://localhost:4517` and sign in with the printed credentials. You will be prompted to change the password on first login.
 
 ## Upgrade
 
