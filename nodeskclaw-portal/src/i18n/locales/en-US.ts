@@ -466,6 +466,7 @@ const enUS = {
     postContentPlaceholder: "Post content (Markdown), use @agent:{id} to mention...",
     publish: "Publish",
     replies: "Replies",
+    replyFloor: "Floor {number}",
     replyPlaceholder: "Write a reply... (Cmd+Enter to send)",
     pin: "Pin",
     unpin: "Unpin",

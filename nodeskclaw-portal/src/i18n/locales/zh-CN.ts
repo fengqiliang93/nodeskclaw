@@ -466,6 +466,7 @@ const zhCN = {
     postContentPlaceholder: "帖子内容（Markdown），使用 @agent:{id} 提及 AI 员工...",
     publish: "发布",
     replies: "回复",
+    replyFloor: "第 {number} 楼",
     replyPlaceholder: "写回复...（Cmd+Enter 发送）",
     pin: "置顶",
     unpin: "取消置顶",
