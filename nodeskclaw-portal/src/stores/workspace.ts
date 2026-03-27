@@ -199,6 +199,13 @@ export interface GroupChatMessage {
   envelope_id?: string
 }
 
+export interface ChatHistoryQuery {
+  limit?: number
+  q?: string
+  fromAt?: string
+  toAt?: string
+}
+
 export interface ScheduleInfo {
   id: string
   workspace_id: string
@@ -537,11 +544,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } catch { /* ignore */ }
   }
 
-  async function fetchChatHistory(workspaceId: string) {
+  async function fetchChatHistory(workspaceId: string, query?: ChatHistoryQuery) {
     try {
-      const res = await api.get(`/workspaces/${workspaceId}/messages`, { params: { limit: 50 } })
+      const params: Record<string, unknown> = { limit: query?.limit ?? 50 }
+      if (query?.q?.trim()) params.q = query.q.trim()
+      if (query?.fromAt) params.from_at = query.fromAt
+      if (query?.toAt) params.to_at = query.toAt
+      const res = await api.get(`/workspaces/${workspaceId}/messages`, { params })
       const raw = res.data.data || []
-      chatMessages.value = raw.map((m: Record<string, unknown>) => ({
+      return raw.map((m: Record<string, unknown>) => ({
         id: m.id as string,
         sender_type: m.sender_type as 'user' | 'agent' | 'system',
         sender_id: m.sender_id as string,
@@ -553,6 +564,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }))
     } catch (e) {
       console.error('fetchChatHistory error:', e)
+      throw e
     }
   }
 

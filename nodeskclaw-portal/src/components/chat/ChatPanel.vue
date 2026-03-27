@@ -35,15 +35,17 @@ const messagesEl = ref<HTMLElement | null>(null)
 
 const messages = computed(() => store.chatMessages)
 const chatSearch = ref('')
+const searchFrom = ref('')
+const searchTo = ref('')
+const searchedMessages = ref<GroupChatMessage[]>([])
+const searchLoading = ref(false)
+const searchError = ref('')
+let searchRequestId = 0
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 const normalizedSearch = computed(() => chatSearch.value.trim().toLowerCase())
-const filteredMessages = computed(() => {
-  if (!normalizedSearch.value) return messages.value
-  return messages.value.filter((msg) => {
-    const haystacks = [msg.sender_name, msg.content]
-    return haystacks.some((value) => value?.toLowerCase().includes(normalizedSearch.value))
-  })
-})
-const searchResultCount = computed(() => filteredMessages.value.length)
+const searchActive = computed(() => Boolean(normalizedSearch.value || searchFrom.value || searchTo.value))
+const displayedMessages = computed(() => searchActive.value ? searchedMessages.value : messages.value)
+const searchResultCount = computed(() => displayedMessages.value.length)
 const sending = computed(() => store.chatLoading)
 const typingAgents = computed(() => store.typingAgents)
 const agents = computed(() => store.currentWorkspace?.agents || [])
@@ -711,10 +713,81 @@ function scrollToBottom() {
   })
 }
 
-watch(messages, scrollToBottom, { deep: true })
+async function loadDefaultChatHistory() {
+  const raw = await store.fetchChatHistory(props.workspaceId)
+  store.chatMessages = raw
+}
 
-onMounted(() => {
-  store.fetchChatHistory(props.workspaceId)
+function toIsoDateTime(value: string): string | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  return parsed.toISOString()
+}
+
+async function runSearch() {
+  const currentRequestId = ++searchRequestId
+
+  if (!searchActive.value) {
+    searchError.value = ''
+    searchedMessages.value = []
+    return
+  }
+
+  searchLoading.value = true
+  searchError.value = ''
+  try {
+    const raw = await store.fetchChatHistory(props.workspaceId, {
+      limit: 200,
+      q: chatSearch.value,
+      fromAt: toIsoDateTime(searchFrom.value),
+      toAt: toIsoDateTime(searchTo.value),
+    })
+    if (currentRequestId !== searchRequestId) return
+    searchedMessages.value = raw
+  } catch (e: any) {
+    if (currentRequestId !== searchRequestId) return
+    searchedMessages.value = []
+    searchError.value = resolveApiErrorMessage(e, e?.message || '')
+  } finally {
+    if (currentRequestId === searchRequestId) {
+      searchLoading.value = false
+    }
+  }
+}
+
+function clearSearchFilters() {
+  chatSearch.value = ''
+  searchFrom.value = ''
+  searchTo.value = ''
+}
+
+watch(messages, () => {
+  if (!searchActive.value) scrollToBottom()
+}, { deep: true })
+
+watch(displayedMessages, scrollToBottom, { deep: true })
+
+watch(
+  () => props.workspaceId,
+  async () => {
+    clearSearchFilters()
+    await loadDefaultChatHistory()
+  },
+)
+
+watch(
+  [chatSearch, searchFrom, searchTo],
+  () => {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => {
+      void runSearch()
+    }, 250)
+  },
+)
+
+onMounted(async () => {
+  await loadDefaultChatHistory()
   store.fetchSystemCapabilities()
 })
 
@@ -746,16 +819,42 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
           :placeholder="t('chat.searchPlaceholder')"
         />
         <button
-          v-if="chatSearch"
+          v-if="searchActive"
           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           :title="t('chat.clearSearch')"
-          @click="chatSearch = ''"
+          @click="clearSearchFilters"
         >
           <X class="w-3.5 h-3.5" />
         </button>
       </div>
-      <div v-if="chatSearch" class="text-xs text-muted-foreground">
-        <template v-if="searchResultCount > 0">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <label class="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span>{{ t('chat.searchFrom') }}</span>
+          <input
+            v-model="searchFrom"
+            type="datetime-local"
+            class="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/50"
+            :aria-label="t('chat.searchFrom')"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span>{{ t('chat.searchTo') }}</span>
+          <input
+            v-model="searchTo"
+            type="datetime-local"
+            class="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/50"
+            :aria-label="t('chat.searchTo')"
+          />
+        </label>
+      </div>
+      <div v-if="searchActive" class="text-xs text-muted-foreground">
+        <template v-if="searchLoading">
+          {{ t('common.loading') }}
+        </template>
+        <template v-else-if="searchError">
+          {{ t('chat.searchFailed', { error: searchError }) }}
+        </template>
+        <template v-else-if="searchResultCount > 0">
           {{ t('chat.searchResults', { count: searchResultCount }) }}
         </template>
         <template v-else>
@@ -767,19 +866,19 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
     <!-- Messages -->
     <div ref="messagesEl" class="messages-scroll flex-1 px-4 py-3 space-y-3 min-h-0">
       <div
-        v-if="messages.length === 0"
+        v-if="displayedMessages.length === 0 && !searchActive"
         class="flex items-center justify-center h-full text-muted-foreground text-sm"
       >
         {{ t('chat.emptyHint') }}
       </div>
       <div
-        v-else-if="filteredMessages.length === 0"
+        v-else-if="displayedMessages.length === 0"
         class="flex items-center justify-center h-full text-muted-foreground text-sm"
       >
-        {{ t('chat.searchEmpty') }}
+        {{ searchError || t('chat.searchEmpty') }}
       </div>
 
-      <div v-for="msg in filteredMessages" :key="msg.id">
+      <div v-for="msg in displayedMessages" :key="msg.id">
         <!-- System message -->
         <div v-if="msg.sender_type === 'system'" class="flex justify-center">
           <span
