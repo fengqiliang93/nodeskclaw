@@ -32,6 +32,7 @@ const zhCN = {
     goBack: "返回",
     yes: "是",
     no: "否",
+    copyFailed: "复制失败，请手动选中复制",
   },
   status: {
     running: "运行中",

@@ -32,6 +32,7 @@ const enUS = {
     goBack: "Go back",
     yes: "Yes",
     no: "No",
+    copyFailed: "Copy failed, please select and copy manually",
   },
   status: {
     running: "Running",

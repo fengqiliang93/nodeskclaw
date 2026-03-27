@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
+import { copyToClipboard } from '@/utils/clipboard'
 import { X, Copy, User as UserIcon, Bot } from 'lucide-vue-next'
 import type { AuditLog } from '@/components/audit/AuditLogTable.vue'
 
@@ -71,11 +72,11 @@ const detailsJson = computed(() => {
 })
 
 async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
+  const ok = await copyToClipboard(text)
+  if (ok) {
     toast.success(t('auditLogs.drawerCopied'))
-  } catch {
-    /* clipboard not available */
+  } else {
+    toast.error(t('common.copyFailed'))
   }
 }
 </script>

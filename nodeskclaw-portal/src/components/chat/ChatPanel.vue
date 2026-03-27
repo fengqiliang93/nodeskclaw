@@ -15,6 +15,7 @@ import { useToast } from '@/composables/useToast'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { renderMarkdown as renderMd } from '@/utils/markdown'
+import { copyToClipboard } from '@/utils/clipboard'
 import { AgentMention } from './extensions/agentMention'
 import { SlashCommand } from './extensions/slashCommand'
 
@@ -88,8 +89,12 @@ function onSlugEnter(e: MouseEvent, msgId: string) {
 async function copySlug(agentId: string) {
   const slug = agentSlug(agentId)
   if (!slug) return
-  await navigator.clipboard.writeText(slug)
-  toast.success(t('chat.slugCopied'))
+  const ok = await copyToClipboard(slug)
+  if (ok) {
+    toast.success(t('chat.slugCopied'))
+  } else {
+    toast.error(t('common.copyFailed'))
+  }
 }
 
 // ── File upload ──────────────────────────────────────

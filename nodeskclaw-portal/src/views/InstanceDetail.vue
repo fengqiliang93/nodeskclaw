@@ -8,6 +8,7 @@ import {
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const router = useRouter()
 const toast = useToast()
@@ -119,12 +120,14 @@ function syncGatewayToken(detail: InstanceDetail | null) {
 }
 
 async function copyToken() {
-  try {
-    await navigator.clipboard.writeText(gatewayToken.value)
+  const ok = await copyToClipboard(gatewayToken.value)
+  if (ok) {
     tokenCopied.value = true
     toast.success(t('agentDetailDialog.tokenCopied'))
     setTimeout(() => { tokenCopied.value = false }, 2000)
-  } catch { /* ignore */ }
+  } else {
+    toast.error(t('common.copyFailed'))
+  }
 }
 
 onMounted(async () => {
