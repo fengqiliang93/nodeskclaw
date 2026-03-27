@@ -1249,6 +1249,7 @@ def _reply_to_info(r: BlackboardReply) -> ReplyInfo:
     return ReplyInfo(
         id=r.id,
         post_id=r.post_id,
+        floor_number=r.floor_number,
         content=r.content,
         author_type=r.author_type,
         author_id=r.author_id,
@@ -1437,8 +1438,17 @@ async def create_reply(
     if post is None:
         return None
 
+    floor_result = await db.execute(
+        select(func.max(BlackboardReply.floor_number)).where(
+            BlackboardReply.post_id == post_id,
+            BlackboardReply.deleted_at.is_(None),
+        )
+    )
+    next_floor_number = (floor_result.scalar_one_or_none() or 0) + 1
+
     reply = BlackboardReply(
         post_id=post_id,
+        floor_number=next_floor_number,
         content=data.content,
         author_type=author_type,
         author_id=author_id,
