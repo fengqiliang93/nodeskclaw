@@ -299,7 +299,9 @@ MessageEnvelope 遵循 CloudEvents 1.0 规范，扩展字段：
 ### 可靠性
 
 - **PGMQ**: PostgreSQL 消息队列 + WFQ 虚拟时间调度防饥饿 + PG NOTIFY 驱动即时消费 + 5s 轮询兜底
-- **ACK/Retry/DLQ**: 指数退避 + jitter 抖动重试（max 3 次），不可恢复错误（node_card_not_found 等）直接进 DLQ
+- **ACK/Retry/DLQ**: 指数退避 + jitter 抖动重试（max 3 次），不可恢复错误直接进 DLQ
+- **NO_RETRY_ERRORS**: `node_card_not_found` / `instance_not_found` / `workspace_isolation_violation` / `instance_not_connected_locally` — 这些错误在 TransportMiddleware 中跳过入队直接写 DLQ（`recoverable=False`），在 QueueConsumer nack 时也直接进 DLQ 不做退避重试
+- **离线投递反馈**: Agent 未通过隧道连接（`instance_not_connected_locally`）时，TransportMiddleware 在写 DLQ 的同时通过 SSE 广播 `agent:error` 事件（含 `instance_id`、`agent_name`、`error`），前端立刻展示错误而非静默等待
 - **熔断器**: 三态（CLOSED/OPEN/HALF_OPEN），恢复时自动重投 recoverable 死信
 - **背压**: 按队列深度分级（FULL/NORMAL_ONLY/CRITICAL_ONLY/NONE）
 - **幂等**: INSERT ON CONFLICT DO NOTHING 原子去重

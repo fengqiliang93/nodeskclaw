@@ -115,6 +115,7 @@ NO_RETRY_ERRORS = frozenset({
     "node_card_not_found",
     "instance_not_found",
     "workspace_isolation_violation",
+    "instance_not_connected_locally",
 })
 
 
