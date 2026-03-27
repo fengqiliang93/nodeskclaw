@@ -94,7 +94,8 @@ class _PoolDisconnectFilter(logging.Filter):
         return True
 
 
-logging.getLogger("sqlalchemy.pool").addFilter(_PoolDisconnectFilter())
+for _pool_logger_name in ("sqlalchemy.pool", "sqlalchemy.pool.impl"):
+    logging.getLogger(_pool_logger_name).addFilter(_PoolDisconnectFilter())
 
 import warnings  # noqa: E402
 from sqlalchemy.exc import SAWarning  # noqa: E402

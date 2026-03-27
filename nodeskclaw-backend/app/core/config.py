@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = ""  # PostgreSQL，从 .env 读取
     DATABASE_NAME_SUFFIX: str = ""  # auto = 用本机 hostname，留空 = 使用 DATABASE_URL 原始库名
+    DB_POOL_SIZE: int = 10
+    DB_POOL_MAX_OVERFLOW: int = 20
 
     @model_validator(mode="after")
     def _resolve_database_url(self) -> "Settings":
