@@ -43,23 +43,31 @@ function deriveTunnelUrl(apiUrl: string): string {
   return `${wsUrl}/tunnel/connect`;
 }
 
+const LOCAL_GATEWAY_MODELS = ["openclaw", "openclaw/default", "openclaw/main"];
+
 function deriveDefaultChatModel(cfg: OpenClawConfig): string {
   const agents = (cfg as Record<string, unknown>).agents as Record<string, unknown> | undefined;
   const defaults = agents?.defaults as Record<string, unknown> | undefined;
   const model = defaults?.model;
 
+  let modelName = "";
   if (typeof model === "string" && model.trim()) {
-    return model.trim();
-  }
-
-  if (model && typeof model === "object") {
+    modelName = model.trim();
+  } else if (model && typeof model === "object") {
     const primary = (model as Record<string, unknown>).primary;
     if (typeof primary === "string" && primary.trim()) {
-      return primary.trim();
+      modelName = primary.trim();
     }
   }
 
-  return process.env.OPENCLAW_DEFAULT_MODEL || "gpt-4";
+  // If model contains "/" it's provider/model format (e.g. "minimax-anthropic/MiniMax-M2.7")
+  // which is not valid for local OpenClaw Gateway - map to openclaw/main
+  if (modelName && (!LOCAL_GATEWAY_MODELS.includes(modelName))) {
+    console.log("[tunnel] Model '%s' not in local gateway models, using 'openclaw/main'", modelName);
+    return "openclaw/main";
+  }
+
+  return modelName || process.env.OPENCLAW_DEFAULT_MODEL || "openclaw/main";
 }
 
 export function startTunnelClient(cfg: OpenClawConfig, callbacks?: TunnelCallbacks): TunnelClient {
