@@ -10,7 +10,7 @@ import { useWorkspaceStore, type GroupChatMessage, type AgentBrief, type FileAtt
 import FileAttachmentList from './FileAttachmentList.vue'
 import BaseTooltip from '@/components/shared/BaseTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
-import { Send, Loader2, Bot, User, Users, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText } from 'lucide-vue-next'
+import { Send, Loader2, Bot, User, Users, AtSign, Slash, RotateCw, Trash2, Activity, XCircle, Copy, ThumbsUp, ThumbsDown, Paperclip, X, FileText, Search } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -34,6 +34,16 @@ const toast = useToast()
 const messagesEl = ref<HTMLElement | null>(null)
 
 const messages = computed(() => store.chatMessages)
+const chatSearch = ref('')
+const normalizedSearch = computed(() => chatSearch.value.trim().toLowerCase())
+const filteredMessages = computed(() => {
+  if (!normalizedSearch.value) return messages.value
+  return messages.value.filter((msg) => {
+    const haystacks = [msg.sender_name, msg.content]
+    return haystacks.some((value) => value?.toLowerCase().includes(normalizedSearch.value))
+  })
+})
+const searchResultCount = computed(() => filteredMessages.value.length)
 const sending = computed(() => store.chatLoading)
 const typingAgents = computed(() => store.typingAgents)
 const agents = computed(() => store.currentWorkspace?.agents || [])
@@ -588,6 +598,70 @@ function parseContent(content: string): Array<{ type: 'text' | 'mention'; value:
   return segments.length ? segments : [{ type: 'text', value: content }]
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function highlightText(value: string): string {
+  if (!normalizedSearch.value || !value) return value
+  const pattern = new RegExp(`(${escapeRegExp(normalizedSearch.value)})`, 'gi')
+  return value.replace(pattern, '<mark class="chat-search-hit">$1</mark>')
+}
+
+function highlightPlainText(value: string): string {
+  return highlightText(escapeHtml(value))
+}
+
+function highlightHtml(html: string): string {
+  if (!normalizedSearch.value || !html) return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const pattern = new RegExp(escapeRegExp(normalizedSearch.value), 'gi')
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || ''
+      if (!text.trim() || !pattern.test(text)) return
+      pattern.lastIndex = 0
+
+      const fragment = document.createDocumentFragment()
+      let lastIndex = 0
+      text.replace(pattern, (match, _group, offset: number) => {
+        if (offset > lastIndex) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex, offset)))
+        }
+        const mark = document.createElement('mark')
+        mark.className = 'chat-search-hit'
+        mark.textContent = match
+        fragment.appendChild(mark)
+        lastIndex = offset + match.length
+        return match
+      })
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+      }
+      node.parentNode?.replaceChild(fragment, node)
+      pattern.lastIndex = 0
+      return
+    }
+
+    Array.from(node.childNodes).forEach(walk)
+  }
+
+  Array.from(template.content.childNodes).forEach(walk)
+  return template.innerHTML
+}
+
 // ── Markdown rendering ──────────────────────────────
 const GENE_SLUG_RE = /`([a-z][a-z0-9-]*(?:-[a-z0-9]+)*)`/g
 
@@ -598,6 +672,10 @@ function renderMarkdown(content: string): string {
     return `<a href="/gene-market" class="gene-slug-link" data-gene-slug="${slug}">${slug}</a>`
   })
   return html
+}
+
+function renderMarkdownHighlighted(content: string): string {
+  return highlightHtml(renderMarkdown(content))
 }
 
 const feedbackGiven = ref<Record<string, 'up' | 'down'>>({})
@@ -659,6 +737,33 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
 
 <template>
   <div class="flex flex-col flex-1 min-h-0">
+    <div class="px-4 py-2 border-b border-border shrink-0 space-y-2">
+      <div class="relative">
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          v-model="chatSearch"
+          class="w-full rounded-lg border border-border bg-muted pl-9 pr-9 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/50"
+          :placeholder="t('chat.searchPlaceholder')"
+        />
+        <button
+          v-if="chatSearch"
+          class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          :title="t('chat.clearSearch')"
+          @click="chatSearch = ''"
+        >
+          <X class="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div v-if="chatSearch" class="text-xs text-muted-foreground">
+        <template v-if="searchResultCount > 0">
+          {{ t('chat.searchResults', { count: searchResultCount }) }}
+        </template>
+        <template v-else>
+          {{ t('chat.searchEmpty') }}
+        </template>
+      </div>
+    </div>
+
     <!-- Messages -->
     <div ref="messagesEl" class="messages-scroll flex-1 px-4 py-3 space-y-3 min-h-0">
       <div
@@ -667,13 +772,20 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
       >
         {{ t('chat.emptyHint') }}
       </div>
+      <div
+        v-else-if="filteredMessages.length === 0"
+        class="flex items-center justify-center h-full text-muted-foreground text-sm"
+      >
+        {{ t('chat.searchEmpty') }}
+      </div>
 
-      <div v-for="msg in messages" :key="msg.id">
+      <div v-for="msg in filteredMessages" :key="msg.id">
         <!-- System message -->
         <div v-if="msg.sender_type === 'system'" class="flex justify-center">
-          <span class="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-1 whitespace-pre-wrap">
-            {{ msg.content }}
-          </span>
+          <span
+            class="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-1 whitespace-pre-wrap"
+            v-html="highlightPlainText(msg.content)"
+          />
         </div>
 
         <!-- User / Agent message -->
@@ -745,7 +857,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
             <div
               v-if="msg.sender_type === 'agent'"
               class="rounded-lg px-3 py-2 text-sm bg-muted text-foreground chat-markdown"
-              v-html="renderMarkdown(msg.content)"
+              v-html="renderMarkdownHighlighted(msg.content)"
             />
             <div
               v-if="msg.sender_type === 'agent' && !msg.streaming && msg.content"
@@ -774,8 +886,9 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 <span
                   v-if="seg.type === 'mention'"
                   class="inline-block rounded px-1 font-semibold text-xs leading-5 bg-white/30 text-primary-foreground"
-                >{{ seg.value }}</span>
-                <span v-else>{{ seg.value }}</span>
+                  v-html="highlightPlainText(seg.value)"
+                />
+                <span v-else v-html="highlightPlainText(seg.value)" />
               </template>
             </div>
             <FileAttachmentList
@@ -978,6 +1091,13 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
   pointer-events: none;
   float: left;
   height: 0;
+}
+
+.chat-search-hit {
+  background: rgba(251, 191, 36, 0.3);
+  color: inherit;
+  border-radius: 0.2rem;
+  padding: 0 0.1rem;
 }
 
 .slug-tag {
