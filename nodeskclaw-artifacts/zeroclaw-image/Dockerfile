@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
-ARG ZEROCLAW_VERSION=v0.6.2
-ARG IMAGE_VERSION=v0.6.2
+ARG ZEROCLAW_VERSION=v0.6.5
+ARG IMAGE_VERSION=v0.6.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl python3-minimal python3-pip && \
