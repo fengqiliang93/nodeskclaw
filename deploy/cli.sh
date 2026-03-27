@@ -348,7 +348,9 @@ generate_changelog() {
 
 cmd_release() {
   require_gh
+  REGISTRY="$(echo "$REGISTRY" | sed 's|/[^/]*$|/public|')"
   log "=== RELEASE: 构建镜像 + 创建 GitHub Release ${VERSION} ==="
+  log "公开镜像仓库: ${REGISTRY}"
   echo ""
 
   local targets=(backend admin portal)

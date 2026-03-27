@@ -106,14 +106,24 @@ Full-stack internationalization covering Portal, Admin, and Backend.
 Deploy the full platform with a built-in PostgreSQL -- no external database required.
 
 ```bash
-# CE
+# 1. Clone the repo (for docker-compose.yml and .env.example)
+git clone https://github.com/NoDeskAI/nodeskclaw.git
+cd nodeskclaw
+
+# 2. Configure -- set DESKCLAW_VERSION to the release you want
+cp .env.example .env
+# Edit .env as needed (DESKCLAW_VERSION is required for pulling pre-built images)
+
+# 3. Pull pre-built images and start (recommended)
+docker compose pull
 docker compose up -d
 
 # EE (with Admin console)
+docker compose -f docker-compose.yml -f docker-compose.ee.yml pull
 docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
 
-# Optional: customise timezone, secrets, etc.
-# cp .env.example .env && vi .env
+# Alternative: build from source (for development or customization)
+# docker compose up --build -d
 ```
 
 | Service | URL |
@@ -303,23 +313,24 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE) and
 
 ### Docker Compose
 
-All business services are built locally, so upgrading means pulling the latest code and rebuilding.
-
 ```bash
 # 1. Back up the database
 docker compose exec postgres pg_dump -U nodeskclaw nodeskclaw > backup_$(date +%Y%m%d).sql
 
-# 2. Pull the target version
-git pull origin main          # latest
-# git checkout v0.9.0         # or a specific release tag
+# 2. Update DESKCLAW_VERSION in .env to the target release
+# DESKCLAW_VERSION=v0.9.0
 
-# 3. Rebuild and restart
-docker compose build
+# 3. Pull new images and restart
+git pull origin main
+docker compose pull
 docker compose up -d
 
 # EE
-docker compose -f docker-compose.yml -f docker-compose.ee.yml build
+docker compose -f docker-compose.yml -f docker-compose.ee.yml pull
 docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
+
+# Alternative: rebuild from source
+# docker compose up --build -d
 ```
 
 Database migrations run automatically on backend startup (Alembic `upgrade head`). Verify with:
