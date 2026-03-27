@@ -1051,12 +1051,45 @@ async def post_system_message(
 async def list_workspace_messages(
     workspace_id: str,
     limit: int = Query(default=50, le=200),
+    q: str | None = Query(default=None),
+    from_at: str | None = Query(default=None),
+    to_at: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_dep()),
 ):
     """List recent workspace messages for chat history."""
     await wm_service.check_workspace_member(workspace_id, user, db)
-    messages = await msg_service.get_recent_messages(db, workspace_id, limit)
+    from datetime import datetime as dt, timezone
+
+    def _parse_dt(value: str | None):
+        if not value:
+            return None
+        normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+        try:
+            parsed = dt.fromisoformat(normalized)
+        except (ValueError, TypeError):
+            raise _error(400, 40003, "errors.validation.invalid_date", "Invalid date format")
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    from_dt = _parse_dt(from_at)
+    to_dt = _parse_dt(to_at)
+
+    if from_dt and to_dt and from_dt > to_dt:
+        raise _error(400, 40003, "errors.validation.invalid_date", "Invalid date range")
+
+    if (q and q.strip()) or from_dt or to_dt:
+        messages = await msg_service.search_messages(
+            db,
+            workspace_id,
+            q=q,
+            from_at=from_dt,
+            to_at=to_dt,
+            limit=limit,
+        )
+    else:
+        messages = await msg_service.get_recent_messages(db, workspace_id, limit)
     return _ok([
         {
             "id": m.id,
