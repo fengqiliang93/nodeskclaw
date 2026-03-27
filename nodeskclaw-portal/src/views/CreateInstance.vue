@@ -12,6 +12,11 @@ import { useOrgStore } from '@/stores/org'
 import { useI18n } from 'vue-i18n'
 import { useEdition } from '@/composables/useFeature'
 import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
+import {
+  PROVIDERS, PROVIDER_LABELS, PROVIDER_DEFAULT_URLS,
+  BUILTIN_PROVIDERS, WORKING_PLAN_PROVIDERS, ALL_KNOWN_PROVIDERS,
+  isCodexProvider, DEFAULT_CODEX_MODEL, defaultModelForProvider,
+} from '@/utils/llmProviders'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -89,27 +94,6 @@ interface LlmConfigEntry {
   selectedModel: ModelItem | null
 }
 
-const PROVIDERS = ['codex', 'minimax-openai', 'minimax-anthropic', 'openai', 'anthropic', 'gemini', 'openrouter'] as const
-const PROVIDER_LABELS: Record<string, string> = {
-  codex: 'Codex CLI',
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  gemini: 'Google Gemini',
-  openrouter: 'OpenRouter',
-  'minimax-openai': 'MiniMax-OpenAI (CN)',
-  'minimax-anthropic': 'MiniMax-Anthropic (CN)',
-}
-
-const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-  codex: '',
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com',
-  gemini: 'https://generativelanguage.googleapis.com/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
-  'minimax-openai': 'https://api.minimaxi.com/v1',
-  'minimax-anthropic': 'https://api.minimaxi.com/anthropic',
-}
-
 const llmConfigs = ref<LlmConfigEntry[]>([])
 const llmSkipped = ref(false)
 const newProvider = ref('')
@@ -121,8 +105,6 @@ const newProviderOpen = ref(false)
 const unusedProviders = computed(() =>
   PROVIDERS.filter(p => !llmConfigs.value.some(c => c.provider === p))
 )
-
-const ALL_KNOWN_PROVIDERS: Set<string> = new Set([...PROVIDERS])
 
 function addProvider(p: string) {
   if (!p) return
@@ -165,15 +147,7 @@ function addCustomProvider() {
   showCustomForm.value = false
 }
 
-const BUILTIN_PROVIDERS = new Set(['codex', 'openai', 'anthropic', 'gemini', 'openrouter'])
-const WORKING_PLAN_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
 const orgKeyProviders = ref<Set<string>>(new Set())
-const isCodexProvider = (provider: string) => provider === 'codex'
-const DEFAULT_CODEX_MODEL: ModelItem = { id: 'gpt-5.4', name: 'gpt-5.4' }
-
-function defaultModelForProvider(provider: string): ModelItem | null {
-  return isCodexProvider(provider) ? { ...DEFAULT_CODEX_MODEL } : null
-}
 
 const isWorkingPlanAvailable = (provider: string) =>
   WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)

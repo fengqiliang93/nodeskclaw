@@ -8,6 +8,11 @@ import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import api from '@/services/api'
 import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
+import {
+  PROVIDERS, PROVIDER_LABELS, PROVIDER_DEFAULT_URLS,
+  BUILTIN_PROVIDERS, WORKING_PLAN_PROVIDERS, ALL_KNOWN_PROVIDERS,
+  isCodexProvider, defaultModelForProvider,
+} from '@/utils/llmProviders'
 
 const instanceId = inject<ComputedRef<string>>('instanceId')!
 const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
@@ -25,29 +30,6 @@ const successMsg = ref('')
 const nfsError = ref('')
 const dataSource = ref('')
 const dirty = ref(false)
-
-// ── Constants ──
-
-const PROVIDERS = ['codex', 'minimax-openai', 'minimax-anthropic', 'openai', 'anthropic', 'gemini', 'openrouter'] as const
-const PROVIDER_LABELS: Record<string, string> = {
-  codex: 'Codex CLI',
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  gemini: 'Google Gemini',
-  openrouter: 'OpenRouter',
-  'minimax-openai': 'MiniMax-OpenAI (CN)',
-  'minimax-anthropic': 'MiniMax-Anthropic (CN)',
-}
-
-const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-  codex: '',
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com',
-  gemini: 'https://generativelanguage.googleapis.com/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
-  'minimax-openai': 'https://api.minimaxi.com/v1',
-  'minimax-anthropic': 'https://api.minimaxi.com/anthropic',
-}
 
 // ── Types ──
 
@@ -73,16 +55,7 @@ interface ProviderConfig {
   selectedModel: ModelItem | null
 }
 
-const BUILTIN_PROVIDERS = new Set(['codex', 'openai', 'anthropic', 'gemini', 'openrouter'])
-const WORKING_PLAN_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
-const ALL_KNOWN_PROVIDERS: Set<string> = new Set([...PROVIDERS])
 const orgKeyProviders = ref<Set<string>>(new Set())
-const isCodexProvider = (provider: string) => provider === 'codex'
-const DEFAULT_CODEX_MODEL: ModelItem = { id: 'gpt-5.4', name: 'gpt-5.4' }
-
-function defaultModelForProvider(provider: string): ModelItem | null {
-  return isCodexProvider(provider) ? { ...DEFAULT_CODEX_MODEL } : null
-}
 
 const isWorkingPlanAvailable = (provider: string) =>
   WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)

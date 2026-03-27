@@ -59,6 +59,8 @@ uv run uvicorn app.main:app --port 8080 --reload
 
 默认情况下，`CODEX_BYPASS_APPROVALS_AND_SANDBOX=false`，不会绕过 Codex CLI 自带的审批和沙箱保护。如果你确实需要无审批执行，必须显式改为 `true`，并自行承担对应的执行风险。
 
+**已知限制**：Codex CLI 的 stream 模式是"伪流式" — 请求会同步等待 CLI 执行完毕（最长 `CODEX_TIMEOUT_SECONDS`，默认 300 秒），然后一次性返回所有 SSE 事件。用户在 CLI 执行期间不会看到逐 token 的流式输出。
+
 ## 构建部署
 
 ### 使用统一 CLI（推荐）

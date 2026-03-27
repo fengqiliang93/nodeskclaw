@@ -1,5 +1,6 @@
 from app.schemas.llm import ModelInfo
 
+# SYNC: 以下三个常量与 nodeskclaw-llm-proxy/app/codex_cli.py 保持同步
 CODEX_PROVIDER = "codex"
 CODEX_CLI_SENTINEL = "__CODEX_CLI__"
 

@@ -184,7 +184,6 @@ def _ensure_gateway_config(config: dict, instance: Instance) -> None:
     if "gateway" not in config:
         config["gateway"] = {}
     gw = config["gateway"]
-    gw.setdefault("mode", "local")
 
     # gateway.token (legacy) -> gateway.auth.token
     gw.pop("token", None)
@@ -509,6 +508,8 @@ async def write_instance_llm_configs(
         existing_json["models"]["providers"] = providers
 
         _ensure_gateway_config(existing_json, instance)
+        if "codex" in providers:
+            existing_json["gateway"].setdefault("mode", "local")
         _set_default_agent_model(existing_json, providers)
         await _write_config_file(fs, existing_json)
 
@@ -602,6 +603,8 @@ async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None
         existing_json["models"]["providers"] = providers
 
         _ensure_gateway_config(existing_json, instance)
+        if "codex" in providers:
+            existing_json["gateway"].setdefault("mode", "local")
         _set_default_agent_model(existing_json, providers)
         await _write_config_file(fs, existing_json)
 

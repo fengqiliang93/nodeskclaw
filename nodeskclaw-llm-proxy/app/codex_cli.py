@@ -7,6 +7,7 @@ from typing import Any
 
 from app.config import settings
 
+# SYNC: 以下三个常量与 nodeskclaw-backend/app/services/codex_provider.py 保持同步
 CODEX_PROVIDER = "codex"
 CODEX_CLI_SENTINEL = "__CODEX_CLI__"
 CODEX_MODELS = [
