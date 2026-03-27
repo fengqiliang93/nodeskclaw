@@ -29,7 +29,7 @@ Investment in AI operating capabilities. Loading a new Gene onto an AI partner o
 
 ### Elastic Scale
 
-Instant expansion of operating capacity. One-click deployment of AI operating partners on Kubernetes clusters or local Docker environments. DeskClaw handles the infrastructure so you can focus on operating decisions.
+Instant expansion of operating capacity. One-click deployment of AI operating partners on Kubernetes clusters. Local development supported via `dev.sh` for rapid iteration.
 
 ## Highlights
 
@@ -65,7 +65,7 @@ graph TD
     API --> DB[(PostgreSQL)]
     API --> CW["Cyber Workspace<br>Blackboard / Topology / Delegation"]
     API --> Gene["Gene System<br>Public + Enterprise Marketplace"]
-    API --> Compute["K8s / Docker"]
+    API --> Compute["K8s"]
 
     Compute --> Runtime["AI Runtime<br>OpenClaw / ZeroClaw / Nanobot"]
     Runtime <-->|"Channel Plugin (SSE)"| API
@@ -101,61 +101,11 @@ Full-stack internationalization covering Portal, Admin, and Backend.
 
 ## Quick Start
 
-### Docker Compose (recommended for deployment)
+### Kubernetes (recommended)
 
-Deploy the full platform with a built-in PostgreSQL -- no external database required.
+DeskClaw is designed to run on Kubernetes. K8s is the primary deployment target for both staging and production. For local development, use `dev.sh` instead (see below).
 
-```bash
-# 1. Clone the repo (for docker-compose.yml and .env.example)
-git clone https://github.com/NoDeskAI/nodeskclaw.git
-cd nodeskclaw
-
-# 2. Configure -- set DESKCLAW_VERSION to the release you want
-cp .env.example .env
-# Edit .env as needed (DESKCLAW_VERSION is required for pulling pre-built images)
-
-# 3. Pull pre-built images and start (recommended)
-docker compose pull
-docker compose up -d
-
-# EE (with Admin console)
-docker compose -f docker-compose.yml -f docker-compose.ee.yml pull
-docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
-
-# Alternative: build from source (for development or customization)
-# docker compose up --build -d
-```
-
-| Service | URL |
-|---|---|
-| Portal | http://localhost |
-| Backend API | http://localhost:4510 |
-| LLM Proxy | http://localhost:4511 |
-| Admin (EE) | http://localhost:8001 |
-
-**Initial credentials** -- on first startup the backend creates an admin account with a random password and prints it to the log:
-
-```bash
-docker compose logs nodeskclaw-backend | grep -A4 "Initial"
-```
-
-| Edition | Default account | Env var to customize |
-|---|---|---|
-| CE | `admin` | `INIT_ADMIN_ACCOUNT` |
-| EE (additional) | `deskclaw-admin` | `INIT_EE_ADMIN_ACCOUNT` |
-
-You will be prompted to change the password on first login. The random password is regenerated on every restart until you change it.
-
-To use an external database instead of the built-in PostgreSQL, create a `.env` at project root with your `DATABASE_URL` and start only the services you need:
-
-```bash
-echo 'DATABASE_URL=postgresql+asyncpg://user:pass@your-rds:5432/nodeskclaw' > .env
-docker compose up -d nodeskclaw-backend portal
-```
-
-### Kubernetes
-
-For production or multi-node environments. Requires a K8s cluster, a container registry, and an external PostgreSQL database.
+Requires a K8s cluster, a container registry, and an external PostgreSQL database.
 
 #### Prerequisites
 
@@ -311,35 +261,7 @@ Open `http://localhost:4517` (Portal) or `http://localhost:4518` (Admin, EE) and
 
 ## Upgrade
 
-### Docker Compose
-
-```bash
-# 1. Back up the database
-docker compose exec postgres pg_dump -U nodeskclaw nodeskclaw > backup_$(date +%Y%m%d).sql
-
-# 2. Update DESKCLAW_VERSION in .env to the target release
-# DESKCLAW_VERSION=v0.9.0
-
-# 3. Pull new images and restart
-git pull origin main
-docker compose pull
-docker compose up -d
-
-# EE
-docker compose -f docker-compose.yml -f docker-compose.ee.yml pull
-docker compose -f docker-compose.yml -f docker-compose.ee.yml up -d
-
-# Alternative: rebuild from source
-# docker compose up --build -d
-```
-
-Database migrations run automatically on backend startup (Alembic `upgrade head`). Verify with:
-
-```bash
-docker compose logs nodeskclaw-backend | grep -i "alembic\|migration\|upgrade"
-```
-
-### Kubernetes (via deploy/cli.sh)
+### Kubernetes
 
 K8s deployments are managed by `deploy/cli.sh`. The typical workflow is **deploy to staging first, then promote to production**.
 
