@@ -9,6 +9,15 @@ type ToolConfig = {
   instanceId: string;
 };
 
+export const NODESKCLAW_TOOL_NAMES = [
+  "nodeskclaw_blackboard",
+  "nodeskclaw_topology",
+  "nodeskclaw_performance",
+  "nodeskclaw_proposals",
+  "nodeskclaw_gene_discovery",
+  "nodeskclaw_shared_files",
+] as const;
+
 function resolveToolConfig(config: OpenClawConfig, sessionWorkspaceId?: string): ToolConfig {
   const section = (config as Record<string, unknown>).channels?.[
     "nodeskclaw"
