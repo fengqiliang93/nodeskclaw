@@ -48,6 +48,7 @@ interface EngineItem {
   display_tags: string[]
   display_powered_by: string
   order: number
+  available: boolean
 }
 const engines = ref<EngineItem[]>([])
 const selectedRuntime = ref('openclaw')
@@ -354,8 +355,8 @@ onMounted(async () => {
       orgKeyProviders.value = new Set(keys.map((k: any) => k.provider))
     }
     engines.value = (enginesRes.data.data ?? []) as EngineItem[]
-    if (engines.value.length > 0 && !engines.value.find(e => e.runtime_id === selectedRuntime.value)) {
-      selectedRuntime.value = engines.value[0].runtime_id
+    if (engines.value.length > 0 && !engines.value.find(e => e.runtime_id === selectedRuntime.value && e.available)) {
+      selectedRuntime.value = engines.value.find(e => e.available)?.runtime_id ?? engines.value[0].runtime_id
     }
     clusters.value = (clustersRes.data.data ?? []).filter((c: any) => c.status === 'connected')
     if (isK8sCluster.value) {
@@ -627,15 +628,21 @@ async function handleDeploy() {
               v-for="eng in engines"
               :key="eng.runtime_id"
               :class="[
-                'relative p-4 rounded-xl border text-left transition-all cursor-pointer',
-                selectedRuntime === eng.runtime_id
-                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                  : 'border-border bg-card hover:border-primary/20',
+                'relative p-4 rounded-xl border text-left transition-all',
+                !eng.available
+                  ? 'opacity-50 cursor-not-allowed border-border bg-card'
+                  : selectedRuntime === eng.runtime_id
+                    ? 'cursor-pointer border-primary bg-primary/5 ring-1 ring-primary/30'
+                    : 'cursor-pointer border-border bg-card hover:border-primary/20',
               ]"
-              @click="selectedRuntime = eng.runtime_id"
+              @click="eng.available && (selectedRuntime = eng.runtime_id)"
             >
+              <span
+                v-if="!eng.available"
+                class="absolute top-2.5 right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+              >{{ t('engine.comingSoon') }}</span>
               <Check
-                v-if="selectedRuntime === eng.runtime_id"
+                v-if="eng.available && selectedRuntime === eng.runtime_id"
                 class="absolute top-2.5 right-2.5 w-4 h-4 text-primary"
               />
               <div class="flex items-center gap-1.5">

@@ -1319,6 +1319,7 @@ const enUS = {
     latestTag: "Latest",
     storageClass: "StorageClass",
     storageClassDefault: "(default)",
+    comingSoon: "Coming Soon",
   },
   auditLogs: {
     title: "Audit Logs",

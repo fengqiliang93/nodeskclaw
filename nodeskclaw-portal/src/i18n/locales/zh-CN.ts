@@ -1319,6 +1319,7 @@ const zhCN = {
     latestTag: "最新",
     storageClass: "StorageClass",
     storageClassDefault: "(默认)",
+    comingSoon: "开发中待支持",
   },
   auditLogs: {
     title: "操作审计",

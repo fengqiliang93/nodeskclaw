@@ -36,6 +36,7 @@ class RuntimeSpec:
     scripts_dir_rel: str = ".deskclaw/tools"
     has_web_ui: bool = True
     has_init_script: bool = True
+    available: bool = True
 
 
 class RuntimeRegistry:
@@ -104,6 +105,7 @@ def _register_builtins() -> None:
         skills_dir_rel=".deskclaw/skills",
         has_web_ui=False,
         has_init_script=False,
+        available=False,
     ))
     RUNTIME_REGISTRY.register(RuntimeSpec(
         runtime_id="nanobot",
@@ -128,6 +130,7 @@ def _register_builtins() -> None:
         skills_dir_rel=".deskclaw/skills",
         has_web_ui=False,
         has_init_script=False,
+        available=False,
     ))
 
 
