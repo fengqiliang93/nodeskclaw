@@ -19,6 +19,7 @@ from app.models.instance_llm_override import InstanceLlmOverride
 from app.models.user_llm_config import UserLlmConfig
 from app.models.user_llm_key import UserLlmKey
 from app.schemas.llm import OpenClawConfigResponse, OpenClawProviderEntry
+from app.services.codex_provider import is_codex_provider, mask_personal_key, normalize_selected_models
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
 from app.services.nfs_mount import RemoteFS, remote_fs
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 OPENCLAW_CONFIG_REL = Path(".openclaw") / "openclaw.json"
 
 PROVIDER_BASE_URLS: dict[str, str] = {
+    "codex": "",
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com",
     "gemini": "https://generativelanguage.googleapis.com",
@@ -40,12 +42,21 @@ PROVIDER_BASE_URLS: dict[str, str] = {
 BUILTIN_PROVIDERS = {"openai", "anthropic", "gemini", "openrouter"}
 
 PROVIDER_API_TYPE: dict[str, str] = {
+    "codex": "openai-completions",
     "gemini": "google-generative-ai",
     "minimax-openai": "openai-completions",
     "minimax-anthropic": "anthropic-messages",
 }
 
 TRUSTED_PROXY_CIDRS = ["10.0.0.0/8", "100.64.0.0/10", "192.168.0.0/16"]
+NODESKCLAW_TOOL_NAMES = (
+    "nodeskclaw_blackboard",
+    "nodeskclaw_topology",
+    "nodeskclaw_performance",
+    "nodeskclaw_proposals",
+    "nodeskclaw_gene_discovery",
+    "nodeskclaw_shared_files",
+)
 
 
 def _k8s_name(instance: Instance) -> str:
@@ -82,7 +93,15 @@ def _build_providers_config(
     for cfg in configs:
         provider = cfg.provider
         ov = (overrides or {}).get(provider, {})
-        if cfg.key_source == "personal":
+        if is_codex_provider(provider):
+            if not proxy_url:
+                logger.error("LLM_PROXY_URL 未配置，Codex 模式无法生成 proxy URL")
+                continue
+            entry = {
+                "baseUrl": f"{proxy_url}/{provider}/v1",
+                "apiKey": wp_api_key,
+            }
+        elif cfg.key_source == "personal":
             uk = user_keys.get(provider)
             if not uk:
                 logger.warning("个人 Key 缺失，跳过 provider=%s", provider)
@@ -107,23 +126,25 @@ def _build_providers_config(
         if api_type:
             entry["api"] = api_type
 
-        if cfg.selected_models:
-            entry["models"] = _to_openclaw_models(cfg.selected_models)
+        selected_models = normalize_selected_models(provider, cfg.selected_models)
+        if selected_models:
+            entry["models"] = _to_openclaw_models(selected_models)
 
         providers[provider] = entry
     return providers
 
 
 def _docker_rewrite_urls(providers: dict) -> dict:
-    """Docker 容器内 localhost/127.0.0.1 不可达宿主机，替换为 host.docker.internal。"""
+    """Docker 实例使用宿主机可达地址，避免依赖主 compose 网络内的服务名。"""
+    proxy_internal_url = (settings.LLM_PROXY_INTERNAL_URL or "").rstrip("/")
+    proxy_external_url = _docker_rewrite_url((settings.LLM_PROXY_URL or "").rstrip("/"))
     for _provider_id, entry in providers.items():
         base_url = entry.get("baseUrl", "")
         if base_url:
-            entry["baseUrl"] = re.sub(
-                r"(https?://)(localhost|127\.0\.0\.1)(:\d+)?",
-                r"\1host.docker.internal\3",
-                base_url,
-            )
+            if proxy_internal_url and proxy_external_url and base_url.startswith(proxy_internal_url):
+                entry["baseUrl"] = f"{proxy_external_url}{base_url[len(proxy_internal_url):]}"
+            else:
+                entry["baseUrl"] = _docker_rewrite_url(base_url)
     return providers
 
 
@@ -138,12 +159,6 @@ def _to_openclaw_models(selected: list[dict]) -> list[dict]:
             item["maxTokens"] = m["max_tokens"]
         result.append(item)
     return result
-
-
-def _mask_key(key: str) -> str:
-    if len(key) <= 8:
-        return key[:2] + "***"
-    return key[:6] + "***" + key[-3:]
 
 
 async def _get_running_pod(k8s: K8sClient, instance: Instance) -> str | None:
@@ -310,7 +325,7 @@ async def read_openclaw_providers(
             if db_cfg.key_source == "personal":
                 uk = user_keys.get(provider)
                 if uk:
-                    api_key_masked = _mask_key(uk.api_key)
+                    api_key_masked = mask_personal_key(uk.provider, uk.api_key)
 
         entries.append(OpenClawProviderEntry(
             provider=provider,
@@ -372,6 +387,15 @@ async def read_instance_llm_configs(
     )
     user_keys = {k.provider: k for k in user_keys_result.scalars().all()}
 
+    db_configs_result = await db.execute(
+        select(UserLlmConfig).where(
+            UserLlmConfig.user_id == instance.created_by,
+            UserLlmConfig.org_id == instance.org_id,
+            not_deleted(UserLlmConfig),
+        )
+    )
+    db_configs = {c.provider: c for c in db_configs_result.scalars().all()}
+
     override_result = await db.execute(
         select(InstanceLlmOverride).where(
             InstanceLlmOverride.instance_id == instance.id,
@@ -384,17 +408,21 @@ async def read_instance_llm_configs(
     for provider, prov_cfg in pod_providers.items():
         pod_base_url = prov_cfg.get("baseUrl", "")
         is_proxy = any(h in pod_base_url for h in proxy_hosts)
-        key_source = "org" if is_proxy else "personal"
+        db_cfg = db_configs.get(provider)
+        key_source = db_cfg.key_source if db_cfg else ("org" if is_proxy else "personal")
 
         models_raw = prov_cfg.get("models", [])
-        selected_models = _from_openclaw_models(models_raw) if models_raw else None
+        selected_models = normalize_selected_models(
+            provider,
+            _from_openclaw_models(models_raw) if models_raw else None,
+        )
 
         uk = user_keys.get(provider)
         override = overrides.get(provider)
 
         personal_key_masked: str | None = None
         if key_source == "personal" and uk:
-            personal_key_masked = _mask_key(uk.api_key)
+            personal_key_masked = mask_personal_key(uk.provider, uk.api_key)
 
         entries.append({
             "provider": provider,
@@ -488,6 +516,8 @@ async def write_instance_llm_configs(
         existing_json["models"]["providers"] = providers
 
         _ensure_gateway_config(existing_json, instance)
+        if "codex" in providers:
+            existing_json["gateway"].setdefault("mode", "local")
         _set_default_agent_model(existing_json, providers)
         await _write_config_file(fs, existing_json)
 
@@ -581,6 +611,8 @@ async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None
         existing_json["models"]["providers"] = providers
 
         _ensure_gateway_config(existing_json, instance)
+        if "codex" in providers:
+            existing_json["gateway"].setdefault("mode", "local")
         _set_default_agent_model(existing_json, providers)
         await _write_config_file(fs, existing_json)
 
@@ -613,14 +645,6 @@ async def ensure_openclaw_gateway_config(instance: Instance, db: AsyncSession) -
 
 
 CHANNEL_PLUGIN_DIR = "openclaw-channel-nodeskclaw"
-NODESKCLAW_CHANNEL_TOOLS = (
-    "nodeskclaw_blackboard",
-    "nodeskclaw_topology",
-    "nodeskclaw_performance",
-    "nodeskclaw_proposals",
-    "nodeskclaw_gene_discovery",
-    "nodeskclaw_shared_files",
-)
 PLUGIN_FILES = [
     "index.ts",
     "package.json",
@@ -734,7 +758,7 @@ def _inject_channel_config(
 
     tools_cfg = config.setdefault("tools", {})
     allow = tools_cfg.setdefault("allow", [])
-    for tool_name in NODESKCLAW_CHANNEL_TOOLS:
+    for tool_name in NODESKCLAW_TOOL_NAMES:
         if tool_name not in allow:
             allow.append(tool_name)
 
@@ -800,7 +824,7 @@ async def add_workspace_channel_account(
 
         tools_cfg = existing.setdefault("tools", {})
         allow = tools_cfg.setdefault("allow", [])
-        for tool_name in NODESKCLAW_CHANNEL_TOOLS:
+        for tool_name in NODESKCLAW_TOOL_NAMES:
             if tool_name not in allow:
                 allow.append(tool_name)
 
@@ -1228,7 +1252,7 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
 
                 tools_cfg = config.setdefault("tools", {})
                 allow = tools_cfg.setdefault("allow", [])
-                for tool_name in NODESKCLAW_CHANNEL_TOOLS:
+                for tool_name in NODESKCLAW_TOOL_NAMES:
                     if tool_name not in allow:
                         allow.append(tool_name)
                         changed = True

@@ -37,6 +37,7 @@ class RuntimeSpec:
     has_web_ui: bool = True
     has_init_script: bool = True
     available: bool = True
+    docker_command: tuple[str, ...] | None = None
 
 
 class RuntimeRegistry:
@@ -94,6 +95,7 @@ def _register_builtins() -> None:
         display_powered_by="ZeroClaw",
         gateway_port=8080,
         health_probe_path="/health",
+        docker_command=("zeroclaw", "gateway", "start", "-p", "8080", "--host", "0.0.0.0"),
         order=1,
         image_registry_key="image_registry_zeroclaw",
         config_rel_path=".zeroclaw/config.toml",

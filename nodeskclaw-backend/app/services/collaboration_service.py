@@ -547,6 +547,7 @@ async def send_system_message_to_agents(
     agent_ids: list[str],
     message: str,
     db: AsyncSession,
+    mention_targets: list[str] | None = None,
 ) -> None:
     """Send a system-generated message to specific agents via the MessageBus."""
     from app.services.runtime.messaging.bus import message_bus
@@ -557,6 +558,7 @@ async def send_system_message_to_agents(
         content=message,
         source_label="system_notify",
         targets=agent_ids,
+        mention_targets=mention_targets,
     )
 
     result = await message_bus.publish(envelope, db=db)
