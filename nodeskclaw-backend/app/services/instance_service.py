@@ -332,7 +332,12 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
                 if instance.id in tunnel_adapter.connected_instances:
                     detail.health_status = "healthy"
                 elif pods:
-                    detail.health_status = "unhealthy"
+                    has_ready_pod = any(
+                        all(c.get("ready", False) for c in p.get("containers", []))
+                        and len(p.get("containers", [])) > 0
+                        for p in pods
+                    )
+                    detail.health_status = "healthy" if has_ready_pod else "unhealthy"
                 else:
                     detail.health_status = "unknown"
         except Exception as e:
