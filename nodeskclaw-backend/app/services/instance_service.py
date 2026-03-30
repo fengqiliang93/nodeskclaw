@@ -18,6 +18,7 @@ from app.models.deploy_record import DeployAction, DeployRecord, DeployStatus
 from app.models.instance import Instance, InstanceStatus
 from app.schemas.deploy import DeployRecordInfo
 from app.schemas.instance import InstanceDetail, InstanceInfo, UpdateConfigRequest, WorkspaceBrief
+from app.utils.display_status import compute_display_status
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
 from app.services.k8s.resource_builder import build_configmap, build_labels
@@ -341,6 +342,7 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
         instance.health_status = detail.health_status
         await db.commit()
 
+    detail.display_status = compute_display_status(detail.status, detail.health_status)
     return detail
 
 
