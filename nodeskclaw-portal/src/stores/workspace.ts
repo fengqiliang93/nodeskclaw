@@ -729,6 +729,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
     if (_isDuplicateMessage(msgId)) return
 
+    const existingStreaming = chatMessages.value.find(
+      (m) => m.sender_id === instanceId && m.streaming,
+    )
+    if (existingStreaming) {
+      existingStreaming.streaming = false
+      existingStreaming.message_type = 'collaboration'
+      existingStreaming.content = content
+      existingStreaming.id = msgId
+      existingStreaming.intent = intent
+      existingStreaming.priority = priority
+      existingStreaming.envelope_id = data.envelope_id as string | undefined
+      return
+    }
+
     chatMessages.value.push({
       id: msgId,
       sender_type: 'agent',
@@ -737,10 +751,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       content,
       message_type: 'collaboration',
       created_at: new Date().toISOString(),
-      trace_id: data.trace_id as string | undefined,
+      trace_id: traceId,
       causation_id: data.causation_id as string | undefined,
-      intent: data.intent as string | undefined,
-      priority: data.priority as string | undefined,
+      intent,
+      priority,
       envelope_id: data.envelope_id as string | undefined,
     })
     _incrementUnread()
