@@ -343,6 +343,25 @@ async def get_instance_detail(instance_id: str, db: AsyncSession) -> InstanceDet
         except Exception as e:
             logger.warning("Failed to fetch pods for instance %s: %s", instance_id, e)
 
+    if (
+        not instance.ingress_domain
+        and instance.compute_provider != "docker"
+        and cluster
+        and cluster.is_k8s
+        and cluster.credentials_encrypted
+    ):
+        try:
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            _heal_k8s = await require_k8s_client(cluster)
+            _ing = await _heal_k8s.get_ingress(instance.namespace, _k8s_name(instance))
+            if _ing.spec and _ing.spec.rules and _ing.spec.rules[0].host:
+                instance.ingress_domain = _ing.spec.rules[0].host
+                await db.commit()
+                detail.ingress_domain = instance.ingress_domain
+                detail.endpoint_url = _compute_endpoint_url(instance)
+        except Exception:
+            pass
+
     if instance.status == InstanceStatus.running and detail.health_status != instance.health_status:
         instance.health_status = detail.health_status
         await db.commit()
