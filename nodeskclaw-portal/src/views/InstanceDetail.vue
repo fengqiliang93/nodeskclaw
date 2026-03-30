@@ -63,7 +63,6 @@ interface EngineInfo {
 }
 const ENGINE_INFO: Record<string, EngineInfo> = {
   openclaw: { name: '全能工作引擎', description: '支持工具调用、基因系统、多技能管理', poweredBy: 'OpenClaw', tags: ['默认'] },
-  zeroclaw: { name: '高性能工作引擎', description: 'Rust 构建，极速响应，适合高并发场景', poweredBy: 'ZeroClaw', tags: [] },
   nanobot:  { name: '轻量工作引擎', description: '超轻量，快速部署，适合简单对话场景', poweredBy: 'Nanobot', tags: [] },
 }
 const engineInfo = computed(() => ENGINE_INFO[instance.value?.runtime ?? 'openclaw'] ?? null)
