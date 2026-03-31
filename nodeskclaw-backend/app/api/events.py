@@ -133,14 +133,7 @@ async def events_stream(
             except asyncio.CancelledError:
                 pass
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 async def _watch_all_events(k8s: K8sClient):

@@ -796,7 +796,11 @@ class _NoCacheAPIMiddleware:
         async def _send(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                if "cache-control" not in headers:
+                ct = headers.get("content-type", "")
+                if "text/event-stream" in ct:
+                    headers["X-Accel-Buffering"] = "no"
+                    headers["Cache-Control"] = "no-cache"
+                elif "cache-control" not in headers:
                     headers.append("Cache-Control", "no-store")
             await send(message)
 
