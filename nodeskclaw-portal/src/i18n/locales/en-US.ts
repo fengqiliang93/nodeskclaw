@@ -1301,6 +1301,7 @@ const enUS = {
     },
     deploy: {
       localhost_not_reachable: "AGENT_API_BASE_URL is currently localhost, which is unreachable from K8s pods. Set AGENT_API_BASE_URL to an external address reachable by K8s pods in the backend .env, then restart.",
+      ingress_base_domain_required: "K8s deployment requires an access domain (ingress_base_domain). Please configure it in System Settings before deploying.",
     },
     storage: {
       local_file_disabled: "Local file serving is unavailable when object storage is enabled",

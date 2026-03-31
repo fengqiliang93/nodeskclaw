@@ -416,6 +416,16 @@ async def deploy_instance(
                 message_key="errors.deploy.localhost_not_reachable",
             )
 
+        from app.services.config_service import get_config
+        _ingress_domain = await get_config("ingress_base_domain", db)
+        if not _ingress_domain:
+            raise BadRequestError(
+                message="K8s 部署需要配置访问域名（ingress_base_domain），"
+                        "否则 AI 员工将无法通过浏览器访问 Web UI。"
+                        "请在系统设置中配置后再部署。",
+                message_key="errors.deploy.ingress_base_domain_required",
+            )
+
     env_vars = dict(req.env_vars) if req.env_vars else {}
     gateway_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")
     if not gateway_token:
@@ -923,7 +933,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 await db.commit()
                 await adapter.setup_proxy(ctx, ingress_host)
             else:
-                logger.info("未配置 ingress_base_domain，跳过 Ingress 创建（Tunnel 模式无需 Ingress）")
+                logger.error("ingress_base_domain 未配置但部署已进入异步管道（前置校验应已拦截）")
 
             # Step 8: 配置网络策略（多租户隔离）
             _publish(8, steps[7])
