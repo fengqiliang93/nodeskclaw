@@ -6,19 +6,20 @@
 #   ./deploy/cli.sh <command> [target] [options]
 #
 # 命令:
-#   deploy [target]     构建 + 部署（默认 all，默认 staging）
-#   release <version>   构建 CE 公开镜像 + 打 git tag + 创建 GitHub Pre-release
+#   deploy [target]     构建 + 部署（默认 CE 模式，不含 admin）
+#   release <version>   构建镜像 + 打 git tag + 创建 GitHub Pre-release
 #   promote <version>   staging 镜像 -> 生产
 #   init                首次环境初始化
 #
 # 目标 (deploy 命令):
-#   all       backend + admin + portal + proxy（默认）
+#   all       backend + portal + proxy（默认；--ee 时加 admin）
 #   backend   后端
-#   admin     Admin 前端
+#   admin     Admin 前端（需 --ee）
 #   portal    Portal 前端
 #   proxy     LLM Proxy
 #
 # 选项:
+#   --ee            EE 模式（使用 REGISTRY，包含 admin）
 #   --staging       staging 环境（默认，可省略）
 #   --prod          生产环境（需交互确认）
 #   --context CTX   覆盖默认 K8s 上下文
@@ -31,7 +32,8 @@
 #   --force         init 时跳过 Secret 差异确认
 #
 # 前置条件:
-#   - deploy/.env.local 已配置 REGISTRY 和 KUBE_CONTEXT
+#   - deploy/.env.local 已配置 REGISTRY（必填）和 KUBE_CONTEXT
+#   - PUBLIC_REGISTRY 可选（EE 维护者配置后 deploy 默认使用公开仓库）
 #   - docker login 已完成
 #   - gh CLI 已安装并认证（release 命令需要）
 # ============================================================
@@ -41,6 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>"
+PUBLIC_REGISTRY=""   # 可选：公开镜像仓库（配置后 deploy 默认使用此仓库）
 KUBE_CONTEXT=""
 STAGING_NS="nodeskclaw-staging"
 PROD_NS="nodeskclaw-system"
@@ -300,7 +303,7 @@ deploy_to_k8s() {
 
 get_all_targets() {
   local targets=(backend portal)
-  [[ -d "$PROJECT_ROOT/ee" ]] && targets=(backend admin portal)
+  [[ "$EE_MODE" == true ]] && targets=(backend admin portal)
   [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
   echo "${targets[@]}"
 }
@@ -312,9 +315,15 @@ cmd_deploy() {
     require_context
   fi
 
-  if [[ "$TARGET" == "admin" && ! -d "$PROJECT_ROOT/ee" ]]; then
-    err "admin 组件需要 ee/ 目录（仅 EE 版本可用）"
-    exit 1
+  if [[ "$TARGET" == "admin" ]]; then
+    if [[ "$EE_MODE" != true ]]; then
+      err "admin 组件需要 --ee 参数"
+      exit 1
+    fi
+    if [[ ! -d "$PROJECT_ROOT/ee" ]]; then
+      err "admin 组件需要 ee/ 目录（仅 EE 版本可用）"
+      exit 1
+    fi
   fi
   local targets=()
   if [[ "$TARGET" == "all" ]]; then
@@ -393,15 +402,26 @@ generate_changelog() {
 
 cmd_release() {
   require_gh
-  REGISTRY="$(echo "$REGISTRY" | sed 's|/[^/]*$|/public|')"
-  log "=== RELEASE (CE): 构建镜像 + 创建 GitHub Release ${VERSION} ==="
-  log "公开镜像仓库: ${REGISTRY}"
-  log "构建模式: CE（不含 ee/ 代码，不含 admin 组件）"
+  local original_registry="$REGISTRY"
+  local ce_registry="${PUBLIC_REGISTRY:-$original_registry}"
+  local has_ee_phase=false
+  [[ -n "$PUBLIC_REGISTRY" && -d "$PROJECT_ROOT/ee" ]] && has_ee_phase=true
+
+  log "=== RELEASE: 构建镜像 + 创建 GitHub Release ${VERSION} ==="
+  log "CE 仓库: ${ce_registry}"
+  [[ "$has_ee_phase" == true ]] && log "EE 仓库: ${original_registry}"
+  [[ -n "$PUBLIC_REGISTRY" && ! -d "$PROJECT_ROOT/ee" ]] && warn "ee/ 目录不存在，跳过 EE 镜像构建"
   echo ""
 
   CE_ONLY=true
-  local targets=(backend portal)
-  [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
+  local ce_targets=(backend portal)
+  [[ "$SKIP_PROXY" != true ]] && ce_targets+=(proxy)
+
+  local ee_targets=()
+  if [[ "$has_ee_phase" == true ]]; then
+    ee_targets=(backend admin portal)
+    [[ "$SKIP_PROXY" != true ]] && ee_targets+=(proxy)
+  fi
 
   log "生成 changelog..."
   local notes_file; notes_file="$(generate_changelog "$VERSION")"
@@ -410,16 +430,34 @@ cmd_release() {
   cat "$notes_file"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  confirm "即将构建镜像（${targets[*]}）、创建 git tag ${VERSION} 并发布 GitHub Pre-release"
+  local confirm_msg="即将构建镜像（CE: ${ce_targets[*]} → ${ce_registry}"
+  [[ "$has_ee_phase" == true ]] && confirm_msg+="，EE: ${ee_targets[*]} → ${original_registry}"
+  confirm_msg+="）、创建 git tag ${VERSION} 并发布 GitHub Pre-release"
+  confirm "$confirm_msg"
 
-  log "构建并推送镜像（标签: ${TAG}）..."
-  for t in "${targets[@]}"; do
+  REGISTRY="$ce_registry"
+  CE_ONLY=true
+  log "构建 CE 镜像（标签: ${TAG}）..."
+  for t in "${ce_targets[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     if ! build_and_push "$t"; then
-      err "[$t] 镜像构建失败，中止 release"
+      err "[$t] CE 镜像构建失败，中止 release"
       exit 1
     fi
   done
+
+  if [[ "$has_ee_phase" == true ]]; then
+    REGISTRY="$original_registry"
+    CE_ONLY=""
+    log "构建 EE 镜像（标签: ${TAG}）..."
+    for t in "${ee_targets[@]}"; do
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      if ! build_and_push "$t"; then
+        err "[$t] EE 镜像构建失败，中止 release"
+        exit 1
+      fi
+    done
+  fi
 
   echo ""
   log "创建 git tag..."
@@ -437,7 +475,8 @@ cmd_release() {
 
   echo ""
   ok "GitHub Pre-release 已创建: ${VERSION}"
-  log "镜像已推送: ${REGISTRY}/*:${TAG}"
+  log "CE 镜像: ${ce_registry}/*:${TAG}"
+  [[ "$has_ee_phase" == true ]] && log "EE 镜像: ${original_registry}/*:${TAG}"
   log "验证地址: https://github.com/NoDeskAI/nodeskclaw/releases/tag/${VERSION}"
   log "准备好升级生产环境后，运行:"
   echo "  ./deploy/cli.sh promote ${VERSION}"
@@ -545,7 +584,7 @@ cmd_init() {
 
   log "应用 K8s 部署清单（Deployment + Service）..."
   for f in backend.yaml admin.yaml portal.yaml; do
-    [[ "$f" == "admin.yaml" && ! -d "$PROJECT_ROOT/ee" ]] && continue
+    [[ "$f" == "admin.yaml" && "$EE_MODE" != true ]] && continue
     if [[ -f "$SCRIPT_DIR/k8s/$f" ]]; then
       sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$SCRIPT_DIR/k8s/$f" \
         | $KUBECTL -n "$NAMESPACE" apply -f -
@@ -572,19 +611,20 @@ usage() {
 用法: $0 <command> [target] [options]
 
 命令:
-  deploy [target]     构建 + 部署（默认 all，默认 staging）
-  release <version>   构建 CE 公开镜像 + 打 git tag + 创建 GitHub Pre-release
+  deploy [target]     构建 + 部署（默认 CE 模式，不含 admin）
+  release <version>   构建镜像 + 打 git tag + 创建 GitHub Pre-release
   promote <version>   staging 镜像 -> 生产
   init                首次环境初始化
 
 目标 (deploy 命令):
-  all       backend + portal + proxy（默认；含 ee/ 时加 admin）
+  all       backend + portal + proxy（默认；--ee 时加 admin）
   backend   后端
-  admin     Admin 前端（需 ee/ 目录）
+  admin     Admin 前端（需 --ee）
   portal    Portal 前端
   proxy     LLM Proxy
 
 选项:
+  --ee            EE 模式（使用 REGISTRY，包含 admin）
   --staging       staging 环境（默认，可省略）
   --prod          生产环境（需交互确认）
   --context CTX   覆盖默认 K8s 上下文
@@ -613,6 +653,8 @@ SKIP_PROXY=false
 ENV_FILE=""
 FORCE=false
 IS_PROD=false
+EE_MODE=false
+CE_ONLY=""
 
 case "$COMMAND" in
   deploy)
@@ -651,6 +693,7 @@ while [[ $# -gt 0 ]]; do
     --no-cache)    NO_CACHE="--no-cache" ;;
     --env-file)    ENV_FILE="$2"; shift ;;
     --force)       FORCE=true ;;
+    --ee)          EE_MODE=true ;;
     *)             err "未知参数: $1"; usage ;;
   esac
   shift
@@ -679,6 +722,16 @@ fi
 if [[ "$DEPLOY_ONLY" == true && -z "$CUSTOM_TAG" && -z "$VERSION" ]]; then
   err "--deploy-only 需要通过 --tag 指定镜像标签"
   exit 1
+fi
+
+if [[ "$EE_MODE" == true ]]; then
+  if [[ ! -d "$PROJECT_ROOT/ee" ]]; then
+    err "--ee 模式需要 ee/ 目录（仅 EE 开发环境可用）"
+    exit 1
+  fi
+elif [[ "$COMMAND" != "release" ]]; then
+  [[ -n "$PUBLIC_REGISTRY" ]] && REGISTRY="$PUBLIC_REGISTRY"
+  CE_ONLY=true
 fi
 
 KUBECTL="kubectl"

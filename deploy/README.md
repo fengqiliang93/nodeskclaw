@@ -33,11 +33,24 @@ K8s YAML 清单不包含 `namespace` 字段，由 `kubectl -n <NS>` 在运行时
 
 创建 `deploy/.env.local`（已被 `.gitignore` 忽略）：
 
+**开源用户（CE）：**
+
 ```bash
 # deploy/.env.local
 REGISTRY="<YOUR_REGISTRY>/<YOUR_NAMESPACE>"
 KUBE_CONTEXT="<YOUR_KUBECTL_CONTEXT>"
 ```
+
+**EE 维护者：**
+
+```bash
+# deploy/.env.local
+REGISTRY="<PRIVATE_REGISTRY>/<PRIVATE_NAMESPACE>"  # EE 私有仓库
+PUBLIC_REGISTRY="<PUBLIC_REGISTRY>/<PUBLIC_NAMESPACE>"  # CE 公开仓库（可选）
+KUBE_CONTEXT="<YOUR_KUBECTL_CONTEXT>"
+```
+
+`PUBLIC_REGISTRY` 为可选配置。未配置时，所有命令始终使用 `REGISTRY`，行为与单仓库模式一致。配置后，`deploy` 默认从 `PUBLIC_REGISTRY` 拉取 CE 镜像，`deploy --ee` 从 `REGISTRY` 拉取 EE 镜像。
 
 其他前提：
 
@@ -49,15 +62,22 @@ KUBE_CONTEXT="<YOUR_KUBECTL_CONTEXT>"
 
 ## 用法
 
-### 日常部署（默认 staging）
+### 日常部署（默认 CE 模式，staging）
 
 ```bash
-./deploy/cli.sh deploy                # 全部组件（backend + admin + portal + proxy）
+./deploy/cli.sh deploy                # CE 组件（backend + portal + proxy，不含 admin）
 ./deploy/cli.sh deploy backend        # 只部署后端
-./deploy/cli.sh deploy admin          # 只部署 Admin 前端
 ./deploy/cli.sh deploy portal         # 只部署 Portal 前端
 ./deploy/cli.sh deploy proxy          # 只部署 LLM Proxy
-./deploy/cli.sh deploy --skip-proxy   # 全部组件但跳过 proxy
+./deploy/cli.sh deploy --skip-proxy   # CE 组件但跳过 proxy
+```
+
+### EE 模式部署
+
+```bash
+./deploy/cli.sh deploy --ee                # EE 全量（backend + admin + portal + proxy）
+./deploy/cli.sh deploy --ee admin          # 只部署 Admin 前端（需 --ee）
+./deploy/cli.sh deploy --ee --skip-proxy   # EE 组件但跳过 proxy
 ```
 
 ### 部署到生产
@@ -81,7 +101,9 @@ KUBE_CONTEXT="<YOUR_KUBECTL_CONTEXT>"
 # 1. 构建并部署到 staging（指定版本标签）
 ./deploy/cli.sh deploy --tag v0.5.0-beta.1
 
-# 2. 测试通过后，构建 CE 公开镜像 + 打 tag + 创建 GitHub Pre-release（不含 admin 和 ee/ 代码）
+# 2. 测试通过后，构建镜像 + 打 tag + 创建 GitHub Pre-release
+#    - 未配置 PUBLIC_REGISTRY：所有镜像推到 REGISTRY
+#    - 已配置 PUBLIC_REGISTRY 且有 ee/：CE 镜像 -> PUBLIC_REGISTRY，EE 镜像 -> REGISTRY
 ./deploy/cli.sh release v0.5.0-beta.1
 
 # 3. 将 staging 验证过的镜像推到生产
@@ -125,12 +147,14 @@ kubectl --context <CTX> -n <NS> apply -f deploy/k8s/ingress.yaml
 
 ## CE/EE 构建差异
 
-`cli.sh` 自动检测项目根目录下是否存在 `ee/` 目录：
+通过 `--ee` 参数控制构建模式：
 
-- **CE 模式**（无 `ee/`）：使用各组件自身的 Dockerfile 和 build context，构建纯 CE 镜像。admin 组件跳过构建（CE 不含管理后台）。
-- **EE 模式**（有 `ee/`）：
+- **CE 模式**（默认，无 `--ee`）：使用各组件自身的 Dockerfile 和 build context，构建纯 CE 镜像。admin 组件不包含在内。
+- **EE 模式**（`--ee`）：需要 `ee/` 目录存在。
   - backend：追加 `COPY ee/ ./ee/` 将 EE 后端模块打入镜像
   - admin：直接使用 `ee/nodeskclaw-frontend/Dockerfile` 构建（该目录本身就是完整的 EE 前端项目）
   - portal：生成临时 Dockerfile，`COPY ee/frontend/portal/ /ee/frontend/portal/` 使 Vite alias 覆盖生效
+
+`release` 命令在 `PUBLIC_REGISTRY` 已配置且 `ee/` 存在时，自动分两阶段构建：Phase 1 推送 CE 镜像到 `PUBLIC_REGISTRY`，Phase 2 推送 EE 镜像到 `REGISTRY`。未配置 `PUBLIC_REGISTRY` 时仅推送到 `REGISTRY`。
 
 K8s 清单（`k8s/*.yaml`）CE/EE 通用，差异仅在镜像内容。
