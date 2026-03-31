@@ -332,15 +332,13 @@ async def get_instance_detail(instance_id: str, db: AsyncSession, org_id: str | 
 
             if instance.status == InstanceStatus.running:
                 from app.services.tunnel import tunnel_adapter
-                if instance.id in tunnel_adapter.connected_instances:
+                from app.services.runtime.compute.k8s_provider import evaluate_k8s_health
+                tunnel_connected = instance.id in tunnel_adapter.connected_instances
+                probe = evaluate_k8s_health(tunnel_connected, pods)
+                if probe["healthy"] is True:
                     detail.health_status = "healthy"
-                elif pods:
-                    has_ready_pod = any(
-                        all(c.get("ready", False) for c in p.get("containers", []))
-                        and len(p.get("containers", [])) > 0
-                        for p in pods
-                    )
-                    detail.health_status = "healthy" if has_ready_pod else "unhealthy"
+                elif probe["healthy"] is False:
+                    detail.health_status = "unhealthy"
                 else:
                     detail.health_status = "unknown"
         except Exception as e:
