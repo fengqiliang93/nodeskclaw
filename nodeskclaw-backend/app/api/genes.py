@@ -1,8 +1,11 @@
 """Gene Evolution Ecosystem API routes."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.deps import get_current_org, get_db
 from app.core.exceptions import BadRequestError
 from app.core.security import get_current_user
@@ -26,7 +29,34 @@ from app.schemas.gene import (
 )
 from app.services import gene_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _validate_gene_callback_auth(
+    payload: LearningCallbackPayload,
+    mode: str,
+    sig: str | None,
+    instance_id: str | None,
+) -> None:
+    if sig or instance_id:
+        if not sig or not instance_id:
+            raise BadRequestError("回调签名参数不完整")
+        if payload.instance_id != instance_id:
+            raise BadRequestError("回调实例与签名参数不匹配")
+        if not gene_service.verify_gene_callback_signature(payload, mode, sig):
+            raise BadRequestError("回调签名无效")
+        return
+
+    if not settings.ALLOW_LEGACY_GENE_CALLBACKS:
+        raise BadRequestError("缺少回调签名参数")
+
+    logger.warning(
+        "Allowing legacy unsigned gene callback mode=%s task_id=%s instance_id=%s",
+        mode,
+        payload.task_id,
+        payload.instance_id,
+    )
 
 
 # ═══════════════════════════════════════════════════
@@ -309,14 +339,11 @@ async def create_gene_from_agent(
 @router.post("/genes/learning-callback")
 async def learning_callback(
     payload: LearningCallbackPayload,
-    sig: str = Query(...),
-    instance_id: str = Query(...),
+    sig: str | None = Query(None),
+    instance_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    if payload.instance_id != instance_id:
-        raise BadRequestError("回调实例与签名参数不匹配")
-    if not gene_service.verify_gene_callback_signature(payload, "learn", sig):
-        raise BadRequestError("回调签名无效")
+    _validate_gene_callback_auth(payload, "learn", sig, instance_id)
     result = await gene_service.handle_learning_callback(db, payload)
     return ApiResponse(data=result)
 
@@ -324,14 +351,11 @@ async def learning_callback(
 @router.post("/genes/creation-callback")
 async def creation_callback(
     payload: LearningCallbackPayload,
-    sig: str = Query(...),
-    instance_id: str = Query(...),
+    sig: str | None = Query(None),
+    instance_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    if payload.instance_id != instance_id:
-        raise BadRequestError("回调实例与签名参数不匹配")
-    if not gene_service.verify_gene_callback_signature(payload, "create", sig):
-        raise BadRequestError("回调签名无效")
+    _validate_gene_callback_auth(payload, "create", sig, instance_id)
     result = await gene_service.handle_creation_callback(db, payload)
     return ApiResponse(data=result)
 
@@ -339,14 +363,11 @@ async def creation_callback(
 @router.post("/genes/forgetting-callback")
 async def forgetting_callback(
     payload: LearningCallbackPayload,
-    sig: str = Query(...),
-    instance_id: str = Query(...),
+    sig: str | None = Query(None),
+    instance_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    if payload.instance_id != instance_id:
-        raise BadRequestError("回调实例与签名参数不匹配")
-    if not gene_service.verify_gene_callback_signature(payload, "forget", sig):
-        raise BadRequestError("回调签名无效")
+    _validate_gene_callback_auth(payload, "forget", sig, instance_id)
     result = await gene_service.handle_forgetting_callback(db, payload)
     return ApiResponse(data=result)
 
