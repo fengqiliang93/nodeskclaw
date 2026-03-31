@@ -43,6 +43,7 @@ const selectedImage = ref('')
 const storageGi = ref(20)
 const deploying = ref(false)
 const error = ref('')
+const errorKey = ref('')
 const currentStep = ref(1)
 
 // ── Engine selector ──
@@ -464,6 +465,7 @@ async function handleDeploy() {
       router.push('/instances')
     }
   } catch (e: any) {
+    errorKey.value = e?.response?.data?.message_key || ''
     error.value = resolveApiErrorMessage(e, '部署失败')
   } finally {
     deploying.value = false
@@ -1054,7 +1056,15 @@ async function handleDeploy() {
         <div class="pt-4 space-y-3">
           <div v-if="error" class="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
             <AlertCircle class="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <p class="text-sm text-destructive leading-relaxed">{{ error }}</p>
+            <div class="flex-1 space-y-1.5">
+              <p class="text-sm text-destructive leading-relaxed">{{ error }}</p>
+              <p
+                v-if="errorKey === 'errors.deploy.ingress_base_domain_required'"
+                class="text-xs text-muted-foreground leading-relaxed"
+              >
+                {{ t('errors.deploy.ingress_base_domain_hint') }}
+              </p>
+            </div>
           </div>
           <button
             :disabled="!canDeploy"

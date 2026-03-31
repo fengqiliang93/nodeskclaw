@@ -1302,6 +1302,7 @@ const zhCN = {
     deploy: {
       localhost_not_reachable: "AGENT_API_BASE_URL 当前为 localhost，K8s 集群中的 AI 员工无法通过此地址连接后端。请在后端 .env 中将 AGENT_API_BASE_URL 设置为 K8s Pod 可达的外部地址后重启后端。",
       ingress_base_domain_required: "K8s 部署需要配置访问域名（ingress_base_domain），请在系统设置中配置后再部署。",
+      ingress_base_domain_hint: "此配置需要组织管理员完成。如果你是管理员，请前往管理后台的系统设置页面配置访问域名。",
     },
     storage: {
       local_file_disabled: "对象存储启用时不提供本地文件服务",
