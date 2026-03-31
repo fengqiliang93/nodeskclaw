@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # ── App ──────────────────────────────────────────────
     APP_NAME: str = "NoDeskClaw"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "dev"
     DEBUG: bool = False
     LOG_SQL: bool = False
 
