@@ -116,6 +116,7 @@ const zhCN = {
     welcomeBack: "欢迎回来",
     loginSubtitle: "登录以管理你的 AI 员工",
     accountPasswordLogin: "账号密码",
+    emailCodeLogin: "邮箱验证码",
     verificationCodeLogin: "验证码登录",
     emailLogin: "邮箱登录",
     phoneLogin: "手机登录",
@@ -138,6 +139,7 @@ const zhCN = {
     loggingIn: "登录中...",
     nameLabel: "名称",
     namePlaceholder: "你的名字（可选）",
+    emailLabel: "邮箱",
     accountLabel: "账号",
     accountLoginPlaceholder: "邮箱、手机号或用户名",
     accountPlaceholder: "邮箱、手机号或用户名",
@@ -147,7 +149,8 @@ const zhCN = {
     passwordMinLength: "至少 6 位",
     codeLabel: "验证码",
     codePlaceholder: "6 位验证码",
-    codeLoginHint: "手机号未注册将自动创建账户；邮箱需已注册且系统已配置 SMTP",
+    codeLoginHint: "当前仅支持邮箱验证码登录，邮箱需已注册且系统已配置 SMTP",
+    codeEmailOnly: "邮箱验证码登录当前仅支持邮箱地址",
     landing: {
       headline1: '你的第一间',
       headline2: '赛博办公室',
@@ -1581,6 +1584,7 @@ const zhCN = {
       current_org_not_found: "当前组织不存在或已删除",
       super_admin_required: "仅限平台管理员操作",
       super_admin_org_required: "超管需先选择要操作的组织",
+      org_required: "请先选择组织",
       org_admin_required: "仅限组织管理员操作",
       org_member_required: "您不是该组织的成员",
       missing_tenant_key: "当前用户没有关联飞书租户，无法使用飞书开通组织",
@@ -1607,8 +1611,11 @@ const zhCN = {
     storage: {
       not_configured: "文件存储服务未配置",
       presign_failed: "生成文件下载链接失败，请稍后重试",
+      local_file_disabled: "本地文件存储已禁用，请联系管理员或更换存储方式",
+      signature_missing: "缺少下载签名参数，无法访问该文件",
+      signature_invalid: "下载签名无效或已过期，请重新获取下载链接",
+      file_not_found: "文件不存在或已被删除",
     },
-<<<<<<< HEAD
     settings: {
       unsupported_key: "不支持的配置项",
     },
@@ -1669,8 +1676,6 @@ const zhCN = {
     trust: {
       decision_record_not_found: "审批记录不存在",
     },
-=======
->>>>>>> 94abd5b (feat(portal): 办公室模板保存与一键部署前端)
     workspace: {
       not_found: "办公室不存在",
       add_agent_invalid: "添加 AI 员工参数不合法",

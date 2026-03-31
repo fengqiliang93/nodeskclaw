@@ -202,6 +202,30 @@ async def _run_deploy_pipeline_inner(workspace_deploy_id: str) -> None:
         await db.commit()
 
     if not workspace_id:
+        error_msg = "workspace deleted during deploy"
+        failed_count = len(agent_specs)
+        async with async_session_factory() as db:
+            r = await db.execute(select(WorkspaceDeploy).where(WorkspaceDeploy.id == workspace_deploy_id))
+            wd = r.scalar_one_or_none()
+            if wd:
+                wd.status = "failed"
+                detail = dict(wd.progress_detail or {})
+                detail["error"] = error_msg
+                detail["current_phase"] = "done"
+                detail["phases_completed"] = list(detail.get("phases_completed") or [])
+                wd.failed_agents = failed_count
+                wd.progress_detail = detail
+                await db.commit()
+        _publish(
+            workspace_deploy_id,
+            "complete",
+            {
+                "status": "failed",
+                "error": error_msg,
+                "success_count": 0,
+                "failed_count": failed_count,
+            },
+        )
         return
 
     _publish(workspace_deploy_id, "phase", {"phase": "blackboard", "message": "应用黑板内容"})

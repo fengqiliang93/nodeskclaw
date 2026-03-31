@@ -116,6 +116,7 @@ const enUS = {
     welcomeBack: "Welcome back",
     loginSubtitle: "Sign in to manage your AI employees",
     accountPasswordLogin: "Password",
+    emailCodeLogin: "Email code",
     verificationCodeLogin: "Verification code",
     emailLogin: "Email sign in",
     phoneLogin: "Phone sign in",
@@ -138,6 +139,7 @@ const enUS = {
     loggingIn: "Logging in...",
     nameLabel: "Name",
     namePlaceholder: "Your name (optional)",
+    emailLabel: "Email",
     accountLabel: "Account",
     accountLoginPlaceholder: "Email, phone number, or username",
     accountPlaceholder: "Email, phone number, or username",
@@ -147,7 +149,8 @@ const enUS = {
     passwordMinLength: "At least 6 characters",
     codeLabel: "Verification code",
     codePlaceholder: "6-digit code",
-    codeLoginHint: "Unregistered phone numbers will auto-create an account; email requires registration and system SMTP configuration",
+    codeLoginHint: "Email verification code sign-in is currently supported only for registered emails with SMTP configured",
+    codeEmailOnly: "Email code sign-in currently supports email addresses only",
     landing: {
       headline1: 'Your First',
       headline2: 'Cyber Office',
@@ -1581,6 +1584,7 @@ const enUS = {
       current_org_not_found: "Current organization does not exist or is deleted",
       super_admin_required: "Super admin permission is required",
       super_admin_org_required: "Super admin must choose an organization first",
+      org_required: "Please choose an organization first",
       org_admin_required: "Organization admin permission is required",
       org_member_required: "You are not a member of this organization",
       missing_tenant_key: "No Feishu tenant associated with your account",
@@ -1607,8 +1611,11 @@ const enUS = {
     storage: {
       not_configured: "File storage service is not configured",
       presign_failed: "Failed to generate file download link, please try again later",
+      local_file_disabled: "Local file storage is disabled on this instance",
+      signature_missing: "Download signature is missing",
+      signature_invalid: "Download signature is invalid or has expired",
+      file_not_found: "Requested file was not found",
     },
-<<<<<<< HEAD
     settings: {
       unsupported_key: "Unsupported configuration key",
     },
@@ -1669,8 +1676,6 @@ const enUS = {
     trust: {
       decision_record_not_found: "Decision record not found",
     },
-=======
->>>>>>> 94abd5b (feat(portal): 办公室模板保存与一键部署前端)
     workspace: {
       not_found: "Cyber office does not exist",
       add_agent_invalid: "Invalid parameters for adding AI Employee",
