@@ -1341,6 +1341,9 @@ const enUS = {
     mcp: {
       server_not_found: "MCP server not found",
     },
+    registry: {
+      request_failed: "Image registry connection failed, please check registry URL and network",
+    },
     corridor: {
       hex_position_occupied: "This position is already occupied",
       hex_not_found: "Corridor hex not found",

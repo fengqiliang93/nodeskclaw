@@ -1341,6 +1341,9 @@ const zhCN = {
     mcp: {
       server_not_found: "MCP 服务不存在",
     },
+    registry: {
+      request_failed: "镜像仓库连接失败，请检查仓库地址和网络",
+    },
     corridor: {
       hex_position_occupied: "当前位置已被占用",
       hex_not_found: "走廊格子不存在",
