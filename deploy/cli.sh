@@ -19,7 +19,7 @@
 #   proxy     LLM Proxy
 #
 # 选项:
-#   --ee            EE 模式（使用 REGISTRY，包含 admin）
+#   --ee            EE 模式（包含 admin，启用 ee/ 代码注入）
 #   --staging       staging 环境（默认，可省略）
 #   --prod          生产环境（需交互确认）
 #   --context CTX   覆盖默认 K8s 上下文
@@ -33,7 +33,7 @@
 #
 # 前置条件:
 #   - deploy/.env.local 已配置 REGISTRY（必填）和 KUBE_CONTEXT
-#   - PUBLIC_REGISTRY 可选（EE 维护者配置后 deploy 默认使用公开仓库）
+#   - PUBLIC_REGISTRY 可选（配置后 backend/portal/proxy 使用公开仓库，admin 始终用 REGISTRY）
 #   - docker login 已完成
 #   - gh CLI 已安装并认证（release 命令需要）
 # ============================================================
@@ -117,6 +117,13 @@ get_k8s_container() {
   esac
 }
 
+get_component_registry() {
+  case "$1" in
+    admin) echo "$REGISTRY" ;;
+    *)     echo "${PUBLIC_REGISTRY:-$REGISTRY}" ;;
+  esac
+}
+
 # ── 工具函数 ───────────────────────────────────────────────
 
 require_context() {
@@ -178,7 +185,8 @@ sys.exit(0)
 build_and_push() {
   local component="$1"
   local image_name; image_name="$(get_image_name "$component")"
-  local image="${REGISTRY}/${image_name}:${TAG}"
+  local comp_registry; comp_registry="$(get_component_registry "$component")"
+  local image="${comp_registry}/${image_name}:${TAG}"
   local context; context="$(get_build_context "$component")"
   local dockerfile; dockerfile="$(get_dockerfile "$component")"
   local extra_args=""
@@ -264,7 +272,8 @@ EODF
 deploy_to_k8s() {
   local component="$1"
   local image_name; image_name="$(get_image_name "$component")"
-  local image="${REGISTRY}/${image_name}:${TAG}"
+  local comp_registry; comp_registry="$(get_component_registry "$component")"
+  local image="${comp_registry}/${image_name}:${TAG}"
   local deployment; deployment="$(get_k8s_deployment "$component")"
   local container; container="$(get_k8s_container "$component")"
 
@@ -275,14 +284,14 @@ deploy_to_k8s() {
     if [[ "$component" == "proxy" ]]; then
       local proxy_dir="$PROJECT_ROOT/nodeskclaw-llm-proxy/deploy"
       [[ -f "$proxy_dir/deployment.yaml" ]] && \
-        sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$proxy_dir/deployment.yaml" \
+        sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${comp_registry}|g" "$proxy_dir/deployment.yaml" \
           | $KUBECTL -n "$NAMESPACE" apply -f -
       [[ -f "$proxy_dir/service.yaml" ]] && \
         $KUBECTL -n "$NAMESPACE" apply -f "$proxy_dir/service.yaml"
     else
       local manifest="$SCRIPT_DIR/k8s/${component}.yaml"
       [[ -f "$manifest" ]] && \
-        sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$manifest" \
+        sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${comp_registry}|g" "$manifest" \
           | $KUBECTL -n "$NAMESPACE" apply -f -
     fi
   fi
@@ -402,26 +411,19 @@ generate_changelog() {
 
 cmd_release() {
   require_gh
-  local original_registry="$REGISTRY"
-  local ce_registry="${PUBLIC_REGISTRY:-$original_registry}"
-  local has_ee_phase=false
-  [[ -n "$PUBLIC_REGISTRY" && -d "$PROJECT_ROOT/ee" ]] && has_ee_phase=true
+  local ce_registry="${PUBLIC_REGISTRY:-$REGISTRY}"
+  local has_admin=false
+  [[ -d "$PROJECT_ROOT/ee" ]] && has_admin=true
 
   log "=== RELEASE: 构建镜像 + 创建 GitHub Release ${VERSION} ==="
-  log "CE 仓库: ${ce_registry}"
-  [[ "$has_ee_phase" == true ]] && log "EE 仓库: ${original_registry}"
-  [[ -n "$PUBLIC_REGISTRY" && ! -d "$PROJECT_ROOT/ee" ]] && warn "ee/ 目录不存在，跳过 EE 镜像构建"
+  log "镜像仓库: ${ce_registry}"
+  [[ "$has_admin" == true ]] && log "Admin 仓库: ${REGISTRY}"
   echo ""
 
-  CE_ONLY=true
-  local ce_targets=(backend portal)
-  [[ "$SKIP_PROXY" != true ]] && ce_targets+=(proxy)
-
-  local ee_targets=()
-  if [[ "$has_ee_phase" == true ]]; then
-    ee_targets=(backend admin portal)
-    [[ "$SKIP_PROXY" != true ]] && ee_targets+=(proxy)
-  fi
+  CE_ONLY=""
+  local targets=(backend portal)
+  [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
+  [[ "$has_admin" == true ]] && targets+=(admin)
 
   log "生成 changelog..."
   local notes_file; notes_file="$(generate_changelog "$VERSION")"
@@ -430,34 +432,19 @@ cmd_release() {
   cat "$notes_file"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  local confirm_msg="即将构建镜像（CE: ${ce_targets[*]} → ${ce_registry}"
-  [[ "$has_ee_phase" == true ]] && confirm_msg+="，EE: ${ee_targets[*]} → ${original_registry}"
+  local confirm_msg="即将构建镜像（${targets[*]} → ${ce_registry}"
+  [[ "$has_admin" == true ]] && confirm_msg+="，admin → ${REGISTRY}"
   confirm_msg+="）、创建 git tag ${VERSION} 并发布 GitHub Pre-release"
   confirm "$confirm_msg"
 
-  REGISTRY="$ce_registry"
-  CE_ONLY=true
-  log "构建 CE 镜像（标签: ${TAG}）..."
-  for t in "${ce_targets[@]}"; do
+  log "构建并推送镜像（标签: ${TAG}）..."
+  for t in "${targets[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     if ! build_and_push "$t"; then
-      err "[$t] CE 镜像构建失败，中止 release"
+      err "[$t] 镜像构建失败，中止 release"
       exit 1
     fi
   done
-
-  if [[ "$has_ee_phase" == true ]]; then
-    REGISTRY="$original_registry"
-    CE_ONLY=""
-    log "构建 EE 镜像（标签: ${TAG}）..."
-    for t in "${ee_targets[@]}"; do
-      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      if ! build_and_push "$t"; then
-        err "[$t] EE 镜像构建失败，中止 release"
-        exit 1
-      fi
-    done
-  fi
 
   echo ""
   log "创建 git tag..."
@@ -475,8 +462,8 @@ cmd_release() {
 
   echo ""
   ok "GitHub Pre-release 已创建: ${VERSION}"
-  log "CE 镜像: ${ce_registry}/*:${TAG}"
-  [[ "$has_ee_phase" == true ]] && log "EE 镜像: ${original_registry}/*:${TAG}"
+  log "镜像: ${ce_registry}/*:${TAG}"
+  [[ "$has_admin" == true ]] && log "Admin 镜像: ${REGISTRY}/nodeskclaw-admin:${TAG}"
   log "验证地址: https://github.com/NoDeskAI/nodeskclaw/releases/tag/${VERSION}"
   log "准备好升级生产环境后，运行:"
   echo "  ./deploy/cli.sh promote ${VERSION}"
@@ -586,7 +573,9 @@ cmd_init() {
   for f in backend.yaml admin.yaml portal.yaml; do
     [[ "$f" == "admin.yaml" && "$EE_MODE" != true ]] && continue
     if [[ -f "$SCRIPT_DIR/k8s/$f" ]]; then
-      sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${REGISTRY}|g" "$SCRIPT_DIR/k8s/$f" \
+      local comp_name="${f%.yaml}"
+      local comp_reg; comp_reg="$(get_component_registry "$comp_name")"
+      sed "s|<YOUR_REGISTRY>/<YOUR_NAMESPACE>|${comp_reg}|g" "$SCRIPT_DIR/k8s/$f" \
         | $KUBECTL -n "$NAMESPACE" apply -f -
       ok "$f"
     fi
@@ -624,7 +613,7 @@ usage() {
   proxy     LLM Proxy
 
 选项:
-  --ee            EE 模式（使用 REGISTRY，包含 admin）
+  --ee            EE 模式（包含 admin，启用 ee/ 代码注入）
   --staging       staging 环境（默认，可省略）
   --prod          生产环境（需交互确认）
   --context CTX   覆盖默认 K8s 上下文
@@ -729,8 +718,7 @@ if [[ "$EE_MODE" == true ]]; then
     err "--ee 模式需要 ee/ 目录（仅 EE 开发环境可用）"
     exit 1
   fi
-elif [[ "$COMMAND" != "release" ]]; then
-  [[ -n "$PUBLIC_REGISTRY" ]] && REGISTRY="$PUBLIC_REGISTRY"
+else
   CE_ONLY=true
 fi
 
