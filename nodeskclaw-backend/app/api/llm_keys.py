@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import hooks
-from app.core.deps import get_db, require_org_admin, require_org_member
+from app.core.deps import get_current_org, get_db, require_org_admin, require_org_member
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import get_current_user
 from app.models.base import not_deleted
@@ -49,6 +49,20 @@ router = APIRouter()
 
 def _mask_key(key: str, provider: str = "") -> str:
     return mask_personal_key(provider, key)
+
+
+async def _get_instance_in_org(instance_id: str, org_id: str, db: AsyncSession) -> Instance:
+    result = await db.execute(
+        select(Instance).where(
+            Instance.id == instance_id,
+            Instance.org_id == org_id,
+            Instance.deleted_at.is_(None),
+        )
+    )
+    instance = result.scalar_one_or_none()
+    if instance is None:
+        raise NotFoundError("实例不存在")
+    return instance
 
 
 # ══════════════════════════════════════════════════════════
@@ -515,13 +529,10 @@ async def get_instance_llm_configs(
     instance_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    org_ctx=Depends(get_current_org),
 ):
-    result = await db.execute(
-        select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None))
-    )
-    instance = result.scalar_one_or_none()
-    if instance is None:
-        raise NotFoundError("实例不存在")
+    _current_user, org = org_ctx
+    instance = await _get_instance_in_org(instance_id, org.id, db)
 
     from app.services.llm_config_service import read_instance_llm_configs
     entries = await read_instance_llm_configs(instance, db, current_user.id)
@@ -534,13 +545,10 @@ async def update_instance_llm_configs(
     body: InstanceLlmConfigUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    org_ctx=Depends(get_current_org),
 ):
-    result = await db.execute(
-        select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None))
-    )
-    instance = result.scalar_one_or_none()
-    if instance is None:
-        raise NotFoundError("实例不存在")
+    _current_user, org = org_ctx
+    instance = await _get_instance_in_org(instance_id, org.id, db)
 
     if instance.status != InstanceStatus.running:
         raise NotFoundError("实例未运行，无法写入配置")
@@ -601,13 +609,10 @@ async def restart_runtime(
     instance_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    org_ctx=Depends(get_current_org),
 ):
-    result = await db.execute(
-        select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None))
-    )
-    instance = result.scalar_one_or_none()
-    if instance is None:
-        raise NotFoundError("实例不存在")
+    _current_user, org = org_ctx
+    instance = await _get_instance_in_org(instance_id, org.id, db)
 
     from app.services.llm_config_service import restart_runtime as _restart
     result_data = await _restart(instance, db)
@@ -619,14 +624,10 @@ async def restart_runtime(
 async def get_openclaw_providers(
     instance_id: str,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    org_ctx=Depends(get_current_org),
 ):
-    result = await db.execute(
-        select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None))
-    )
-    instance = result.scalar_one_or_none()
-    if instance is None:
-        raise NotFoundError("实例不存在")
+    _current_user, org = org_ctx
+    instance = await _get_instance_in_org(instance_id, org.id, db)
 
     if instance.runtime != "openclaw":
         return ApiResponse(data=OpenClawConfigResponse(data_source="not_applicable", providers=[]))
@@ -640,14 +641,10 @@ async def get_openclaw_providers(
 async def get_instance_llm_config(
     instance_id: str,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    org_ctx=Depends(get_current_org),
 ):
-    result = await db.execute(
-        select(Instance).where(Instance.id == instance_id, Instance.deleted_at.is_(None))
-    )
-    instance = result.scalar_one_or_none()
-    if instance is None:
-        raise NotFoundError("实例不存在")
+    _current_user, org = org_ctx
+    instance = await _get_instance_in_org(instance_id, org.id, db)
 
     configs_result = await db.execute(
         select(UserLlmConfig).where(
