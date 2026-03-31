@@ -1219,6 +1219,7 @@ const zhCN = {
       token_scope_forbidden: "Token scope 不允许",
       token_subject_missing: "Token 无效",
       user_not_found_or_disabled: "用户不存在或已禁用",
+      cannot_revoke_self_admin: "不能取消自己的超管权限",
       password_too_short: "密码至少 6 位",
       email_already_registered: "该邮箱已注册",
       invalid_email_or_password: "邮箱或密码错误",
@@ -1238,6 +1239,7 @@ const zhCN = {
       current_org_not_found: "当前组织不存在或已删除",
       super_admin_required: "仅限平台管理员操作",
       super_admin_org_required: "超管需先选择要操作的组织",
+      org_required: "缺少目标组织，无法继续操作",
       org_admin_required: "仅限组织管理员操作",
       org_member_required: "您不是该组织的成员",
       missing_tenant_key: "当前用户没有关联飞书租户，无法使用飞书开通组织",
@@ -1257,8 +1259,18 @@ const zhCN = {
       localhost_not_reachable: "AGENT_API_BASE_URL 当前为 localhost，K8s 集群中的 AI 员工无法通过此地址连接后端。请在后端 .env 中将 AGENT_API_BASE_URL 设置为 K8s Pod 可达的外部地址后重启后端。",
     },
     storage: {
+      local_file_disabled: "对象存储启用时不提供本地文件服务",
+      signature_missing: "缺少签名参数",
+      signature_invalid: "签名无效或已过期",
+      file_not_found: "文件不存在",
       not_configured: "文件存储服务未配置",
       presign_failed: "生成文件下载链接失败，请稍后重试",
+    },
+    settings: {
+      unsupported_key: "不支持的配置项",
+    },
+    instance: {
+      slug_conflict: "实例标识已存在，请更换标识",
     },
     workspace: {
       not_found: "办公室不存在",

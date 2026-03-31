@@ -1219,6 +1219,7 @@ const enUS = {
       token_scope_forbidden: "Token scope is not allowed",
       token_subject_missing: "Token subject is missing",
       user_not_found_or_disabled: "User not found or disabled",
+      cannot_revoke_self_admin: "You cannot revoke your own super admin permission",
       password_too_short: "Password must be at least 6 characters",
       email_already_registered: "This email is already registered",
       invalid_email_or_password: "Invalid email or password",
@@ -1238,6 +1239,7 @@ const enUS = {
       current_org_not_found: "Current organization does not exist or is deleted",
       super_admin_required: "Super admin permission is required",
       super_admin_org_required: "Super admin must choose an organization first",
+      org_required: "Target organization is required to continue",
       org_admin_required: "Organization admin permission is required",
       org_member_required: "You are not a member of this organization",
       missing_tenant_key: "No Feishu tenant associated with your account",
@@ -1257,8 +1259,18 @@ const enUS = {
       localhost_not_reachable: "AGENT_API_BASE_URL is currently localhost, which is unreachable from K8s pods. Set AGENT_API_BASE_URL to an external address reachable by K8s pods in the backend .env, then restart.",
     },
     storage: {
+      local_file_disabled: "Local file serving is unavailable when object storage is enabled",
+      signature_missing: "Signature parameters are required",
+      signature_invalid: "Signature is invalid or expired",
+      file_not_found: "File not found",
       not_configured: "File storage service is not configured",
       presign_failed: "Failed to generate file download link, please try again later",
+    },
+    settings: {
+      unsupported_key: "Unsupported configuration key",
+    },
+    instance: {
+      slug_conflict: "Instance slug already exists. Please choose another one",
     },
     workspace: {
       not_found: "Cyber office does not exist",
