@@ -175,6 +175,9 @@ API 路由同时挂载在两个前缀下：
 | `/api/v1/workspaces/{ws}/messages` | 消息 | 工作区消息历史 |
 | `/api/v1/workspaces/{ws}/events?token=` | SSE | 实时事件流（query param JWT 认证） |
 | `/api/v1/workspaces/sse-token` | SSE | 签发 5 分钟短时效 SSE token |
+| `POST /api/v1/workspaces/maintenance/batch-upgrade-openclaw` | 维护 | 批量升级 OpenClaw 实例镜像版本（super_admin） |
+| `POST /api/v1/workspaces/maintenance/repair-channel-accounts` | 维护 | 修复所有实例 channel 配置（super_admin） |
+| `POST /api/v1/workspaces/maintenance/refresh-gene-skills` | 维护 | 批量刷新技能基因 SKILL.md（super_admin） |
 | `/api/v1/workspaces/templates` | 工作区模板 | 列表、创建、详情、删除、应用到工作区 |
 | `/api/v1/workspaces/{ws}/blackboard/posts` | 黑板讨论区 | 帖子 CRUD、置顶、已读标记、未读计数 |
 | `/api/v1/workspaces/{ws}/blackboard/posts/{id}/replies` | 黑板讨论区 | 帖子回复 |
