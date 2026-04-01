@@ -598,7 +598,7 @@ async def execute_deploy_pipeline(ctx: _DeployContext) -> None:
         _unregister_deploy_task(ctx.record_id)
 
 
-DOCKER_DEPLOY_STEPS = ["环境预检查", "启动容器", "部署完成"]
+DOCKER_DEPLOY_STEPS = ["环境预检查", "启动容器", "等待容器就绪", "部署完成"]
 
 
 async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
@@ -662,7 +662,7 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
         DeployProgress(
             deploy_id=ctx.record_id, step=2, total_steps=total,
             current_step=step_names[1], status="in_progress",
-            message=None, percent=40,
+            message=None, percent=30,
         ).model_dump(),
     )
 
@@ -678,6 +678,60 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
                 deploy_id=ctx.record_id, step=total, total_steps=total,
                 current_step="失败", status="failed",
                 message=str(e)[:200], percent=100,
+            ).model_dump(),
+        )
+        return
+
+    # ── 等待容器就绪（对齐 K8s Step 9 的 readiness 门控） ──
+    probe_path = rt_spec.health_probe_path if rt_spec else "/healthz"
+    container_ready = False
+
+    event_bus.publish(
+        "deploy_progress",
+        DeployProgress(
+            deploy_id=ctx.record_id, step=3, total_steps=total,
+            current_step=step_names[2], status="in_progress",
+            message=None, percent=50,
+        ).model_dump(),
+    )
+
+    if probe_path and result.endpoint:
+        from app.services.runtime.compute.base import http_probe
+
+        for tick in range(30):  # 30 x 2s = 60s
+            probe_result = await http_probe(result.endpoint, path=probe_path)
+            if probe_result.get("healthy"):
+                container_ready = True
+                break
+            pct = 50 + min(tick, 15)  # 50 → 65, 不超过 65
+            event_bus.publish(
+                "deploy_progress",
+                DeployProgress(
+                    deploy_id=ctx.record_id, step=3, total_steps=total,
+                    current_step=step_names[2], status="in_progress",
+                    message=f"等待容器健康检查通过... ({(tick + 1) * 2}s/60s)",
+                    percent=pct,
+                ).model_dump(),
+            )
+            await asyncio.sleep(2)
+    else:
+        await asyncio.sleep(5)
+        container_ready = True
+
+    if not container_ready:
+        timeout_msg = "容器健康检查超时（60s）"
+        logger.error("Docker 部署超时: instance=%s endpoint=%s path=%s", ctx.name, result.endpoint, probe_path)
+        try:
+            await provider.destroy_instance(result)
+        except Exception:
+            logger.warning("健康检查超时后清理容器失败", exc_info=True)
+        await _mark_deploy_failed(ctx, timeout_msg)
+        event_bus.publish(
+            "deploy_progress",
+            DeployProgress(
+                deploy_id=ctx.record_id, step=total, total_steps=total,
+                current_step="失败", status="failed",
+                message=timeout_msg, percent=100,
             ).model_dump(),
         )
         return
