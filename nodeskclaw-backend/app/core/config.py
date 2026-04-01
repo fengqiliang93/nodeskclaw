@@ -3,11 +3,21 @@
 import logging
 import re
 import socket
+from pathlib import Path
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
+
+_K8S_NS_FILE = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+
+
+def _detect_platform_namespace() -> str:
+    try:
+        return _K8S_NS_FILE.read_text().strip()
+    except (FileNotFoundError, PermissionError):
+        return "nodeskclaw-system"
 
 
 class Settings(BaseSettings):
@@ -116,7 +126,7 @@ class Settings(BaseSettings):
     # ── Egress NetworkPolicy（AI 员工 Pod 出站流量控制）────
     EGRESS_DENY_CIDRS: str = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
     EGRESS_ALLOW_PORTS: str = "80,443"
-    PLATFORM_NAMESPACE: str = "nodeskclaw-system"
+    PLATFORM_NAMESPACE: str = _detect_platform_namespace()
 
     # ── Gene Seed ───────────────────────────────────────
     SEED_GENES: bool = True
