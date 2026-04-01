@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     # ── Egress NetworkPolicy（AI 员工 Pod 出站流量控制）────
     EGRESS_DENY_CIDRS: str = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
     EGRESS_ALLOW_PORTS: str = "80,443"
+    PLATFORM_NAMESPACE: str = "nodeskclaw-system"
 
     # ── Gene Seed ───────────────────────────────────────
     SEED_GENES: bool = True

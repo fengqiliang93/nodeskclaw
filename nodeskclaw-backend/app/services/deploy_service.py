@@ -955,6 +955,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                 org_id=adapter.get_network_policy_org_id(ctx.org_id),
                 egress_deny_cidrs=egress_cfg.deny_cidrs,
                 egress_allow_ports=egress_cfg.allow_ports,
+                platform_namespace=settings.PLATFORM_NAMESPACE,
             )
             try:
                 await k8s.networking.create_namespaced_network_policy(ctx.namespace, np)
