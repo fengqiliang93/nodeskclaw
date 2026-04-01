@@ -489,7 +489,7 @@ const enUS = {
     newPost: "New Post",
     noPosts: "No posts yet",
     postTitlePlaceholder: "Post title...",
-    postContentPlaceholder: "Post content (Markdown), use @agent:{id} to mention...",
+    postContentPlaceholder: "Post content in Markdown. You can mention members or AI employees",
     publish: "Publish",
     replies: "Replies",
     replyFloor: "Floor {number}",
