@@ -1,4 +1,8 @@
-"""Portal cluster endpoints — org-scoped."""
+"""Portal cluster endpoints — org-scoped.
+
+router: read-only (list + detail) — always available, needed by CreateInstance in EE.
+write_router: cluster management (CRUD, health, overview, test, kubeconfig) — CE-only.
+"""
 
 import logging
 
@@ -14,7 +18,9 @@ from app.services import cluster_service
 from app.services.runtime.registries.compute_registry import require_k8s_client
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
+write_router = APIRouter()
 
 
 @router.get("", response_model=ApiResponse[list[ClusterInfo]])
@@ -24,18 +30,6 @@ async def list_clusters(
 ):
     _current_user, org = org_ctx
     data = await cluster_service.list_clusters(db, org.id)
-    return ApiResponse(data=data)
-
-
-@router.post("", response_model=ApiResponse[ClusterInfo])
-async def create_cluster(
-    body: ClusterCreate,
-    db: AsyncSession = Depends(get_db),
-    org_ctx=Depends(get_current_org),
-):
-    current_user, org = org_ctx
-    data = await cluster_service.create_cluster(body, current_user, db, org_id=org.id)
-    await hooks.emit("operation_audit", action="cluster.created", target_type="cluster", target_id=data.id, actor_id=current_user.id, org_id=org.id)
     return ApiResponse(data=data)
 
 
@@ -50,7 +44,19 @@ async def get_cluster(
     return ApiResponse(data=ClusterInfo.model_validate(cluster))
 
 
-@router.put("/{cluster_id}", response_model=ApiResponse[ClusterInfo])
+@write_router.post("", response_model=ApiResponse[ClusterInfo])
+async def create_cluster(
+    body: ClusterCreate,
+    db: AsyncSession = Depends(get_db),
+    org_ctx=Depends(get_current_org),
+):
+    current_user, org = org_ctx
+    data = await cluster_service.create_cluster(body, current_user, db, org_id=org.id)
+    await hooks.emit("operation_audit", action="cluster.created", target_type="cluster", target_id=data.id, actor_id=current_user.id, org_id=org.id)
+    return ApiResponse(data=data)
+
+
+@write_router.put("/{cluster_id}", response_model=ApiResponse[ClusterInfo])
 async def update_cluster(
     cluster_id: str,
     body: ClusterUpdate,
@@ -63,7 +69,7 @@ async def update_cluster(
     return ApiResponse(data=data)
 
 
-@router.delete("/{cluster_id}", response_model=ApiResponse)
+@write_router.delete("/{cluster_id}", response_model=ApiResponse)
 async def delete_cluster(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -75,7 +81,7 @@ async def delete_cluster(
     return ApiResponse(message="集群已删除")
 
 
-@router.get("/{cluster_id}/health", response_model=ApiResponse[dict])
+@write_router.get("/{cluster_id}/health", response_model=ApiResponse[dict])
 async def cluster_health(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -88,7 +94,7 @@ async def cluster_health(
     return ApiResponse(data=data)
 
 
-@router.get("/{cluster_id}/overview", response_model=ApiResponse[dict])
+@write_router.get("/{cluster_id}/overview", response_model=ApiResponse[dict])
 async def cluster_overview(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -155,7 +161,7 @@ async def cluster_overview(
     })
 
 
-@router.post("/{cluster_id}/test", response_model=ApiResponse[ConnectionTestResult])
+@write_router.post("/{cluster_id}/test", response_model=ApiResponse[ConnectionTestResult])
 async def test_connection(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -170,7 +176,7 @@ class KubeconfigBody(BaseModel):
     kubeconfig: str
 
 
-@router.post("/{cluster_id}/kubeconfig", response_model=ApiResponse[ClusterInfo])
+@write_router.post("/{cluster_id}/kubeconfig", response_model=ApiResponse[ClusterInfo])
 async def update_kubeconfig(
     cluster_id: str,
     body: KubeconfigBody,
