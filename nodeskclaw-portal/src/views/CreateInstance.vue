@@ -1058,12 +1058,18 @@ async function handleDeploy() {
             <AlertCircle class="w-4 h-4 text-destructive shrink-0 mt-0.5" />
             <div class="flex-1 space-y-1.5">
               <p class="text-sm text-destructive leading-relaxed">{{ error }}</p>
-              <p
-                v-if="errorKey === 'errors.deploy.ingress_base_domain_required'"
-                class="text-xs text-muted-foreground leading-relaxed"
-              >
-                {{ t('errors.deploy.ingress_base_domain_hint') }}
-              </p>
+              <template v-if="errorKey === 'errors.deploy.ingress_base_domain_required'">
+                <p class="text-xs text-muted-foreground leading-relaxed">
+                  {{ t('errors.deploy.ingress_base_domain_hint') }}
+                </p>
+                <router-link
+                  v-if="authStore.user?.portal_org_role === 'admin'"
+                  to="/org-settings/network"
+                  class="text-xs text-primary hover:underline"
+                >
+                  {{ t('errors.deploy.ingress_base_domain_go_configure') }}
+                </router-link>
+              </template>
             </div>
           </div>
           <button
