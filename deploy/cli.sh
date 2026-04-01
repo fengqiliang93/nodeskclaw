@@ -413,14 +413,13 @@ cmd_release() {
   require_gh
   local ce_registry="${PUBLIC_REGISTRY:-$REGISTRY}"
   local has_admin=false
-  [[ -d "$PROJECT_ROOT/ee" ]] && has_admin=true
+  [[ "$EE_MODE" == true ]] && has_admin=true
 
   log "=== RELEASE: 构建镜像 + 创建 GitHub Release ${VERSION} ==="
   log "镜像仓库: ${ce_registry}"
   [[ "$has_admin" == true ]] && log "Admin 仓库: ${REGISTRY}"
   echo ""
 
-  CE_ONLY=""
   local targets=(backend portal)
   [[ "$SKIP_PROXY" != true ]] && targets+=(proxy)
 
