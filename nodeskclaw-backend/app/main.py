@@ -332,6 +332,7 @@ async def lifespan(app: FastAPI):
                 ]
 
                 _seeded_genes = 0
+                _updated_genes = 0
                 for _fname in _gene_files:
                     _tpl_path = _seed_dir / _fname
                     if not _tpl_path.exists():
@@ -356,8 +357,14 @@ async def lifespan(app: FastAPI):
                             source_registry="local",
                         ))
                         _seeded_genes += 1
+                    else:
+                        _new_manifest = _seed_json.dumps(_tpl.get("manifest", {}), ensure_ascii=False)
+                        if _existing.manifest != _new_manifest:
+                            _existing.manifest = _new_manifest
+                            _updated_genes += 1
 
                 _seeded_genomes = 0
+                _updated_genomes = 0
                 for _fname in _genome_files:
                     _tpl_path = _seed_dir / _fname
                     if not _tpl_path.exists():
@@ -377,12 +384,26 @@ async def lifespan(app: FastAPI):
                             is_published=True,
                         ))
                         _seeded_genomes += 1
+                    else:
+                        _new_slugs = _seed_json.dumps(_tpl.get("gene_slugs", []), ensure_ascii=False)
+                        _new_override = _seed_json.dumps(_tpl.get("config_override", {}), ensure_ascii=False)
+                        _new_desc = _tpl.get("description")
+                        if (_existing.gene_slugs != _new_slugs
+                                or _existing.config_override != _new_override
+                                or _existing.description != _new_desc):
+                            _existing.gene_slugs = _new_slugs
+                            _existing.config_override = _new_override
+                            _existing.description = _new_desc
+                            _updated_genomes += 1
 
-                if _seeded_genes or _seeded_genomes:
+                if _seeded_genes or _seeded_genomes or _updated_genes or _updated_genomes:
                     await _seed_db.commit()
-                    logger.info("种子基因导入完成: %d gene + %d genome", _seeded_genes, _seeded_genomes)
+                    logger.info(
+                        "种子基因导入完成: %d 新增 + %d 更新 gene, %d 新增 + %d 更新 genome",
+                        _seeded_genes, _updated_genes, _seeded_genomes, _updated_genomes,
+                    )
                 else:
-                    logger.info("种子基因检查完成，无需导入（均已存在）")
+                    logger.info("种子基因检查完成，无需导入或更新（均已是最新）")
         except Exception as _seed_err:
             logger.warning("种子基因导入失败: %s", _seed_err)
 
