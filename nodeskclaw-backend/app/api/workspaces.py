@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Coroutine
+from typing import Coroutine, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
@@ -1627,37 +1627,57 @@ async def repair_channel_accounts(
 
 
 class BatchUpgradeRequest(BaseModel):
+    runtime: str
     image_version: str
     dry_run: bool = False
-    with_repair: bool = False
+    with_repair: Optional[bool] = None
 
 
-@router.post("/maintenance/batch-upgrade-openclaw")
-async def batch_upgrade_openclaw(
+@router.post("/maintenance/batch-upgrade-instances")
+async def batch_upgrade_instances(
     body: BatchUpgradeRequest,
     db: AsyncSession = Depends(get_db),
     user=Depends(_get_current_user_dep()),
 ):
-    """Batch upgrade all OpenClaw instances to a target image version."""
+    """Batch upgrade all instances of a given runtime to a target image version."""
     if not user.is_super_admin:
         raise HTTPException(status_code=403, detail={
             "error_code": 40310,
             "message_key": "errors.org.super_admin_required",
             "message": "仅限平台管理员操作",
         })
+
+    runtime = body.runtime.strip()
+    if not runtime:
+        raise HTTPException(status_code=400, detail={
+            "error_code": 40001,
+            "message_key": "errors.validation.invalid_params",
+            "message": "runtime 不能为空",
+        })
+
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+    runtime_spec = RUNTIME_REGISTRY.get(runtime)
+    if runtime_spec is None:
+        raise HTTPException(status_code=400, detail={
+            "error_code": 40003,
+            "message_key": "errors.validation.invalid_runtime",
+            "message": f"不支持的 runtime: {runtime}",
+        })
+
     if not body.image_version.strip():
         raise HTTPException(status_code=400, detail={
             "error_code": 40001,
             "message_key": "errors.validation.invalid_params",
             "message": "image_version 不能为空",
         })
+
     from app.services import instance_service
     upgrade_result = await instance_service.batch_upgrade_image_version(
-        body.image_version, user.id, db, dry_run=body.dry_run,
+        runtime, body.image_version, user.id, db, dry_run=body.dry_run,
     )
 
     repair_result = None
-    if not body.dry_run and body.with_repair:
+    if not body.dry_run and body.with_repair is True and runtime_spec.supports_channel_plugins:
         from app.services import llm_config_service
         try:
             repair_result = await llm_config_service.repair_channel_account_urls(db)

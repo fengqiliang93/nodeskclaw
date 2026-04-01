@@ -1031,9 +1031,10 @@ async def rollback_instance(
 
 
 async def batch_upgrade_image_version(
-    target_version: str, user_id: str, db: AsyncSession, *, dry_run: bool = False,
+    runtime: str, target_version: str, user_id: str, db: AsyncSession,
+    *, dry_run: bool = False,
 ) -> dict:
-    """批量将所有 OpenClaw 实例的镜像版本对齐到 target_version。"""
+    """批量将指定 runtime 的所有实例镜像版本对齐到 target_version。"""
     excluded = [
         InstanceStatus.creating,
         InstanceStatus.deploying,
@@ -1043,7 +1044,7 @@ async def batch_upgrade_image_version(
     ]
     result = await db.execute(
         select(Instance).where(
-            Instance.runtime == "openclaw",
+            Instance.runtime == runtime,
             Instance.deleted_at.is_(None),
             Instance.status.notin_([s.value for s in excluded]),
         )
