@@ -546,7 +546,7 @@ cmd_init() {
   ok "Namespace $NAMESPACE 就绪"
 
   local clean_env; clean_env=$(mktemp)
-  trap 'rm -f "$clean_env"' EXIT
+  trap 'rm -f "$clean_env" "${clean_env}.tmp"' EXIT
 
   while IFS= read -r line; do
     stripped="${line%%#*}"
@@ -559,6 +559,13 @@ cmd_init() {
     err ".env 文件中没有有效的键值对"
     exit 1
   fi
+
+  local edition_val="ce"
+  [[ "$EE_MODE" == true ]] && edition_val="ee"
+  grep -v '^NODESKCLAW_EDITION=' "$clean_env" > "${clean_env}.tmp" || true
+  mv "${clean_env}.tmp" "$clean_env"
+  echo "NODESKCLAW_EDITION=${edition_val}" >> "$clean_env"
+  log "NODESKCLAW_EDITION=${edition_val}（由 --ee 标志决定）"
 
   local env_count; env_count=$(wc -l < "$clean_env" | xargs)
   local secret_name="nodeskclaw-backend-env"
