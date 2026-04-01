@@ -184,8 +184,8 @@ def _ensure_gateway_config(config: dict, instance: Instance) -> None:
     """Ensure gateway config is correct for reverse-proxy (Ingress) deployments.
 
     - gateway.auth.token: shared secret for Control UI WebSocket auth
+    - gateway.auth.rateLimit: brute-force auth mitigation for non-loopback binds
     - gateway.trustedProxies: Ingress Controller IPs for header forwarding
-    - gateway.controlUi.allowInsecureAuth: bypass device pairing for non-localhost
     - gateway.controlUi.dangerouslyDisableDeviceAuth: skip device identity pairing
     - gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback: version-aware preserve
     """
@@ -202,7 +202,6 @@ def _ensure_gateway_config(config: dict, instance: Instance) -> None:
         gw["trustedProxies"] = list(TRUSTED_PROXY_CIDRS)
 
     control_ui = gw.setdefault("controlUi", {})
-    control_ui["allowInsecureAuth"] = True
     control_ui["dangerouslyDisableDeviceAuth"] = True
     if "dangerouslyAllowHostHeaderOriginFallback" in control_ui:
         control_ui["dangerouslyAllowHostHeaderOriginFallback"] = True
