@@ -351,7 +351,7 @@ async def list_tasks(
     status: str | None = Query(None),
     exclude_archived: bool = Query(True),
     paginated: bool = Query(False),
-    bucket: Literal["active", "inactive"] = Query("active"),
+    bucket: Literal["active", "inactive", "column"] = Query("active"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),

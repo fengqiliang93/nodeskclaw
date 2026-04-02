@@ -7,7 +7,7 @@ import re
 from collections.abc import Sequence
 from typing import Coroutine, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.blackboard import Blackboard
@@ -756,8 +756,16 @@ async def _send_welcome_message(workspace_id: str, inst: Instance) -> None:
 
 # ── Blackboard ───────────────────────────────────────
 
-def _task_to_info(t: WorkspaceTask, assignee_name: str | None = None) -> TaskInfo:
-    status = "done" if t.status == "archived" else t.status
+def _task_to_info(
+    t: WorkspaceTask,
+    assignee_name: str | None = None,
+    *,
+    column_status: str | None = None,
+) -> TaskInfo:
+    if t.status == "archived":
+        status = column_status or "done"
+    else:
+        status = t.status
     completed_at = t.completed_at or (t.archived_at if t.status == "archived" else None)
     return TaskInfo(
         id=t.id, workspace_id=t.workspace_id, title=t.title,
@@ -893,7 +901,7 @@ async def patch_blackboard_section(
 
 VALID_TASK_STATUSES = {"pending", "in_progress", "done", "blocked"}
 VALID_TASK_PRIORITIES = {"low", "medium", "high", "urgent"}
-VALID_TASK_BUCKETS = {"active", "inactive"}
+VALID_TASK_BUCKETS = {"active", "inactive", "column"}
 
 
 async def _build_task_assignee_map(
@@ -914,9 +922,20 @@ async def _build_task_assignee_map(
 
 
 def _task_order_by(
-    bucket: Literal["active", "inactive"],
+    bucket: Literal["active", "inactive", "column"],
     status: str | None,
 ):
+    if bucket == "column":
+        return (
+            case((WorkspaceTask.status != "archived", 0), else_=1).asc(),
+            case(
+                (WorkspaceTask.status == "done", func.coalesce(WorkspaceTask.completed_at, WorkspaceTask.updated_at)),
+                (WorkspaceTask.status == "archived", func.coalesce(WorkspaceTask.archived_at, WorkspaceTask.updated_at)),
+                else_=WorkspaceTask.created_at,
+            ).desc(),
+            WorkspaceTask.updated_at.desc(),
+            WorkspaceTask.created_at.desc(),
+        )
     if bucket == "inactive":
         return (
             func.coalesce(WorkspaceTask.archived_at, WorkspaceTask.updated_at).desc(),
@@ -960,12 +979,14 @@ async def list_tasks_paginated(
     db: AsyncSession,
     workspace_id: str,
     status: str | None = None,
-    bucket: Literal["active", "inactive"] = "active",
+    bucket: Literal["active", "inactive", "column"] = "active",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[TaskInfo], int]:
     if bucket not in VALID_TASK_BUCKETS:
         return [], 0
+
+    column_status: str | None = None
 
     if bucket == "inactive":
         if status not in {None, "done", "archived"}:
@@ -974,6 +995,21 @@ async def list_tasks_paginated(
             WorkspaceTask.workspace_id == workspace_id,
             WorkspaceTask.deleted_at.is_(None),
             WorkspaceTask.status == "archived",
+        ]
+    elif bucket == "column":
+        if status is None or status not in VALID_TASK_STATUSES:
+            return [], 0
+        column_status = status
+        filters = [
+            WorkspaceTask.workspace_id == workspace_id,
+            WorkspaceTask.deleted_at.is_(None),
+            or_(
+                WorkspaceTask.status == status,
+                and_(
+                    WorkspaceTask.status == "archived",
+                    WorkspaceTask.archived_from_status == status,
+                ),
+            ),
         ]
     else:
         filters = [
@@ -1002,7 +1038,10 @@ async def list_tasks_paginated(
     )
     rows = (await db.execute(q)).scalars().all()
     assignee_map = await _build_task_assignee_map(db, rows)
-    return [_task_to_info(t, assignee_map.get(t.assignee_instance_id)) for t in rows], total
+    return [
+        _task_to_info(t, assignee_map.get(t.assignee_instance_id), column_status=column_status)
+        for t in rows
+    ], total
 
 
 async def create_task(
