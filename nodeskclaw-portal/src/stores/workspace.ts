@@ -439,7 +439,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     workspaceId: string,
     options: {
       status?: string
-      bucket?: 'active' | 'inactive'
+      bucket?: 'active' | 'inactive' | 'column'
       page?: number
       pageSize?: number
     } = {},
