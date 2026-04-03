@@ -2,6 +2,7 @@
 
 Provides safe parsing for openclaw.json and similar config files
 that may contain JS-style comments (// and /* */) or trailing commas.
+Also includes config-level guards applied before every write.
 """
 
 import json
@@ -33,3 +34,17 @@ def parse_config_json(raw: str) -> dict:
         raise ValueError(
             f"JSON 格式无法解析（已尝试去除注释）: {e}"
         ) from e
+
+
+def ensure_exec_security(config: dict) -> dict:
+    """Enforce headless exec policy: security=full + ask=off.
+
+    NoDeskClaw runs in non-interactive K8s pods where exec approval
+    prompts would hang forever. This is called before every openclaw.json
+    write to guarantee the setting is never lost.
+    """
+    tools = config.setdefault("tools", {})
+    exec_cfg = tools.setdefault("exec", {})
+    exec_cfg["security"] = "full"
+    exec_cfg["ask"] = "off"
+    return config

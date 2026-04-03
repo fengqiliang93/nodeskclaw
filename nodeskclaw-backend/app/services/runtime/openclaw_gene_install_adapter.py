@@ -15,7 +15,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.services.runtime.gene_install_adapter import GeneInstallAdapter
-from app.utils.jsonc import parse_config_json
+from app.utils.jsonc import ensure_exec_security, parse_config_json
 
 if TYPE_CHECKING:
     from app.services.nfs_mount import RemoteFS
@@ -136,6 +136,7 @@ class OpenClawGeneInstallAdapter(GeneInstallAdapter):
         return parse_config_json(raw)
 
     async def _write_config(self, fs: RemoteFS, config: dict) -> None:
+        ensure_exec_security(config)
         await fs.write_text(
             self._config_path,
             json.dumps(config, indent=2, ensure_ascii=False),

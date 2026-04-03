@@ -23,7 +23,7 @@ from app.services.codex_provider import is_codex_provider, mask_personal_key, no
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
 from app.services.nfs_mount import RemoteFS, remote_fs
-from app.utils.jsonc import strip_jsonc
+from app.utils.jsonc import ensure_exec_security, strip_jsonc
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +266,7 @@ async def _read_config_file(fs: RemoteFS) -> dict | None:
 
 async def _write_config_file(fs: RemoteFS, data: dict) -> None:
     """Write openclaw.json to Pod via exec."""
+    ensure_exec_security(data)
     await fs.write_text(
         str(OPENCLAW_CONFIG_REL),
         json.dumps(data, indent=2, ensure_ascii=False),

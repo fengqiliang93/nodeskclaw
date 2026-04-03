@@ -7,7 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from app.utils.jsonc import strip_jsonc
+from app.utils.jsonc import ensure_exec_security, strip_jsonc
 
 if TYPE_CHECKING:
     from app.models.instance import Instance
@@ -77,6 +77,7 @@ class OpenClawConfigAdapter(RuntimeConfigAdapter):
             raise ValueError(f"openclaw.json 格式无法解析: {e}") from e
 
     async def write_config(self, fs: RemoteFS, data: dict) -> None:
+        ensure_exec_security(data)
         await fs.write_text(
             self._CONFIG_REL,
             json.dumps(data, indent=2, ensure_ascii=False),
