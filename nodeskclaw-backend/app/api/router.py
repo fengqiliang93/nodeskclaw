@@ -38,6 +38,10 @@ from app.core.config import settings
 from app.api.security_ws import router as security_ws_router
 from app.api.tunnel import router as tunnel_router
 from app.api.engines import router as engine_router
+from app.api.engine_versions import (
+    engine_version_read_router,
+    engine_version_write_router,
+)
 from app.api.invitations import invite_router, invite_public_router
 from app.api.portal.instances import router as portal_instance_router
 from app.api.portal.instance_members import router as portal_instance_members_router
@@ -130,6 +134,9 @@ api_router.include_router(template_router, prefix="/workspaces", tags=["办公�
 api_router.include_router(instance_template_router, tags=["AI 员工模板"])
 api_router.include_router(gene_router, tags=["基因进化"])
 api_router.include_router(engine_router, prefix="/engines", tags=["工作引擎"])
+api_router.include_router(engine_version_read_router, prefix="/engine-versions", tags=["引擎版本"])
+api_router.include_router(engine_version_write_router, prefix="/engine-versions", tags=["引擎版本"],
+    dependencies=[Depends(require_ce_edition), Depends(require_org_admin)])
 api_router.include_router(invite_router, prefix="/orgs", tags=["邀请"])
 api_router.include_router(invite_public_router, prefix="/invite", tags=["邀请（公开）"])
 api_router.include_router(security_ws_router, tags=["安全评估"])
@@ -191,6 +198,12 @@ admin_router.include_router(registry_router, prefix="/registry",
     dependencies=[Depends(require_org_role("admin"))])
 admin_router.include_router(runtime_admin_router, prefix="/runtime",
     tags=["Admin - 运行时平台"],
+    dependencies=[Depends(require_org_role("admin"))])
+admin_router.include_router(engine_version_read_router, prefix="/engine-versions",
+    tags=["Admin - 引擎版本(读)"],
+    dependencies=[Depends(require_org_role("member"))])
+admin_router.include_router(engine_version_write_router, prefix="/engine-versions",
+    tags=["Admin - 引擎版本(写)"],
     dependencies=[Depends(require_org_role("admin"))])
 admin_router.include_router(tunnel_router, tags=["Admin - Agent Tunnel"],
     dependencies=[Depends(require_org_role("admin"))])

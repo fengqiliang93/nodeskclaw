@@ -300,10 +300,18 @@ async def precheck(req: DeployRequest, db: AsyncSession) -> PrecheckResult:
         return PrecheckResult(passed=False, items=items)
     items.append(PrecheckItem(name="名称", status="pass", message="实例名可用"))
 
-    # Image version
+    # Image version — fall back to catalog default when not specified
     if not req.image_version:
-        items.append(PrecheckItem(name="镜像", status="fail", message="镜像版本不能为空"))
-        return PrecheckResult(passed=False, items=items)
+        from app.services import engine_version_service
+        default_ev = await engine_version_service.get_default(req.runtime, db)
+        if default_ev:
+            req.image_version = default_ev.image_tag
+        else:
+            items.append(PrecheckItem(
+                name="镜像", status="fail",
+                message="未指定镜像版本且管理员未设置默认版本，请联系管理员在引擎版本管理中发布并设置默认版本",
+            ))
+            return PrecheckResult(passed=False, items=items)
     items.append(PrecheckItem(name="镜像", status="pass", message=f"镜像版本: {req.image_version}"))
 
     passed = all(item.status != "fail" for item in items)

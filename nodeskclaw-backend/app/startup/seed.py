@@ -465,6 +465,65 @@ async def _ensure_workspace_schedules(session_factory: async_sessionmaker[AsyncS
         logger.info("种子数据：已为 %d 个工作区检查/补建定时巡检定时器", len(all_ws))
 
 
+async def seed_engine_versions(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Populate EngineVersion from existing Instance records on first run.
+
+    Only runs when the table is empty — does not overwrite admin choices.
+    """
+    from app.models.engine_version import EngineVersion
+    from app.models.instance import Instance
+
+    async with session_factory() as db:
+        count = (await db.execute(
+            select(func.count()).select_from(EngineVersion).where(
+                EngineVersion.deleted_at.is_(None),
+            )
+        )).scalar_one()
+        if count > 0:
+            return
+
+        rows = (await db.execute(
+            select(Instance.runtime, Instance.image_version)
+            .where(
+                Instance.image_version.isnot(None),
+                Instance.deleted_at.is_(None),
+            )
+            .distinct()
+        )).all()
+
+        if not rows:
+            return
+
+        def _version_key(v: str) -> tuple[int, ...]:
+            try:
+                return tuple(int(x) for x in v.lstrip("v").split("."))
+            except ValueError:
+                return (0,)
+
+        by_runtime: dict[str, list[tuple[str, str]]] = {}
+        for runtime, image_version in rows:
+            rt = runtime or "openclaw"
+            by_runtime.setdefault(rt, []).append((image_version, image_version))
+
+        for rt, versions in by_runtime.items():
+            versions.sort(key=lambda x: _version_key(x[0]), reverse=True)
+            for idx, (image_tag, _) in enumerate(versions):
+                stripped = image_tag.lstrip("v") if image_tag.startswith("v") else image_tag
+                db.add(EngineVersion(
+                    runtime=rt,
+                    version=stripped,
+                    image_tag=image_tag,
+                    status="published",
+                    is_default=(idx == 0),
+                ))
+
+        await db.commit()
+        total = sum(len(v) for v in by_runtime.values())
+        logger.info("种子数据：从现有实例导入 %d 个引擎版本到版本目录", total)
+
+
 async def backfill_cluster_org_id(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

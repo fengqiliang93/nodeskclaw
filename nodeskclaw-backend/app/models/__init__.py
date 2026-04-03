@@ -14,6 +14,7 @@ from app.models.dead_letter import DeadLetter  # noqa: F401
 from app.models.decision_record import DecisionRecord  # noqa: F401
 from app.models.delivery_log import DeliveryLog  # noqa: F401
 from app.models.deploy_record import DeployRecord  # noqa: F401
+from app.models.engine_version import EngineVersion  # noqa: F401
 from app.models.event_log import EventLog  # noqa: F401
 from app.models.gene import (  # noqa: F401
     Gene,

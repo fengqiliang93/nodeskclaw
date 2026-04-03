@@ -262,9 +262,10 @@ async def lifespan(app: FastAPI):
                 logger.info("Egress 配置迁移: %s = %s", _eg_key, _eg_value)
 
     # ── 种子数据（幂等，每次启动执行）──
-    from app.startup.seed import run_seed, backfill_cluster_org_id
+    from app.startup.seed import run_seed, backfill_cluster_org_id, seed_engine_versions
     _seed_credentials = await run_seed(async_session_factory, is_ee=_fg.is_ee)
     await backfill_cluster_org_id(async_session_factory)
+    await seed_engine_versions(async_session_factory)
 
     # ── gene_slugs → template_items 迁移（幂等）──
     async with async_session_factory() as db:
