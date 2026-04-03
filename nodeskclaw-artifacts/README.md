@@ -8,6 +8,7 @@ DeskClaw 部署制品 -- AI 经营伙伴的运行基础设施。包含 DeskClaw 
 nodeskclaw-artifacts/
 ├── common.sh                    # 公共构建函数（OCI 配置、日志、Docker 操作、参数解析）
 ├── build.sh                     # 统一镜像构建入口（./build.sh <engine> --version <ver>）
+├── verify.sh                    # 镜像集成验证脚本（./verify.sh <image:tag>）
 ├── openclaw-image/              # OpenClaw 工作引擎镜像
 │   ├── Dockerfile               # Base 镜像: node:22-bookworm-slim + npm 全局安装 openclaw
 │   ├── Dockerfile.security      # 安全层镜像: FROM base + COPY TypeScript 插件到 extensions/
@@ -138,9 +139,27 @@ cd nodeskclaw-artifacts
 | `OPENAI_API_KEY` | OpenAI 模型 Key，DeskClaw 原生读取 | 可选 |
 | `ANTHROPIC_API_KEY` | Anthropic 模型 Key | 可选 |
 
-### 构建产物检查清单
+### 镜像集成验证
 
-构建完成后验证：
+构建完成后使用 `verify.sh` 进行自动化集成验证：
+
+```bash
+cd nodeskclaw-artifacts
+./verify.sh <image:tag>
+```
+
+验证项：
+
+| 检查项 | 说明 |
+|--------|------|
+| 容器启动 | 容器能正常启动并保持 running |
+| 配置兼容性 | `openclaw.json` 可解析，`gateway.auth.token` 存在 |
+| 目录结构 | `/root/.openclaw` 及核心文件存在 |
+| CLI 参数 | `openclaw gateway --help` 包含 `--bind`、`--allow-unconfigured` |
+| 端口监听 | Gateway 18789 可达，SSE 9721 监听 |
+| 版本标记 | `/root/.openclaw-version` 非空 |
+
+手动快速验证：
 
 ```bash
 docker run --rm <image> node --version          # 输出 Node.js 版本
