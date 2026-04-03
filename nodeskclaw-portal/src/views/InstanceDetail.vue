@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   RefreshCw, Trash2, Circle, Loader2, Copy, Check, RotateCcw, AlertTriangle,
+  Wrench, Archive, CopyPlus,
 } from 'lucide-vue-next'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
@@ -74,7 +75,53 @@ const restarting = ref(false)
 const resettingToken = ref(false)
 const showRestartDialog = ref(false)
 const showDeleteDialog = ref(false)
+const showCloneDialog = ref(false)
 const deleting = ref(false)
+const cloneName = ref('')
+const cloning = ref(false)
+
+async function handleBackup() {
+  try {
+    await api.post(`/instances/${instanceId.value}/backups`)
+    toast.success(t('backup.backupSuccess'))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || t('common.failed'))
+  }
+}
+
+async function handleRebuild() {
+  const ok = await confirm({
+    title: t('backup.rebuild'),
+    description: t('backup.confirmRebuild'),
+  })
+  if (!ok) return
+  try {
+    const { data } = await api.post(`/instances/${instanceId.value}/rebuild`)
+    toast.success(t('backup.rebuildSuccess'))
+    if (data.data?.deploy_id) {
+      router.push({ name: 'DeployProgress', params: { deployId: data.data.deploy_id } })
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || t('common.failed'))
+  }
+}
+
+async function handleClone() {
+  cloning.value = true
+  try {
+    const { data } = await api.post(`/instances/${instanceId.value}/clone`, { name: cloneName.value.trim() })
+    toast.success(t('backup.cloneSuccess'))
+    showCloneDialog.value = false
+    cloneName.value = ''
+    if (data.data?.deploy_id) {
+      router.push({ name: 'DeployProgress', params: { deployId: data.data.deploy_id } })
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || t('common.failed'))
+  } finally {
+    cloning.value = false
+  }
+}
 function formatCpu(val: string): string {
   if (val.endsWith('m')) {
     const cores = parseInt(val.slice(0, -1), 10) / 1000
@@ -376,7 +423,7 @@ async function handleDelete() {
       </div>
 
       <!-- 操作 -->
-      <div class="flex items-center gap-3 pt-4 border-t border-border">
+      <div class="flex items-center gap-3 pt-4 border-t border-border flex-wrap">
         <button
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
           @click="fetchDetail"
@@ -394,6 +441,30 @@ async function handleDelete() {
           {{ restarting ? '重启中...' : '重启AI 员工' }}
         </button>
         <button
+          v-if="canEdit && detail?.status === 'running'"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
+          @click="handleBackup"
+        >
+          <Archive class="w-4 h-4" />
+          {{ t('backup.create') }}
+        </button>
+        <button
+          v-if="canAdmin && detail?.status === 'running'"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
+          @click="showCloneDialog = true"
+        >
+          <CopyPlus class="w-4 h-4" />
+          {{ t('backup.clone') }}
+        </button>
+        <button
+          v-if="canAdmin && (detail?.status === 'failed' || detail?.health_status === 'unhealthy')"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-500/30 text-amber-400 text-sm hover:bg-amber-500/10 transition-colors"
+          @click="handleRebuild"
+        >
+          <Wrench class="w-4 h-4" />
+          {{ t('backup.rebuild') }}
+        </button>
+        <button
           v-if="canAdmin"
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-500/30 text-red-400 text-sm hover:bg-red-500/10 transition-colors ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="deleting"
@@ -404,6 +475,41 @@ async function handleDelete() {
           {{ deleting ? '删除中...' : '删除AI 员工' }}
         </button>
       </div>
+
+      <!-- 克隆对话框 -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showCloneDialog" class="fixed inset-0 z-50 flex items-center justify-center">
+            <div class="absolute inset-0 bg-black/50" @click="showCloneDialog = false" />
+            <div class="relative bg-card border border-border rounded-xl p-6 w-full max-w-sm shadow-lg space-y-4">
+              <h3 class="text-base font-semibold">{{ t('backup.clone') }}</h3>
+              <p class="text-sm text-muted-foreground">{{ t('backup.confirmClone') }}</p>
+              <div>
+                <label class="block text-sm mb-1.5">{{ t('backup.cloneNameLabel') }}</label>
+                <input
+                  v-model="cloneName"
+                  class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                  :placeholder="t('backup.cloneNamePlaceholder')"
+                />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  class="px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
+                  @click="showCloneDialog = false"
+                >{{ t('common.cancel') }}</button>
+                <button
+                  class="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50"
+                  :disabled="!cloneName.trim() || cloning"
+                  @click="handleClone"
+                >
+                  <Loader2 v-if="cloning" class="w-4 h-4 animate-spin inline mr-1" />
+                  {{ t('backup.startClone') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
 
     <!-- 重启确认弹窗 -->
