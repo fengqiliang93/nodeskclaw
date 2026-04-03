@@ -16,6 +16,8 @@ class InstanceStatus(str, Enum):
     learning = "learning"
     restarting = "restarting"
     updating = "updating"
+    rebuilding = "rebuilding"
+    restoring = "restoring"
     failed = "failed"
     deleting = "deleting"
 

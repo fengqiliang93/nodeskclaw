@@ -1,6 +1,7 @@
 """Import all models so SQLAlchemy can detect them."""
 
 from app.models.admin_membership import AdminMembership  # noqa: F401
+from app.models.backup import InstanceBackup  # noqa: F401
 from app.models.base import Base, BaseModel  # noqa: F401
 from app.models.blackboard import Blackboard  # noqa: F401
 from app.models.blackboard_file import BlackboardFile  # noqa: F401
