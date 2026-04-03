@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useOrgStore } from '@/stores/org'
 import { useEdition } from '@/composables/useFeature'
-import { Settings, Users, Dna, FolderOpen, Mail, Server, Building2, Container, ScrollText, Globe, Cpu } from 'lucide-vue-next'
+import { Settings, Users, Dna, FolderOpen, Mail, Server, Building2, Container, ScrollText, Globe, Cpu, Layers } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -24,6 +24,7 @@ const allNavItems: NavItem[] = [
   { name: 'OrgInfo', label: () => t('orgSettings.orgInfo'), icon: Building2 },
   { name: 'OrgSettingsClusters', label: () => t('orgSettings.clusters'), icon: Server, ceOnly: true },
   { name: 'OrgSettingsRegistry', label: () => t('orgSettings.registryTitle'), icon: Container, ceOnly: true },
+  { name: 'OrgSettingsEngineVersions', label: () => t('orgSettings.engineVersionsTab'), icon: Layers, ceOnly: true },
   { name: 'OrgSettingsSpecs', label: () => t('orgSettings.specsTab'), icon: Cpu, ceOnly: true },
   { name: 'OrgMembers', label: () => t('orgSettings.humanMembers'), icon: Users },
   { name: 'OrgSettingsGenes', label: () => t('orgSettings.requiredGenesTab'), icon: Dna },

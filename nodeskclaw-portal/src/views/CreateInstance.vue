@@ -195,7 +195,15 @@ function removeProvider(idx: number) {
 const storageAnchors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]
 const storageLabels = [20, 60, 100, 150, 200]
 
-const imageTags = ref<string[]>([])
+interface EngineVersionItem {
+  id: string
+  image_tag: string
+  version: string
+  is_default: boolean
+  release_notes: string | null
+}
+const engineVersions = ref<EngineVersionItem[]>([])
+const imageTags = computed(() => engineVersions.value.map(v => v.image_tag))
 const clusters = ref<{ id: string; name: string; compute_provider: string }[]>([])
 const loadingInit = ref(true)
 const loadingTags = ref(false)
@@ -259,14 +267,15 @@ const storageIndex = computed({
 async function fetchImageTags() {
   loadingTags.value = true
   try {
-    const res = await api.get('/registry/tags', { params: { runtime: selectedRuntime.value } })
-    const tags = (res.data.data ?? []) as { tag: string }[]
-    imageTags.value = tags.map((t) => t.tag)
-    if (imageTags.value.length > 0 && !selectedImage.value) {
-      selectedImage.value = imageTags.value[0] ?? ''
+    const res = await api.get('/engine-versions', { params: { runtime: selectedRuntime.value } })
+    const versions = (res.data.data ?? []) as EngineVersionItem[]
+    engineVersions.value = versions
+    if (versions.length > 0 && !selectedImage.value) {
+      const defaultVersion = versions.find(v => v.is_default)
+      selectedImage.value = defaultVersion?.image_tag ?? versions[0].image_tag ?? ''
     }
   } catch {
-    imageTags.value = []
+    engineVersions.value = []
   } finally {
     loadingTags.value = false
   }
@@ -705,31 +714,25 @@ async function handleDeploy() {
                     class="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
                   >
                     <button
-                      v-for="tag in imageTags"
-                      :key="tag"
+                      v-for="ev in engineVersions"
+                      :key="ev.id"
                       class="w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-accent transition-colors"
-                      :class="tag === selectedImage ? 'text-primary bg-primary/5' : 'text-foreground'"
-                      @click="selectImage(tag)"
+                      :class="ev.image_tag === selectedImage ? 'text-primary bg-primary/5' : 'text-foreground'"
+                      @click="selectImage(ev.image_tag)"
                     >
-                      {{ tag }}
-                      <span v-if="tag === imageTags[0]" class="ml-2 text-[10px] font-sans text-muted-foreground">({{ t('engine.latestTag') }})</span>
+                      {{ ev.image_tag }}
+                      <span v-if="ev.is_default" class="ml-2 text-[10px] font-sans text-muted-foreground">({{ t('engine.defaultTag') }})</span>
                     </button>
                   </div>
                 </div>
                 <div v-else>
-                  <input
-                    v-model="selectedImage"
-                    type="text"
-                    :placeholder="loadingTags ? t('engine.manualInputLoading') : t('engine.manualInputPlaceholder')"
-                    class="w-full px-3 py-2 rounded-lg bg-card border border-border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
-                  />
-                  <p class="text-[10px] text-muted-foreground mt-1">
-                    {{ t('engine.noTagsHint') }}
+                  <p class="text-xs text-muted-foreground py-2">
+                    {{ t('engine.noVersionsPublished') }}
                     <button
                       v-if="authStore.systemInfo?.edition !== 'ee'"
                       class="text-primary hover:underline ml-1"
-                      @click="router.push({ name: 'OrgSettingsRegistry' })"
-                    >{{ t('engine.goToRegistrySettings') }}</button>
+                      @click="router.push({ name: 'OrgSettingsEngineVersions' })"
+                    >{{ t('engine.goToVersionSettings') }}</button>
                   </p>
                 </div>
               </div>
