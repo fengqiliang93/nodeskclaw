@@ -65,6 +65,20 @@ jobs:
           echo "Dockerfile 已更新"
           grep -E 'ARG (OPENCLAW_VERSION|IMAGE_VERSION)=' nodeskclaw-artifacts/openclaw-image/Dockerfile
 
+      - name: 获取 CHANGELOG 摘要
+        if: steps.compare.outputs.needs_update == 'true'
+        id: changelog
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          BODY=$(gh api repos/openclaw/openclaw/releases/tags/v${{ steps.latest.outputs.version }} --jq '.body // "无 Release Notes"' 2>/dev/null || echo "无法获取 Release Notes")
+          BODY="${BODY:0:2000}"
+          {
+            echo "body<<CHANGELOG_EOF"
+            echo "$BODY"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: 创建 Pull Request
         if: steps.compare.outputs.needs_update == 'true'
         uses: peter-evans/create-pull-request@v7
@@ -82,11 +96,36 @@ jobs:
             | 最新版本 | `${{ steps.latest.outputs.version }}` |
             | Release | https://github.com/openclaw/openclaw/releases/tag/v${{ steps.latest.outputs.version }} |
 
+            ### CHANGELOG 摘要
+
+            <details><summary>展开查看</summary>
+
+            ${{ steps.changelog.outputs.body }}
+
+            </details>
+
+            ### 集成面检查清单
+
+            对照 `ee/docs/OpenClaw集成面清单.md`，逐项确认新版本兼容性：
+
+            - [ ] **配置 Schema** — `openclaw.json` Zod strict schema 是否接受我们写入的全部字段
+            - [ ] **文件系统路径** — `/root/.openclaw/` 目录结构是否变更
+            - [ ] **Session 文件格式** — `sessions.json` / `.jsonl` 结构是否变更
+            - [ ] **Channel Plugin SDK** — `openclaw/plugin-sdk` API 是否有 breaking change
+            - [ ] **Gateway 协议** — 端口 (18789/9721)、`/healthz`、认证方式是否变更
+            - [ ] **CLI 行为** — `openclaw gateway` 参数是否变更
+            - [ ] **Gene/Skill 注入** — `SKILL.md` 格式、`extraDirs` 机制是否变更
+            - [ ] **安全管道** — `tools.exec.*` 配置项、Security WebSocket 协议是否变更
+            - [ ] **镜像验证** — `./verify.sh <image:tag>` 全部 PASS
+
             ---
 
             **此 PR 由 GitHub Actions 自动创建。**
 
-            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `./build.sh <engine> --version <ver>` 构建并推送新镜像。
+            合并后请：
+            1. 构建新镜像：`./build.sh openclaw --version ${{ steps.latest.outputs.version }}`
+            2. 运行验证：`./verify.sh <image:tag>`
+            3. 在引擎版本管理中发布新版本
           labels: |
             dependencies
 
@@ -162,11 +201,20 @@ jobs:
             | 最新版本 | `${{ steps.latest.outputs.version }}` |
             | PyPI | https://pypi.org/project/nanobot-ai/${{ steps.latest.outputs.version }}/ |
 
+            ### 升级检查清单
+
+            - [ ] **配置兼容性** — Nanobot `config.json` schema 是否接受现有字段
+            - [ ] **CLI 行为** — 启动参数是否变更
+            - [ ] **Channel 协议** — 消息格式是否变更
+            - [ ] **镜像验证** — 构建后镜像启动正常
+
             ---
 
             **此 PR 由 GitHub Actions 自动创建。**
 
-            合并后请在云平台持续交付流水线中触发镜像构建，或本地执行 `./build.sh <engine> --version <ver>` 构建并推送新镜像。
+            合并后请：
+            1. 构建新镜像：`./build.sh nanobot --version ${{ steps.latest.outputs.version }}`
+            2. 在引擎版本管理中发布新版本
           labels: |
             dependencies
 
