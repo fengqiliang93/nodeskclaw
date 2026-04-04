@@ -1386,6 +1386,9 @@ const zhCN = {
       backend_starting: "后端服务正在启动中，请稍候重试",
       backend_unreachable: "无法连接到后端服务，请检查网络连接",
     },
+    model_provider: {
+      already_exists: "该供应商已配置，不能重复添加",
+    },
     billing: {
       instance_limit_exceeded: "AI 员工数量已达上限（{used}/{limit}），请升级套餐或联系管理员",
       cpu_quota_exceeded: "CPU 配额不足：已用 {used}，本次需要 {requested}，上限 {limit}",
