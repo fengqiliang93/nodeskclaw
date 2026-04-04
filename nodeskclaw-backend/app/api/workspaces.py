@@ -498,6 +498,8 @@ async def get_performance(
     completion_rate = done / total if total > 0 else 0.0
     total_value = sum(t.actual_value or 0 for t in rows if t.status in ("done", "archived"))
     total_tokens = sum(t.token_cost or 0 for t in rows)
+    total_prompt = sum(t.prompt_token_cost or 0 for t in rows)
+    total_completion = sum(t.completion_token_cost or 0 for t in rows)
     roi = total_value / total_tokens * 1000 if total_tokens > 0 else 0.0
 
     return _ok({
@@ -507,6 +509,8 @@ async def get_performance(
         "task_completion_rate": round(completion_rate, 4),
         "total_value_created": round(total_value, 2),
         "total_token_cost": total_tokens,
+        "total_prompt_token_cost": total_prompt,
+        "total_completion_token_cost": total_completion,
         "roi_per_1k_tokens": round(roi, 4),
     })
 

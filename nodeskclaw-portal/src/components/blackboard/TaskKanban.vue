@@ -291,7 +291,12 @@ defineExpose({ refresh: refreshAllBuckets })
                 <div class="flex flex-wrap items-center gap-2 text-muted-foreground">
                   <span v-if="task.estimated_value != null">{{ t('blackboard.estimatedValue') }}: {{ task.estimated_value }}</span>
                   <span v-if="task.actual_value != null">{{ t('blackboard.actualValue') }}: {{ task.actual_value }}</span>
-                  <span v-if="task.token_cost != null">Token: {{ task.token_cost }}</span>
+                  <span v-if="task.token_cost != null">
+                    Token: {{ task.token_cost }}
+                    <template v-if="task.prompt_token_cost || task.completion_token_cost">
+                      ({{ t('blackboard.promptTokensShort') }}: {{ task.prompt_token_cost ?? 0 }} / {{ t('blackboard.completionTokensShort') }}: {{ task.completion_token_cost ?? 0 }})
+                    </template>
+                  </span>
                 </div>
 
                 <div v-if="task.blocker_reason && task.status === 'blocked'" class="text-[11px] text-red-400">

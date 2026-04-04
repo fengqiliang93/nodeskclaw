@@ -135,6 +135,10 @@ defineExpose({ refresh: loadPerformance })
         <div class="text-lg font-semibold">
           {{ formatNumber(perf.total_token_cost) }}
         </div>
+        <div v-if="perf.total_prompt_token_cost || perf.total_completion_token_cost" class="flex gap-2 text-[10px] text-muted-foreground">
+          <span>{{ t('blackboard.promptTokens') }}: {{ formatNumber(perf.total_prompt_token_cost) }}</span>
+          <span>{{ t('blackboard.completionTokens') }}: {{ formatNumber(perf.total_completion_token_cost) }}</span>
+        </div>
       </div>
 
       <div class="p-3 rounded-lg bg-muted/50 border border-border/50 space-y-1">

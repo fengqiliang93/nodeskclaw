@@ -9,6 +9,7 @@ import TaskKanban from './TaskKanban.vue'
 import ObjectivePanel from './ObjectivePanel.vue'
 import SchedulePanel from './SchedulePanel.vue'
 import RoiDashboard from './RoiDashboard.vue'
+import TokenUsagePanel from './TokenUsagePanel.vue'
 import TopologyGraph from './TopologyGraph.vue'
 import PostList from './PostList.vue'
 import PostDetail from './PostDetail.vue'
@@ -165,6 +166,7 @@ const canEditTab = computed(() => activeTab.value === 'notes-perf')
               <TaskKanban ref="taskKanbanRef" :workspace-id="workspaceId" />
               <SchedulePanel :workspace-id="workspaceId" />
               <RoiDashboard v-if="isPerformanceEnabled" ref="roiDashboardRef" :workspace-id="workspaceId" />
+              <TokenUsagePanel :workspace-id="workspaceId" />
             </div>
           </template>
 
