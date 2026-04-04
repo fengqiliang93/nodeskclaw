@@ -46,6 +46,16 @@ class OrgLlmKey(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class InstanceProviderConfig(Base):
+    __tablename__ = "instance_provider_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    key_source: Mapped[str] = mapped_column(String(16), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class UserLlmConfig(Base):
     __tablename__ = "user_llm_configs"
 

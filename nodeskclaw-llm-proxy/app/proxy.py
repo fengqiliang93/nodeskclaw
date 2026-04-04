@@ -20,7 +20,7 @@ from app.codex_cli import (
 )
 from app.config import settings
 from app.database import get_session
-from app.models import Instance, LlmUsageLog, OrgLlmKey, UserLlmConfig, UserLlmKey, not_deleted
+from app.models import Instance, InstanceProviderConfig, LlmUsageLog, OrgLlmKey, UserLlmConfig, UserLlmKey, not_deleted
 
 logger = logging.getLogger(__name__)
 
@@ -326,22 +326,30 @@ async def llm_proxy(provider: str, path: str, request: Request):
         if instance is None:
             return JSONResponse(status_code=401, content={"error": "Invalid proxy token"})
 
-        cfg_result = await db.execute(
-            select(UserLlmConfig).where(
-                UserLlmConfig.user_id == instance.created_by,
-                UserLlmConfig.org_id == instance.org_id,
-                UserLlmConfig.provider == provider,
-                not_deleted(UserLlmConfig),
+        ipc_result = await db.execute(
+            select(InstanceProviderConfig).where(
+                InstanceProviderConfig.instance_id == instance.id,
+                InstanceProviderConfig.provider == provider,
+                not_deleted(InstanceProviderConfig),
             )
         )
-        config = cfg_result.scalar_one_or_none()
-        if config is None:
-            return JSONResponse(status_code=404, content={
-                "error": f"未配置 {provider} 的 LLM Key，请在实例设置中配置"
-            })
+        ipc = ipc_result.scalar_one_or_none()
 
-        is_org_key = config.key_source == "org"
-        key_source = "org" if is_org_key else "personal"
+        if ipc is None:
+            fallback_result = await db.execute(
+                select(UserLlmConfig).where(
+                    UserLlmConfig.user_id == instance.created_by,
+                    UserLlmConfig.org_id == instance.org_id,
+                    UserLlmConfig.provider == provider,
+                    not_deleted(UserLlmConfig),
+                )
+            )
+            fallback_config = fallback_result.scalar_one_or_none()
+            key_source = fallback_config.key_source if fallback_config else "org"
+        else:
+            key_source = ipc.key_source
+
+        is_org_key = key_source == "org"
         real_key: str | None = None
         base_url: str | None = None
         org_key_id: str | None = None
