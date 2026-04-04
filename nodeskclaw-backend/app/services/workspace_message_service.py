@@ -192,9 +192,16 @@ def build_context_prompt(
             ts = m.created_at.strftime("%H:%M") if isinstance(m.created_at, datetime) else ""
             line = f"[{ts} {m.sender_name}]: {m.content}"
             if m.attachments:
-                for att in m.attachments:
-                    size_kb = att.get("size", 0) // 1024
-                    line += f"\n  [附件: {att.get('name', '?')} ({size_kb}KB)]"
+                for idx, att in enumerate(m.attachments, 1):
+                    size = att.get("size", 0)
+                    if size >= 1024 * 1024:
+                        size_str = f"{size / (1024 * 1024):.1f}MB"
+                    elif size >= 1024:
+                        size_str = f"{size / 1024:.0f}KB"
+                    else:
+                        size_str = f"{size}B"
+                    fid = att.get("id", "")
+                    line += f"\n  [附件{idx}: {att.get('name', '?')} ({size_str}), file_id: {fid}]"
             msg_lines.append(line)
         messages_text = "\n".join(msg_lines)
     else:
