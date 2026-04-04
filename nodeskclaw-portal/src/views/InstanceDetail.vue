@@ -441,7 +441,7 @@ async function handleDelete() {
           {{ restarting ? '重启中...' : '重启AI 员工' }}
         </button>
         <button
-          v-if="canEdit && detail?.status === 'running'"
+          v-if="canEdit && instance?.status === 'running'"
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
           @click="handleBackup"
         >
@@ -449,7 +449,7 @@ async function handleDelete() {
           {{ t('backup.create') }}
         </button>
         <button
-          v-if="canAdmin && detail?.status === 'running'"
+          v-if="canAdmin && instance?.status === 'running'"
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm hover:bg-card transition-colors"
           @click="showCloneDialog = true"
         >
@@ -457,7 +457,7 @@ async function handleDelete() {
           {{ t('backup.clone') }}
         </button>
         <button
-          v-if="canAdmin && (detail?.status === 'failed' || detail?.health_status === 'unhealthy')"
+          v-if="canAdmin && (instance?.status === 'failed' || instance?.health_status === 'unhealthy')"
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-500/30 text-amber-400 text-sm hover:bg-amber-500/10 transition-colors"
           @click="handleRebuild"
         >
