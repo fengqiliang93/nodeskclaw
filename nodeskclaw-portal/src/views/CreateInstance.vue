@@ -14,7 +14,7 @@ import { useEdition } from '@/composables/useFeature'
 import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 import {
   PROVIDERS, PROVIDER_LABELS, PROVIDER_DEFAULT_URLS,
-  BUILTIN_PROVIDERS, WORKING_PLAN_PROVIDERS, ALL_KNOWN_PROVIDERS,
+  BUILTIN_PROVIDERS, ALL_KNOWN_PROVIDERS,
   isCodexProvider, DEFAULT_CODEX_MODEL, defaultModelForProvider,
 } from '@/utils/llmProviders'
 
@@ -112,7 +112,7 @@ function addProvider(p: string) {
   if (!p) return
   llmConfigs.value.push({
     provider: p,
-    keySource: isCodexProvider(p) ? 'personal' : (isWorkingPlanAvailable(p) ? 'org' : 'personal'),
+    keySource: isCodexProvider(p) ? 'personal' : (isOrgKeyAvailable(p) ? 'org' : 'personal'),
     personalKey: '',
     baseUrl: '',
     apiType: '',
@@ -164,8 +164,10 @@ function addCustomProvider() {
 
 const orgKeyProviders = ref<Set<string>>(new Set())
 
-const isWorkingPlanAvailable = (provider: string) =>
-  WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)
+const isOrgKeyAvailable = (provider: string) =>
+  orgKeyProviders.value.has(provider)
+
+const orgKeyLabel = computed(() => isEE.value ? 'Working Plan' : t('llm.teamKey'))
 
 async function handleFetchModels(provider: string, callback: (models: ModelItem[], error?: string) => void) {
   const cfg = llmConfigs.value.find(c => c.provider === provider)
@@ -903,21 +905,21 @@ async function handleDeploy() {
                   <span class="relative group">
                     <label
                       class="flex items-center gap-1.5"
-                      :class="isWorkingPlanAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                      :class="isOrgKeyAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
                     >
-                      <input type="radio" :name="`llm-${cfg.provider}`" value="org" v-model="cfg.keySource" class="accent-primary" :disabled="!isWorkingPlanAvailable(cfg.provider)" />
-                      Working Plan
+                      <input type="radio" :name="`llm-${cfg.provider}`" value="org" v-model="cfg.keySource" class="accent-primary" :disabled="!isOrgKeyAvailable(cfg.provider)" />
+                      {{ orgKeyLabel }}
                     </label>
                     <span
-                      v-if="!isWorkingPlanAvailable(cfg.provider)"
+                      v-if="!isOrgKeyAvailable(cfg.provider)"
                       class="pointer-events-none absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md border border-border invisible group-hover:visible"
                     >
-                      {{ WORKING_PLAN_PROVIDERS.has(cfg.provider) ? t('llm.workingPlanNotConfigured') : t('llm.workingPlanUnavailable') }}
+                      {{ t('llm.orgKeyNotConfigured') }}
                     </span>
                   </span>
                   <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="radio" :name="`llm-${cfg.provider}`" value="personal" v-model="cfg.keySource" class="accent-primary" />
-                    个人 Key
+                    {{ t('llm.personalKey') }}
                   </label>
                 </div>
 
@@ -926,7 +928,7 @@ async function handleDeploy() {
                 </p>
 
                 <p v-if="!cfg.isCustom && cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
-                  使用组织统一配置的 Key，无需自行输入
+                  {{ t('llm.orgKeyHint') }}
                 </p>
 
                 <div v-if="cfg.keySource === 'personal'" class="space-y-2">
@@ -998,9 +1000,9 @@ async function handleDeploy() {
                 >
                   <div class="flex items-center gap-1.5">
                     {{ PROVIDER_LABELS[p] || p }}
-                    <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                    <span v-if="orgKeyProviders.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
                       <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
-                      Working Plan
+                      {{ orgKeyLabel }}
                     </span>
                   </div>
                 </button>
@@ -1039,9 +1041,9 @@ async function handleDeploy() {
                   >
                     <div class="flex items-center gap-1.5">
                       {{ PROVIDER_LABELS[p] || p }}
-                      <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                      <span v-if="orgKeyProviders.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
                         <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
-                        Working Plan
+                        {{ orgKeyLabel }}
                       </span>
                     </div>
                   </button>

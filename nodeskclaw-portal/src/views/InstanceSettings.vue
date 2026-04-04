@@ -10,9 +10,10 @@ import api from '@/services/api'
 import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 import {
   PROVIDERS, PROVIDER_LABELS, PROVIDER_DEFAULT_URLS,
-  BUILTIN_PROVIDERS, WORKING_PLAN_PROVIDERS, ALL_KNOWN_PROVIDERS,
+  BUILTIN_PROVIDERS, ALL_KNOWN_PROVIDERS,
   isCodexProvider, defaultModelForProvider,
 } from '@/utils/llmProviders'
+import { useEdition } from '@/composables/useFeature'
 
 const instanceId = inject<ComputedRef<string>>('instanceId')!
 const instanceRuntime = inject<ComputedRef<string>>('instanceRuntime', computed(() => 'openclaw'))
@@ -55,10 +56,14 @@ interface ProviderConfig {
   selectedModel: ModelItem | null
 }
 
+const { isEE } = useEdition()
+
 const orgKeyProviders = ref<Set<string>>(new Set())
 
-const isWorkingPlanAvailable = (provider: string) =>
-  WORKING_PLAN_PROVIDERS.has(provider) && orgKeyProviders.value.has(provider)
+const isOrgKeyAvailable = (provider: string) =>
+  orgKeyProviders.value.has(provider)
+
+const orgKeyLabel = computed(() => isEE.value ? 'Working Plan' : t('llm.teamKey'))
 
 // ── State ──
 
@@ -140,7 +145,7 @@ async function loadAll() {
     }
 
     for (const c of configs) {
-      if (c.keySource === 'org' && !isWorkingPlanAvailable(c.provider)) {
+      if (c.keySource === 'org' && !isOrgKeyAvailable(c.provider)) {
         c.keySource = 'personal'
       }
     }
@@ -163,7 +168,7 @@ function addProvider(provider: string) {
     provider,
     keySource: isCodexProvider(provider)
       ? 'personal'
-      : (isCustom ? 'personal' : (isWorkingPlanAvailable(provider) ? 'org' : 'personal')),
+      : (isCustom ? 'personal' : (isOrgKeyAvailable(provider) ? 'org' : 'personal')),
     personalKeyNew: '',
     personalKeyMasked: pk?.api_key_masked ?? '',
     hasExistingPersonalKey: !!pk,
@@ -419,9 +424,9 @@ watch(() => instanceId.value, (val) => {
             >
               <div class="flex items-center gap-1.5">
                 {{ PROVIDER_LABELS[p] || p }}
-                <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                <span v-if="orgKeyProviders.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
                   <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
-                  Working Plan
+                  {{ orgKeyLabel }}
                 </span>
               </div>
             </button>
@@ -477,7 +482,7 @@ watch(() => instanceId.value, (val) => {
                 <span class="relative group">
                   <label
                     class="flex items-center gap-1.5"
-                    :class="isWorkingPlanAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                    :class="isOrgKeyAvailable(cfg.provider) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
                   >
                     <input
                       type="radio"
@@ -485,16 +490,16 @@ watch(() => instanceId.value, (val) => {
                       value="org"
                       v-model="cfg.keySource"
                       class="accent-primary"
-                      :disabled="!isWorkingPlanAvailable(cfg.provider)"
+                      :disabled="!isOrgKeyAvailable(cfg.provider)"
                       @change="markDirty"
                     />
-                    Working Plan
+                    {{ orgKeyLabel }}
                   </label>
                   <span
-                    v-if="!isWorkingPlanAvailable(cfg.provider)"
+                    v-if="!isOrgKeyAvailable(cfg.provider)"
                     class="pointer-events-none absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md border border-border invisible group-hover:visible"
                   >
-                    {{ WORKING_PLAN_PROVIDERS.has(cfg.provider) ? t('llm.workingPlanNotConfigured') : t('llm.workingPlanUnavailable') }}
+                    {{ t('llm.orgKeyNotConfigured') }}
                   </span>
                 </span>
                 <label class="flex items-center gap-1.5 cursor-pointer">
@@ -506,7 +511,7 @@ watch(() => instanceId.value, (val) => {
                     class="accent-primary"
                     @change="markDirty"
                   />
-                  个人 Key
+                  {{ t('llm.personalKey') }}
                 </label>
               </div>
 
@@ -514,9 +519,8 @@ watch(() => instanceId.value, (val) => {
                 {{ t('llm.codexCliHint') }}
               </p>
 
-              <!-- Working Plan hint -->
               <p v-if="!cfg.isCustom && cfg.keySource === 'org'" class="text-xs text-muted-foreground pl-0.5">
-                使用组织统一配置的 Key，无需自行输入
+                {{ t('llm.orgKeyHint') }}
               </p>
 
               <!-- Personal key -->
@@ -615,9 +619,9 @@ watch(() => instanceId.value, (val) => {
                 >
                   <div class="flex items-center gap-1.5">
                     {{ PROVIDER_LABELS[p] || p }}
-                    <span v-if="WORKING_PLAN_PROVIDERS.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                    <span v-if="orgKeyProviders.has(p)" class="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
                       <Star class="w-3 h-3 fill-amber-500 text-amber-500" />
-                      Working Plan
+                      {{ orgKeyLabel }}
                     </span>
                   </div>
                 </button>
