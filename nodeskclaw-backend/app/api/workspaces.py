@@ -881,6 +881,53 @@ async def get_file_presigned_url(
     return _ok({"url": url, "expires_in": 900})
 
 
+@router.get("/{workspace_id}/files/{file_id}/download")
+async def download_workspace_file(
+    workspace_id: str,
+    file_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_or_agent_dep()),
+):
+    """Download a workspace file (supports both user JWT and instance proxy_token)."""
+    from app.services import storage_service
+    from app.models.workspace_file import WorkspaceFile
+
+    if not storage_service.is_configured():
+        raise _error(503, 50301, "errors.storage.not_configured", "对象存储未配置")
+
+    await wm_service.check_workspace_member(workspace_id, user, db)
+
+    result = await db.execute(
+        sa_select(WorkspaceFile).where(
+            WorkspaceFile.id == file_id,
+            WorkspaceFile.workspace_id == workspace_id,
+            WorkspaceFile.deleted_at.is_(None),
+        )
+    )
+    wf = result.scalar_one_or_none()
+    if wf is None:
+        raise _error(404, 40431, "errors.file.not_found", "文件不存在")
+
+    try:
+        content = await storage_service.download_file(wf.storage_key)
+    except Exception:
+        logger.warning("下载文件 %s 失败", wf.original_name, exc_info=True)
+        raise _error(502, 50202, "errors.storage.download_failed", "文件下载失败，请稍后重试")
+
+    from fastapi.responses import Response
+    from urllib.parse import quote
+
+    filename_encoded = quote(wf.original_name, safe="")
+    return Response(
+        content=content,
+        media_type=wf.content_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}",
+            "Content-Length": str(len(content)),
+        },
+    )
+
+
 @router.post("/{workspace_id}/chat")
 async def workspace_chat(
     workspace_id: str,
