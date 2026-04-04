@@ -580,7 +580,9 @@ async def attribute_tokens_to_tasks(
     updated = 0
     for task in tasks:
         q = sa_select(
-            func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)
+            func.coalesce(func.sum(LlmUsageLog.total_tokens), 0),
+            func.coalesce(func.sum(LlmUsageLog.prompt_tokens), 0),
+            func.coalesce(func.sum(LlmUsageLog.completion_tokens), 0),
         ).where(
             LlmUsageLog.instance_id == task.assignee_instance_id,
             LlmUsageLog.created_at >= task.created_at,
@@ -588,13 +590,78 @@ async def attribute_tokens_to_tasks(
         if task.completed_at:
             q = q.where(LlmUsageLog.created_at <= task.completed_at)
         result = await db.execute(q)
-        total = int(result.scalar())
+        row = result.one()
+        total, prompt, completion = int(row[0]), int(row[1]), int(row[2])
         if total > 0 and task.token_cost != total:
             task.token_cost = total
+            task.prompt_token_cost = prompt
+            task.completion_token_cost = completion
             updated += 1
 
     await db.commit()
     return _ok({"updated_tasks": updated})
+
+
+@router.get("/{workspace_id}/token-usage")
+async def get_workspace_token_usage(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_dep()),
+):
+    """Aggregate LLM token usage for a workspace, grouped by provider and model."""
+    await wm_service.check_workspace_member(workspace_id, user, db)
+    from app.models.workspace_agent import WorkspaceAgent
+    from app.models.llm_usage_log import LlmUsageLog
+
+    agent_q = await db.execute(
+        sa_select(WorkspaceAgent.instance_id).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    instance_ids = [r[0] for r in agent_q.all()]
+    if not instance_ids:
+        return _ok({"total_prompt_tokens": 0, "total_completion_tokens": 0, "total_tokens": 0, "by_provider": []})
+
+    rows = await db.execute(
+        sa_select(
+            LlmUsageLog.provider,
+            LlmUsageLog.model,
+            func.sum(LlmUsageLog.prompt_tokens),
+            func.sum(LlmUsageLog.completion_tokens),
+            func.sum(LlmUsageLog.total_tokens),
+            func.count(),
+        ).where(
+            LlmUsageLog.instance_id.in_(instance_ids),
+        ).group_by(LlmUsageLog.provider, LlmUsageLog.model)
+    )
+
+    by_provider: list[dict] = []
+    grand_prompt = 0
+    grand_completion = 0
+    grand_total = 0
+    for row in rows.all():
+        p_tok = int(row[2] or 0)
+        c_tok = int(row[3] or 0)
+        t_tok = int(row[4] or 0)
+        grand_prompt += p_tok
+        grand_completion += c_tok
+        grand_total += t_tok
+        by_provider.append({
+            "provider": row[0],
+            "model": row[1],
+            "prompt_tokens": p_tok,
+            "completion_tokens": c_tok,
+            "total_tokens": t_tok,
+            "request_count": int(row[5] or 0),
+        })
+
+    return _ok({
+        "total_prompt_tokens": grand_prompt,
+        "total_completion_tokens": grand_completion,
+        "total_tokens": grand_total,
+        "by_provider": by_provider,
+    })
 
 
 # ── Workspace Schedules ──────────────────────────────

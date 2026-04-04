@@ -27,6 +27,8 @@ class WorkspaceTask(BaseModel):
     estimated_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     actual_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     token_cost: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_token_cost: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_token_cost: Mapped[int | None] = mapped_column(Integer, nullable=True)
     blocker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

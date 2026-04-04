@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import hooks
-from app.core.deps import get_current_org, get_db, require_org_admin, require_org_member
+from app.core.deps import get_current_org, get_db, require_feature, require_org_admin, require_org_member
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import get_current_user
 from app.models.base import not_deleted
@@ -558,3 +558,61 @@ async def get_instance_llm_config(
         ))
 
     return ApiResponse(data=items)
+
+
+# ── EE-only Token Analytics ──────────────────────────
+
+@router.get(
+    "/orgs/{org_id}/token-analytics",
+    dependencies=[Depends(require_feature("llm_analytics")), Depends(require_org_admin)],
+)
+async def get_org_token_analytics(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """EE-only: Organization-level LLM token usage analytics by provider, model, and instance."""
+    from app.models.llm_usage_log import LlmUsageLog
+
+    rows = await db.execute(
+        select(
+            LlmUsageLog.provider,
+            LlmUsageLog.model,
+            LlmUsageLog.instance_id,
+            func.sum(LlmUsageLog.prompt_tokens),
+            func.sum(LlmUsageLog.completion_tokens),
+            func.sum(LlmUsageLog.total_tokens),
+            func.count(),
+        ).where(
+            LlmUsageLog.org_id == org_id,
+        ).group_by(
+            LlmUsageLog.provider, LlmUsageLog.model, LlmUsageLog.instance_id,
+        )
+    )
+
+    by_provider: list[dict] = []
+    grand_prompt = 0
+    grand_completion = 0
+    grand_total = 0
+    for row in rows.all():
+        p_tok = int(row[3] or 0)
+        c_tok = int(row[4] or 0)
+        t_tok = int(row[5] or 0)
+        grand_prompt += p_tok
+        grand_completion += c_tok
+        grand_total += t_tok
+        by_provider.append({
+            "provider": row[0],
+            "model": row[1],
+            "instance_id": row[2],
+            "prompt_tokens": p_tok,
+            "completion_tokens": c_tok,
+            "total_tokens": t_tok,
+            "request_count": int(row[6] or 0),
+        })
+
+    return ApiResponse(data={
+        "total_prompt_tokens": grand_prompt,
+        "total_completion_tokens": grand_completion,
+        "total_tokens": grand_total,
+        "by_provider": by_provider,
+    })
