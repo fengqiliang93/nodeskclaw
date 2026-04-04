@@ -1,19 +1,27 @@
-"""Organization LLM Key model -- admin-managed API keys for LLM providers."""
+"""Organization Model Provider -- admin-managed API keys for LLM providers."""
 
-from sqlalchemy import Boolean, BigInteger, ForeignKey, String, Text
+from sqlalchemy import Boolean, BigInteger, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
 
 
-class OrgLlmKey(BaseModel):
+class OrgModelProvider(BaseModel):
     __tablename__ = "org_llm_keys"
+    __table_args__ = (
+        Index(
+            "uq_org_llm_keys_org_provider",
+            "org_id", "provider",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     org_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("organizations.id"), nullable=False, index=True
     )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
-    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     org_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -22,3 +30,6 @@ class OrgLlmKey(BaseModel):
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )
+
+
+OrgLlmKey = OrgModelProvider

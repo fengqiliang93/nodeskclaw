@@ -30,13 +30,14 @@ from app.models.invitation import Invitation  # noqa: F401
 from app.models.instance_template import InstanceTemplate, TemplateItem  # noqa: F401
 from app.models.instance_mcp_server import InstanceMcpServer  # noqa: F401
 from app.models.instance_llm_override import InstanceLlmOverride  # noqa: F401
+from app.models.instance_provider_config import InstanceProviderConfig  # noqa: F401
 from app.models.instance_member import InstanceMember  # noqa: F401
 from app.models.llm_usage_log import LlmUsageLog  # noqa: F401
 from app.models.message_queue import MessageQueueItem  # noqa: F401
 from app.models.message_schema import MessageSchema  # noqa: F401
 from app.models.node_card import NodeCard  # noqa: F401
 from app.models.node_type import NodeTypeDefinition  # noqa: F401
-from app.models.org_llm_key import OrgLlmKey  # noqa: F401
+from app.models.org_llm_key import OrgLlmKey, OrgModelProvider  # noqa: F401
 from app.models.post_read import PostRead  # noqa: F401
 from app.models.org_required_gene import OrgRequiredGene  # noqa: F401
 from app.models.org_smtp_config import OrgSmtpConfig  # noqa: F401
