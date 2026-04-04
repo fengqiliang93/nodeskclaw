@@ -32,8 +32,9 @@ nodeskclaw-portal/
 │       ├── InstanceList.vue        # 实例列表
 │       ├── InstanceDetail.vue      # 实例详情
 │       ├── OrgMembers.vue          # 组织成员管理（org-settings 子视图）
-│       ├── OrgSettings.vue         # 组织设置（Tab 布局：集群 + 人类成员 + 默认工作基因 + 邮件配置）
+│       ├── OrgSettings.vue         # 组织设置（Tab 布局：集群 + 镜像仓库 + 引擎版本 + 默认工作基因 + 邮件配置）
 │       ├── OrgSettingsClusters.vue # 集群管理（org-settings 子视图）
+│       ├── OrgSettingsEngineVersions.vue # 引擎版本管理（发布/默认/废弃）
 │       ├── OrgSettingsGenes.vue    # 默认工作基因配置（org-settings 子视图）
 │       ├── OrgSettingsSmtp.vue     # SMTP 邮件配置（org-settings 子视图）
 │       ├── ClusterDetail.vue       # 集群详情（资源概览 + 节点列表 + IngressClass + StorageClass）
@@ -67,8 +68,9 @@ vue-tsc -b       # 类型检查
 | `/settings` | 个人设置 | 用户信息、密码管理 |
 | `/usage` | 用量 | 组织用量统计 |
 | `/gene-market` | 基因市场 | 浏览安装基因 |
-| `/org-settings` | 组织设置 | Tab 布局：集群 + 人类成员 + 默认工作基因 + 邮件配置（仅 org admin） |
+| `/org-settings` | 组织设置 | Tab 布局：集群 + 镜像仓库 + 引擎版本 + 默认工作基因 + 邮件配置（仅 org admin） |
 | `/org-settings/clusters` | 集群管理 | K8s 集群配置（org-settings 子路由，默认页） |
+| `/org-settings/engine-versions` | 引擎版本 | 引擎版本发布/默认设置/废弃（org-settings 子路由） |
 | `/org-settings/genes` | 默认工作基因 | 默认工作基因配置（org-settings 子路由） |
 | `/org-settings/smtp` | 邮件配置 | 组织 SMTP 服务器配置（org-settings 子路由） |
 | `/clusters/:id` | 集群详情 | 资源概览、节点列表、IngressClass、StorageClass |
