@@ -164,6 +164,7 @@ function addCustomProvider() {
 }
 
 const orgKeyProviders = ref<Set<string>>(new Set())
+const orgAllowedModels = ref<Record<string, string[] | null>>({})
 
 const isOrgKeyAvailable = (provider: string) =>
   orgKeyProviders.value.has(provider)
@@ -202,7 +203,13 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   try {
     const res = await api.get(`/llm/providers/${provider}/models`, { params })
     const msg = res.data?.message ?? ''
-    callback(res.data.data?.models ?? [], msg || undefined)
+    let models: ModelItem[] = res.data.data?.models ?? []
+    const allowed = orgAllowedModels.value[provider]
+    if (allowed && allowed.length > 0) {
+      const allowedSet = new Set(allowed)
+      models = models.filter(m => allowedSet.has(m.id))
+    }
+    callback(models, msg || undefined)
   } catch (e: any) {
     callback([], e?.response?.data?.message ?? t('llm.fetchModelsFailed'))
   }
@@ -385,6 +392,9 @@ onMounted(async () => {
     if (orgKeysRes) {
       const keys = orgKeysRes.data.data ?? []
       orgKeyProviders.value = new Set(keys.map((k: any) => k.provider))
+      for (const k of keys) {
+        orgAllowedModels.value[k.provider] = k.allowed_models ?? null
+      }
       autoPopulateOrgProviders()
     }
     engines.value = (enginesRes.data.data ?? []) as EngineItem[]
