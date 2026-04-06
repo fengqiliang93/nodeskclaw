@@ -170,7 +170,11 @@ router.beforeEach(async (to, _from, next) => {
       await authStore.fetchUser()
     }
 
-    if (authStore.user?.must_change_password && to.path !== '/force-change-password') {
+    if (!authStore.user) {
+      return next('/login')
+    }
+
+    if (authStore.user.must_change_password && to.path !== '/force-change-password') {
       return next('/force-change-password')
     }
 

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentLocale, setCurrentLocale } from '@/i18n'
-import { Settings, LogOut, Boxes, Server, FlaskConical, User } from 'lucide-vue-next'
+import { Settings, LogOut, Boxes, Server, FlaskConical, User, Loader2 } from 'lucide-vue-next'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 import ToastContainer from '@/components/shared/ToastContainer.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
@@ -66,7 +66,7 @@ function onLocaleChange(value: string) {
     <router-view />
   </template>
 
-  <template v-else>
+  <template v-else-if="authStore.isLoggedIn && authStore.user">
     <div class="min-h-screen flex flex-col">
       <header class="h-14 flex items-center justify-between px-6 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div class="flex items-center gap-6 min-w-0">
@@ -190,6 +190,16 @@ function onLocaleChange(value: string) {
       <main class="flex-1">
         <router-view />
       </main>
+    </div>
+  </template>
+
+  <template v-else-if="route.meta.requiresAuth === false">
+    <router-view />
+  </template>
+
+  <template v-else>
+    <div class="h-screen flex items-center justify-center">
+      <Loader2 class="w-6 h-6 animate-spin text-muted-foreground" />
     </div>
   </template>
 </template>
