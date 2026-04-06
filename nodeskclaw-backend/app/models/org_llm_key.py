@@ -1,6 +1,6 @@
 """Organization Model Provider -- admin-managed API keys for LLM providers."""
 
-from sqlalchemy import Boolean, BigInteger, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, BigInteger, ForeignKey, Index, JSON, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -27,6 +27,7 @@ class OrgModelProvider(BaseModel):
     org_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     system_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allowed_models: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )

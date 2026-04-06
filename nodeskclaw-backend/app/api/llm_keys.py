@@ -105,6 +105,7 @@ async def list_model_providers(
             org_token_limit=k.org_token_limit,
             system_token_limit=k.system_token_limit,
             is_active=k.is_active,
+            allowed_models=k.allowed_models,
             usage_total_tokens=usage_map.get(k.id, 0),
             created_by=k.created_by,
         )
@@ -188,7 +189,7 @@ async def update_model_provider(
         id=key.id, org_id=key.org_id, provider=key.provider, label=key.label,
         api_key_masked=_mask_key(key.api_key, key.provider), base_url=key.base_url,
         org_token_limit=key.org_token_limit, system_token_limit=key.system_token_limit,
-        is_active=key.is_active, created_by=key.created_by,
+        is_active=key.is_active, allowed_models=key.allowed_models, created_by=key.created_by,
     ))
 
 
@@ -233,6 +234,7 @@ async def list_available_model_providers(
         AvailableModelProvider(
             id=k.id, provider=k.provider, label=k.label,
             api_key_masked=_mask_key(k.api_key, k.provider), is_active=k.is_active,
+            allowed_models=k.allowed_models,
         )
         for k in keys
     ])

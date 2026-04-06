@@ -35,6 +35,7 @@ class OrgModelProviderUpdate(BaseModel):
     org_token_limit: int | None = None
     system_token_limit: int | None = None
     is_active: bool | None = None
+    allowed_models: list[str] | None = None
 
 
 class OrgModelProviderInfo(BaseModel):
@@ -47,6 +48,7 @@ class OrgModelProviderInfo(BaseModel):
     org_token_limit: int | None
     system_token_limit: int | None
     is_active: bool
+    allowed_models: list[str] | None = None
     usage_total_tokens: int = 0
     created_by: str
 
@@ -131,6 +133,7 @@ class AvailableModelProvider(BaseModel):
     label: str | None
     api_key_masked: str
     is_active: bool
+    allowed_models: list[str] | None = None
 
 
 AvailableLlmKey = AvailableModelProvider
