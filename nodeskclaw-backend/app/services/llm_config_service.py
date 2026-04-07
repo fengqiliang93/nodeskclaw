@@ -172,19 +172,6 @@ async def _get_k8s_client(instance: Instance, db: AsyncSession) -> K8sClient | N
     return K8sClient(api_client)
 
 
-async def _get_explicitly_removed_providers(
-    instance_id: str, active_providers: set[str], db: AsyncSession,
-) -> set[str]:
-    """Providers with soft-deleted IPC but no active IPC = user explicitly removed."""
-    result = await db.execute(
-        select(InstanceProviderConfig.provider).where(
-            InstanceProviderConfig.instance_id == instance_id,
-            InstanceProviderConfig.deleted_at.isnot(None),
-        )
-    )
-    ever_removed = set(result.scalars().all())
-    return ever_removed - active_providers
-
 
 def _ensure_gateway_config(config: dict, instance: Instance) -> None:
     """Ensure gateway config is correct for reverse-proxy (Ingress) deployments.
@@ -397,8 +384,7 @@ async def read_instance_llm_configs(
     )
     user_keys = {k.provider: k for k in user_keys_result.scalars().all()}
 
-    explicitly_removed = await _get_explicitly_removed_providers(instance.id, set(ipc_map.keys()), db)
-    all_providers = set(ipc_map.keys()) | (org_providers - explicitly_removed)
+    all_providers = set(ipc_map.keys()) if ipc_map else org_providers
 
     entries: list[dict] = []
     for provider in sorted(all_providers):
@@ -566,9 +552,8 @@ async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None
     )
     org_providers = {op.provider for op in org_result.scalars().all()}
 
-    explicitly_removed = await _get_explicitly_removed_providers(instance.id, ipc_providers, db)
     configs: list = list(ipc_list)
-    for provider in org_providers - ipc_providers - explicitly_removed:
+    for provider in (org_providers - ipc_providers) if not ipc_list else []:
         configs.append(SimpleNamespace(
             provider=provider,
             key_source="org",
