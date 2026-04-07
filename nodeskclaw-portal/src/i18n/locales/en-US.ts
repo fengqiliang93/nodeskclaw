@@ -1665,6 +1665,7 @@ const enUS = {
     codexCliLabel: "Codex CLI",
     providerOptionalHint: "Add model providers as needed, or skip and configure later",
     selectProviderHint: "Select your LLM provider",
+    savePendingRestart: "Config saved, restarting instance to apply new configuration",
   },
   engine: {
     title: "Work Engine",

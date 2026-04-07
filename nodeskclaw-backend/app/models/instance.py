@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -85,6 +85,9 @@ class Instance(BaseModel):
 
     # Pending config (JSON) -- 两步操作模式: 保存到 DB 但尚未 apply 到 K8s
     pending_config: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # LLM 配置待应用标记: DB 已 commit 但 exec 写入 Pod 失败，restart 时需 force-reconfig + sync
+    llm_config_pending: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
     # Runtime
     available_replicas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

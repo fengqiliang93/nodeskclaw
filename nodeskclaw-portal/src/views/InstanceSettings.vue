@@ -312,8 +312,8 @@ async function handleSave() {
       cfg.hasExistingPersonalKey = true
     }
 
-    // 2. Write configs directly to Pod file
-    await api.put(`/instances/${instanceId.value}/provider-configs`, {
+    // 2. Write configs to DB + Pod (may return pending if Pod is not running)
+    const writeRes = await api.put(`/instances/${instanceId.value}/provider-configs`, {
       configs: providerConfigs.value.map(c => {
         const selectedModel = c.selectedModel ?? defaultModelForProvider(c.provider)
         return {
@@ -326,12 +326,19 @@ async function handleSave() {
       }),
     })
 
-    // 3. Restart runtime
+    const isPending = writeRes.data.data?.pending === true
+    if (isPending) {
+      successMsg.value = t('llm.savePendingRestart')
+    }
+
+    // 3. Restart runtime (force-reconfig if pending)
     restarting.value = true
     const res = await api.post(`/instances/${instanceId.value}/restart-runtime`, null, { timeout: 120000 })
     const result = res.data.data
     if (result?.status === 'ok') {
-      successMsg.value = '配置已保存，DeskClaw 已重启'
+      successMsg.value = isPending
+        ? t('llm.savePendingRestart')
+        : '配置已保存，DeskClaw 已重启'
     } else if (result?.status === 'timeout') {
       successMsg.value = '配置已保存，但 DeskClaw 重启超时，请检查AI 员工状态'
     } else {

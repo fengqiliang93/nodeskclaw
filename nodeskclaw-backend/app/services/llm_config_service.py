@@ -22,7 +22,7 @@ from app.schemas.llm import OpenClawConfigResponse, OpenClawProviderEntry
 from app.services.codex_provider import is_codex_provider, mask_personal_key, normalize_selected_models
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
-from app.services.nfs_mount import RemoteFS, remote_fs
+from app.services.nfs_mount import NFSMountError, RemoteFS, remote_fs
 from app.utils.jsonc import ensure_exec_security, strip_jsonc
 
 logger = logging.getLogger(__name__)
@@ -120,8 +120,7 @@ def _build_providers_config(
             entry["api"] = api_type
 
         selected_models = normalize_selected_models(provider, cfg.selected_models)
-        if selected_models:
-            entry["models"] = _to_openclaw_models(selected_models)
+        entry["models"] = _to_openclaw_models(selected_models) if selected_models else []
 
         providers[provider] = entry
     return providers
@@ -413,10 +412,13 @@ async def read_instance_llm_configs(
 
 async def write_instance_llm_configs(
     instance: Instance, db: AsyncSession, configs: list, current_user_id: str,
-) -> None:
+) -> bool:
     """Write LLM provider configs to DB (InstanceProviderConfig) and Pod's openclaw.json.
 
     configs: list of InstanceProviderConfigItem (or anything with .provider, .key_source, .selected_models)
+
+    Returns True if config was fully applied to the Pod, False if DB was committed
+    but Pod write failed (pending — will be applied on next restart).
     """
     wp_api_key = instance.wp_api_key or ""
 
@@ -454,7 +456,7 @@ async def write_instance_llm_configs(
         if provider not in new_providers:
             ipc.soft_delete()
 
-    await db.flush()
+    await db.commit()
 
     personal_providers = [c.provider for c in configs if c.key_source == "personal"]
     user_keys: dict[str, UserLlmKey] = {}
@@ -481,34 +483,45 @@ async def write_instance_llm_configs(
     if instance.compute_provider == "docker":
         _docker_rewrite_urls(providers)
 
-    async with remote_fs(instance, db) as fs:
-        try:
-            existing_json = await _read_config_file(fs)
-        except ValueError as e:
-            logger.error("openclaw.json parse error, aborting write: %s", e)
-            raise AppException(
-                code=50001,
-                message=f"openclaw.json parse error: {e}",
-                status_code=500,
-            ) from e
+    try:
+        async with remote_fs(instance, db) as fs:
+            try:
+                existing_json = await _read_config_file(fs)
+            except ValueError as e:
+                logger.error("openclaw.json parse error, aborting write: %s", e)
+                raise AppException(
+                    code=50001,
+                    message=f"openclaw.json parse error: {e}",
+                    status_code=500,
+                ) from e
 
-        if existing_json is None:
-            existing_json = {}
+            if existing_json is None:
+                existing_json = {}
 
-        if "models" not in existing_json:
-            existing_json["models"] = {}
-        existing_json["models"]["providers"] = providers
+            if "models" not in existing_json:
+                existing_json["models"] = {}
+            existing_json["models"]["providers"] = providers
 
-        _ensure_gateway_config(existing_json, instance)
-        if "codex" in providers:
-            existing_json["gateway"].setdefault("mode", "local")
-        _set_default_agent_model(existing_json, providers)
-        await _write_config_file(fs, existing_json)
+            _ensure_gateway_config(existing_json, instance)
+            if "codex" in providers:
+                existing_json["gateway"].setdefault("mode", "local")
+            _set_default_agent_model(existing_json, providers)
+            await _write_config_file(fs, existing_json)
+    except NFSMountError:
+        logger.warning(
+            "Pod 不可用，LLM 配置已保存到 DB，标记 pending: instance=%s",
+            instance.name,
+        )
+        instance.llm_config_pending = True
+        await db.commit()
+        return False
 
+    instance.llm_config_pending = False
     logger.info(
         "write_instance_llm_configs: instance=%s providers=%s",
         instance.name, list(providers.keys()),
     )
+    return True
 
 
 async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None:
@@ -1090,6 +1103,12 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
     Strategy: try graceful SIGTERM first; if exec fails (pod crashed / not ready),
     fall back to Deployment rolling restart.
     Docker: delegate to DockerComputeProvider.restart_instance.
+
+    When instance.llm_config_pending is True, runs the force-reconfig recovery:
+    1. Inject OPENCLAW_FORCE_RECONFIG=true env → rolling restart → Pod starts with clean config
+    2. sync_openclaw_llm_config writes correct config from DB to Pod
+    3. Remove FORCE_RECONFIG env → second rolling restart → Pod reads correct config
+    4. Clear llm_config_pending flag
     """
     if instance.compute_provider == "docker":
         return await _restart_runtime_docker(instance)
@@ -1099,6 +1118,10 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
         return {"status": "error", "message": "集群不可用"}
 
     deploy_name = _k8s_name(instance)
+
+    if instance.llm_config_pending:
+        return await _restart_with_force_reconfig(instance, db, k8s, deploy_name)
+
     restarted_via = "sigterm"
 
     pod_name = await _get_running_pod(k8s, instance)
@@ -1121,21 +1144,76 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
         await k8s.restart_deployment(instance.namespace, deploy_name)
         restarted_via = "rollout"
 
-    for _ in range(30):
-        await asyncio.sleep(2)
-        pods = await k8s.list_pods(
-            instance.namespace,
-            f"app.kubernetes.io/name={deploy_name}",
-        )
-        running = [p for p in pods if p["phase"] == "Running"]
-        if running:
-            for p in running:
-                ready = all(c.get("ready", False) for c in p.get("containers", []))
-                if ready:
-                    logger.info("实例 %s Runtime 重启完成 (via %s)", instance.name, restarted_via)
-                    return {"status": "ok", "message": "重启完成"}
+    result = await _poll_pod_ready(k8s, instance.namespace, deploy_name)
+    if result:
+        logger.info("实例 %s Runtime 重启完成 (via %s)", instance.name, restarted_via)
+        return {"status": "ok", "message": "重启完成"}
 
     return {"status": "timeout", "message": "重启超时（60s），请检查实例状态"}
+
+
+async def _poll_pod_ready(
+    k8s: K8sClient, namespace: str, deploy_name: str, max_rounds: int = 30,
+) -> bool:
+    """Poll until a Running+Ready Pod appears. Returns True on success."""
+    for _ in range(max_rounds):
+        await asyncio.sleep(2)
+        pods = await k8s.list_pods(namespace, f"app.kubernetes.io/name={deploy_name}")
+        for p in pods:
+            if p["phase"] == "Running" and all(
+                c.get("ready", False) for c in p.get("containers", [])
+            ):
+                return True
+    return False
+
+
+async def _restart_with_force_reconfig(
+    instance: Instance, db: AsyncSession, k8s: K8sClient, deploy_name: str,
+) -> dict:
+    """Recovery path: Pod crashed due to bad config on PVC.
+
+    Phase 1: FORCE_RECONFIG env → rolling restart → Pod starts with clean template config
+    Phase 2: sync_openclaw_llm_config writes correct config from DB
+    Phase 3: remove FORCE_RECONFIG env → second rolling restart → Pod reads correct config
+    Phase 4: clear llm_config_pending
+    """
+    ns = instance.namespace
+    container_name = deploy_name
+
+    logger.info(
+        "force-reconfig 恢复流程开始: instance=%s deploy=%s",
+        instance.name, deploy_name,
+    )
+
+    # Phase 1: inject FORCE_RECONFIG and trigger rolling restart
+    await k8s.set_deployment_env(ns, deploy_name, container_name, "OPENCLAW_FORCE_RECONFIG", "true")
+    logger.info("Phase 1: 已注入 OPENCLAW_FORCE_RECONFIG=true，等待 Pod Running")
+
+    if not await _poll_pod_ready(k8s, ns, deploy_name):
+        logger.error("force-reconfig Phase 1 超时: Pod 未恢复 Running")
+        return {"status": "timeout", "message": "配置恢复超时（Phase 1: Pod 未启动），请检查实例状态"}
+
+    # Phase 2: write correct LLM config from DB to Pod
+    logger.info("Phase 2: Pod Running，开始写入正确的 LLM 配置")
+    try:
+        await sync_openclaw_llm_config(instance, db)
+    except Exception as e:
+        logger.error("force-reconfig Phase 2 exec 写入失败: %s", e)
+        return {"status": "error", "message": f"配置恢复失败（Phase 2: 写入失败）: {e}"}
+
+    # Phase 3: remove FORCE_RECONFIG → triggers second rolling restart with correct config
+    logger.info("Phase 3: 移除 OPENCLAW_FORCE_RECONFIG，触发第二次滚动重启")
+    await k8s.remove_deployment_env(ns, deploy_name, container_name, "OPENCLAW_FORCE_RECONFIG")
+
+    if not await _poll_pod_ready(k8s, ns, deploy_name):
+        logger.error("force-reconfig Phase 3 超时: 第二次 restart 后 Pod 未就绪")
+        return {"status": "timeout", "message": "配置恢复超时（Phase 3: 重启未完成），请检查实例状态"}
+
+    # Phase 4: clear pending flag
+    instance.llm_config_pending = False
+    await db.commit()
+    logger.info("force-reconfig 恢复完成: instance=%s", instance.name)
+    return {"status": "ok", "message": "配置已恢复并重启完成"}
 
 
 async def _restart_runtime_docker(instance: Instance) -> dict:

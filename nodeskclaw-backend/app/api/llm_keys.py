@@ -11,7 +11,7 @@ from app.core.deps import get_current_org, get_db, require_feature, require_org_
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import get_current_user
 from app.models.base import not_deleted
-from app.models.instance import Instance, InstanceStatus
+from app.models.instance import Instance
 from app.models.instance_provider_config import InstanceProviderConfig
 from app.models.llm_usage_log import LlmUsageLog
 from app.models.org_llm_key import OrgModelProvider
@@ -448,9 +448,6 @@ async def update_instance_provider_configs(
     _current_user, org = org_ctx
     instance = await _get_instance_in_org(instance_id, org.id, db)
 
-    if instance.status != InstanceStatus.running:
-        raise NotFoundError("实例未运行，无法写入配置")
-
     for cfg in body.configs:
         if cfg.key_source == "personal":
             pk_result = await db.execute(
@@ -464,17 +461,20 @@ async def update_instance_provider_configs(
                 raise NotFoundError(f"{cfg.provider} 的个人 Key 不存在，请先配置")
 
     from app.services.llm_config_service import write_instance_llm_configs
-    await write_instance_llm_configs(instance, db, body.configs, current_user.id)
+    applied = await write_instance_llm_configs(instance, db, body.configs, current_user.id)
 
     instance.llm_providers = [c.provider for c in body.configs]
     await db.commit()
 
     logger.info(
-        "已更新实例 provider 配置: instance=%s providers=%s",
-        instance.name, [c.provider for c in body.configs],
+        "已更新实例 provider 配置: instance=%s providers=%s applied=%s",
+        instance.name, [c.provider for c in body.configs], applied,
     )
     await hooks.emit("operation_audit", action="instance.llm_config_updated", target_type="instance", target_id=instance_id, actor_id=current_user.id, org_id=instance.org_id)
-    return ApiResponse(message="配置已写入")
+
+    if applied:
+        return ApiResponse(message="配置已写入")
+    return ApiResponse(data={"pending": True}, message="配置已保存，重启后自动应用")
 
 
 # backward-compat aliases for old instance llm-configs routes

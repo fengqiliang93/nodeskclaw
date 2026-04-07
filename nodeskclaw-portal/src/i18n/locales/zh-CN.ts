@@ -1665,6 +1665,7 @@ const zhCN = {
     codexCliLabel: "Codex CLI",
     providerOptionalHint: "按需选择模型供应商，也可以跳过稍后配置",
     selectProviderHint: "选择你使用的大模型服务商",
+    savePendingRestart: "配置已保存，正在重启实例并应用新配置",
   },
   engine: {
     title: "工作引擎",
