@@ -339,7 +339,18 @@ const zhCN = {
     unsupportedRuntime: "当前 AI 员工引擎不支持大模型配置",
   },
   evolutionLog: {
+    title: "进化日志",
+    empty: "暂无进化事件",
     unsupportedRuntime: "当前 AI 员工引擎不支持进化日志",
+    eventLabels: {
+      learned: "学习成功",
+      forgotten: "已遗忘",
+      simplified: "已简化",
+      learn_failed: "学习失败",
+      forget_failed: "遗忘失败",
+      variant_published: "变体发布",
+      genome_applied: "基因组应用",
+    },
   },
   workspaceView: {
     addAgent: "添加 AI 员工",
