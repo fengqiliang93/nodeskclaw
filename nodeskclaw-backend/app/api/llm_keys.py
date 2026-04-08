@@ -102,6 +102,7 @@ async def list_model_providers(
             label=k.label,
             api_key_masked=_mask_key(k.api_key, k.provider),
             base_url=k.base_url,
+            api_type=k.api_type,
             org_token_limit=k.org_token_limit,
             system_token_limit=k.system_token_limit,
             is_active=k.is_active,
@@ -144,6 +145,7 @@ async def create_model_provider(
         label=body.label,
         api_key=body.api_key,
         base_url=body.base_url,
+        api_type=body.api_type,
         org_token_limit=body.org_token_limit,
         system_token_limit=body.system_token_limit,
         created_by=user.id,
@@ -156,7 +158,8 @@ async def create_model_provider(
     return ApiResponse(data=OrgModelProviderInfo(
         id=key.id, org_id=key.org_id, provider=key.provider, label=key.label,
         api_key_masked=_mask_key(key.api_key, key.provider), base_url=key.base_url,
-        org_token_limit=key.org_token_limit, system_token_limit=key.system_token_limit,
+        api_type=key.api_type, org_token_limit=key.org_token_limit,
+        system_token_limit=key.system_token_limit,
         is_active=key.is_active, created_by=key.created_by,
     ))
 
@@ -188,7 +191,8 @@ async def update_model_provider(
     return ApiResponse(data=OrgModelProviderInfo(
         id=key.id, org_id=key.org_id, provider=key.provider, label=key.label,
         api_key_masked=_mask_key(key.api_key, key.provider), base_url=key.base_url,
-        org_token_limit=key.org_token_limit, system_token_limit=key.system_token_limit,
+        api_type=key.api_type, org_token_limit=key.org_token_limit,
+        system_token_limit=key.system_token_limit,
         is_active=key.is_active, allowed_models=key.allowed_models, created_by=key.created_by,
     ))
 
@@ -235,6 +239,7 @@ async def list_available_model_providers(
             id=k.id, provider=k.provider, label=k.label,
             api_key_masked=_mask_key(k.api_key, k.provider), is_active=k.is_active,
             allowed_models=k.allowed_models,
+            api_type=k.api_type, base_url=k.base_url,
         )
         for k in keys
     ])
@@ -410,6 +415,8 @@ async def list_provider_models(
             resolved_key = org_key.api_key
             if not resolved_base_url:
                 resolved_base_url = org_key.base_url
+            if not resolved_api_type:
+                resolved_api_type = org_key.api_type
 
     if not resolved_key:
         raise BadRequestError(

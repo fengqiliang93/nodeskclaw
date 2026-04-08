@@ -24,6 +24,7 @@ class OrgModelProviderCreate(BaseModel):
     label: str | None = Field(None, max_length=128)
     api_key: str
     base_url: str | None = None
+    api_type: str | None = None
     org_token_limit: int | None = None
     system_token_limit: int | None = None
 
@@ -32,6 +33,7 @@ class OrgModelProviderUpdate(BaseModel):
     label: str | None = None
     api_key: str | None = None
     base_url: str | None = None
+    api_type: str | None = None
     org_token_limit: int | None = None
     system_token_limit: int | None = None
     is_active: bool | None = None
@@ -45,6 +47,7 @@ class OrgModelProviderInfo(BaseModel):
     label: str | None
     api_key_masked: str
     base_url: str | None
+    api_type: str | None = None
     org_token_limit: int | None
     system_token_limit: int | None
     is_active: bool
@@ -134,6 +137,8 @@ class AvailableModelProvider(BaseModel):
     api_key_masked: str
     is_active: bool
     allowed_models: list[str] | None = None
+    api_type: str | None = None
+    base_url: str | None = None
 
 
 AvailableLlmKey = AvailableModelProvider
