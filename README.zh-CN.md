@@ -37,23 +37,57 @@ DeskClaw 是人与 AI 共同经营组织的平台。通过赛博办公室（Cybe
 - **基因系统** -- 模块化能力投资：从公共或私有市场为 AI 装载新的经营维度
 - **一键扩容** -- 端到端扩展经营规模，SSE 实时推送进度
 - **多集群经营** -- 跨集群编排、健康巡检、弹性伸缩，覆盖整个经营版图
-## 技术架构
+## 架构
 
 ```mermaid
-graph TD
-    Human["人类经营者"] --> Portal["用户门户"]
-    Portal --> API["后端 API 中枢<br>Python 3.12 + FastAPI"]
+flowchart TB
+    Human["人类经营者<br>战略 · 判断"] <-.->|"共同经营"| AI["AI 经营伙伴<br>执行 · 迭代"]
 
-    API --> DB[(PostgreSQL)]
-    API --> CW["赛博办公室<br>黑板 / 拓扑 / 任务委派"]
-    API --> Gene["基因系统<br>公共市场"]
-    API --> Compute["K8s"]
+    Human & AI --> channels
 
-    Compute --> Runtime["AI 运行时<br>OpenClaw / Nanobot"]
-    Runtime <-->|"经营通道 (SSE)"| API
-    Runtime --> LLM["LLM 代理"] --> Providers["OpenAI / Anthropic / Gemini / ..."]
+    subgraph channels [" 经营入口 "]
+        direction LR
+        Portal["Web 门户"]
+        DingTalk["钉钉"]
+        OpenAPI["Open API"]
+    end
 
-    AIPartners["AI 经营伙伴"] -.->|"共同经营"| CW
+    channels --> coopCore
+
+    subgraph coopCore [" 共营核心 "]
+        subgraph cyberWS [" 赛博办公室 "]
+            direction LR
+            Topo["六边形拓扑"]
+            Board["共享黑板"]
+            Tasks["任务委派"]
+        end
+        subgraph geneSys [" 基因系统 "]
+            direction LR
+            Market["公共市场"]
+            EntLib["企业基因库"]
+        end
+    end
+
+    coopCore --> platform
+
+    subgraph platform [" 平台服务 "]
+        direction LR
+        Instance["实例生命周期"]
+        Cluster["多集群编排"]
+        Scale["弹性伸缩"]
+        LLMProxy["LLM 路由"]
+        ChPlugin["通道插件"]
+    end
+
+    platform --> infra
+
+    subgraph infra [" 基础设施 "]
+        direction LR
+        K8s["Kubernetes"]
+        Runtime["OpenClaw / Nanobot"]
+        DB["PostgreSQL"]
+        LLMs["OpenAI · Anthropic · Gemini · ..."]
+    end
 ```
 
 ### 项目结构

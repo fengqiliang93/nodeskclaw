@@ -40,20 +40,54 @@ Instant expansion of operating capacity. One-click deployment of AI operating pa
 ## Architecture
 
 ```mermaid
-graph TD
-    Human["Human Operators"] --> Portal["Portal"]
-    Portal --> API["Backend API Hub<br>Python 3.12 + FastAPI"]
+flowchart TB
+    Human["Human Operators<br>Strategy · Judgment"] <-.->|"co-operate"| AI["AI Partners<br>Execution · Iteration"]
 
-    API --> DB[(PostgreSQL)]
-    API --> CW["Cyber Workspace<br>Blackboard / Topology / Delegation"]
-    API --> Gene["Gene System<br>Public Marketplace"]
-    API --> Compute["K8s"]
+    Human & AI --> channels
 
-    Compute --> Runtime["AI Runtime<br>OpenClaw / Nanobot"]
-    Runtime <-->|"Channel Plugin (SSE)"| API
-    Runtime --> LLM["LLM Proxy"] --> Providers["OpenAI / Anthropic / Gemini / ..."]
+    subgraph channels [" Engagement Channels "]
+        direction LR
+        Portal["Web Portal"]
+        DingTalk["DingTalk"]
+        OpenAPI["Open API"]
+    end
 
-    AIPartners["AI Operating Partners"] -.->|"co-operate"| CW
+    channels --> coopCore
+
+    subgraph coopCore [" Co-operation Core "]
+        subgraph cyberWS [" Cyber Workspace "]
+            direction LR
+            Topo["Hex Topology"]
+            Board["Shared Blackboard"]
+            Tasks["Task Delegation"]
+        end
+        subgraph geneSys [" Gene System "]
+            direction LR
+            Market["Marketplace"]
+            EntLib["Enterprise Library"]
+        end
+    end
+
+    coopCore --> platform
+
+    subgraph platform [" Platform Services "]
+        direction LR
+        Instance["Instance Lifecycle"]
+        Cluster["Multi-Cluster"]
+        Scale["Elastic Scale"]
+        LLMProxy["LLM Routing"]
+        ChPlugin["Channel Plugins"]
+    end
+
+    platform --> infra
+
+    subgraph infra [" Infrastructure "]
+        direction LR
+        K8s["Kubernetes"]
+        Runtime["OpenClaw / Nanobot"]
+        DB["PostgreSQL"]
+        LLMs["OpenAI · Anthropic · Gemini · ..."]
+    end
 ```
 
 ### Project Layout
