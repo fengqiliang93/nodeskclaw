@@ -2,14 +2,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
-import { useNetworkConfig } from '@/composables/useNetworkConfig'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import api from '@/services/api'
 import { Loader2, Save, Globe, AlertTriangle, Shield } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const toast = useToast()
-const { invalidate } = useNetworkConfig()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -64,7 +62,6 @@ async function handleSave() {
       api.put('/settings/tls_secret_name', { value: form.value.tls_secret_name.trim() || null }),
       api.put('/settings/ingress_tls_enabled', { value: form.value.ingress_tls_enabled ? 'true' : 'false' }),
     ])
-    invalidate()
     toast.success(t('orgSettings.networkSaved'))
   } catch (e: unknown) {
     toast.error(resolveApiErrorMessage(e, t('orgSettings.networkSaveFailed')))

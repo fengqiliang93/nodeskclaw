@@ -3,17 +3,15 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, ExternalLink, Circle, Loader2, Trash2 } from 'lucide-vue-next'
 import api from '@/services/api'
-import { useNetworkConfig } from '@/composables/useNetworkConfig'
 
 const router = useRouter()
-const { ensureLoaded, buildInstanceUrl } = useNetworkConfig()
 
 interface InstanceItem {
   id: string
   name: string
   status: string
   image_version: string
-  ingress_domain: string | null
+  endpoint_url: string | null
   created_at: string
 }
 
@@ -21,7 +19,6 @@ const instances = ref<InstanceItem[]>([])
 const loading = ref(true)
 
 onMounted(async () => {
-  ensureLoaded()
   try {
     const res = await api.get('/instances')
     instances.value = res.data.data ?? []
@@ -115,8 +112,8 @@ const isEmpty = computed(() => !loading.value && instances.value.length === 0)
             {{ statusLabels[inst.status] || inst.status }}
           </span>
           <a
-            v-if="inst.ingress_domain && inst.status === 'running'"
-            :href="buildInstanceUrl(inst.ingress_domain)"
+            v-if="inst.endpoint_url && inst.status === 'running'"
+            :href="inst.endpoint_url"
             target="_blank"
             class="text-primary hover:text-primary/80"
             @click.stop
