@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2, Plus, Link, Star, X, Cpu, HardDrive } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Loader2, Rocket, Database, ChevronDown, RefreshCw, AlertCircle, Check, Brain, Key, Trash2, Plus, Link, Star, X, Cpu, HardDrive, Zap, CheckCircle, XCircle } from 'lucide-vue-next'
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import { pinyin } from 'pinyin-pro'
@@ -220,6 +220,30 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
 
 function removeProvider(idx: number) {
   llmConfigs.value.splice(idx, 1)
+  delete testResults.value[idx]
+}
+
+const testingProvider = ref<number | null>(null)
+const testResults = ref<Record<number, { ok: boolean; message: string; model_count?: number | null; latency_ms?: number | null }>>({})
+
+async function handleTestKey(idx: number) {
+  const cfg = llmConfigs.value[idx]
+  if (!cfg?.personalKey) return
+  testingProvider.value = idx
+  delete testResults.value[idx]
+  try {
+    const res = await api.post('/llm/test-connection', {
+      provider: cfg.provider,
+      api_key: cfg.personalKey,
+      base_url: cfg.baseUrl || undefined,
+      api_type: cfg.apiType || undefined,
+    })
+    testResults.value[idx] = res.data.data
+  } catch (e: any) {
+    testResults.value[idx] = { ok: false, message: resolveApiErrorMessage(e) || t('llm.testKeyFailed') }
+  } finally {
+    testingProvider.value = null
+  }
 }
 
 const storageAnchors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]
@@ -967,14 +991,34 @@ async function handleDeploy() {
                     {{ t('llm.codexCliRuntimeHint') }}
                   </div>
                   <template v-else>
-                    <div class="relative">
-                      <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <input
-                        v-model="cfg.personalKey"
-                        type="password"
-                        :placeholder="t('createInstance.apiKeyPlaceholder')"
-                        class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                      />
+                    <div class="flex items-center gap-2">
+                      <div class="relative flex-1">
+                        <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                          v-model="cfg.personalKey"
+                          type="password"
+                          :placeholder="t('createInstance.apiKeyPlaceholder')"
+                          class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        />
+                      </div>
+                      <button
+                        v-if="cfg.personalKey"
+                        class="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        :disabled="testingProvider === idx"
+                        @click="handleTestKey(idx)"
+                      >
+                        <Loader2 v-if="testingProvider === idx" class="w-3.5 h-3.5 animate-spin" />
+                        <Zap v-else class="w-3.5 h-3.5" />
+                        {{ t('llm.testKey') }}
+                      </button>
+                      <span v-if="testResults[idx]?.ok" class="shrink-0 flex items-center gap-1 text-xs text-green-500">
+                        <CheckCircle class="w-3.5 h-3.5" />
+                        {{ t('llm.testKeyAvailable') }}
+                      </span>
+                      <span v-else-if="testResults[idx] && !testResults[idx].ok" class="shrink-0 flex items-center gap-1 text-xs text-destructive max-w-[160px] truncate" :title="testResults[idx].message">
+                        <XCircle class="w-3.5 h-3.5 shrink-0" />
+                        {{ t('llm.testKeyFailed') }}
+                      </span>
                     </div>
 
                     <div v-if="cfg.isCustom || cfg.showBaseUrl">

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, inject, type ComputedRef, type Ref } from 'vue'
-import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check, Link, Star, X, AlertTriangle } from 'lucide-vue-next'
+import { Loader2, Brain, Key, Trash2, Plus, RefreshCw, HardDrive, Save, ChevronDown, Check, Link, Star, X, AlertTriangle, Zap, CheckCircle, XCircle } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 import api from '@/services/api'
+import { resolveApiErrorMessage } from '@/i18n/error'
 import { getRuntimeCaps } from '@/utils/runtimeCapabilities'
 import {
   PROVIDERS, PROVIDER_LABELS, PROVIDER_DEFAULT_URLS,
@@ -271,7 +272,32 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
 
 function removeProvider(idx: number) {
   providerConfigs.value.splice(idx, 1)
+  delete testResults.value[idx]
   dirty.value = true
+}
+
+const testingProvider = ref<number | null>(null)
+const testResults = ref<Record<number, { ok: boolean; message: string; model_count?: number | null; latency_ms?: number | null }>>({})
+
+async function handleTestKey(idx: number) {
+  const cfg = providerConfigs.value[idx]
+  const key = cfg?.personalKeyNew
+  if (!key) return
+  testingProvider.value = idx
+  delete testResults.value[idx]
+  try {
+    const res = await api.post('/llm/test-connection', {
+      provider: cfg.provider,
+      api_key: key,
+      base_url: cfg.baseUrl || undefined,
+      api_type: cfg.apiType || undefined,
+    })
+    testResults.value[idx] = res.data.data
+  } catch (e: any) {
+    testResults.value[idx] = { ok: false, message: resolveApiErrorMessage(e) || t('llm.testKeyFailed') }
+  } finally {
+    testingProvider.value = null
+  }
 }
 
 function markDirty() {
@@ -613,15 +639,35 @@ watch(() => instanceOrgId.value, (newVal, oldVal) => {
                     <span class="text-muted-foreground">当前 Key:</span>
                     <span class="font-mono">{{ cfg.personalKeyMasked }}</span>
                   </div>
-                  <div class="relative">
-                    <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <input
-                      v-model="cfg.personalKeyNew"
-                      type="password"
-                      :placeholder="cfg.hasExistingPersonalKey ? '输入新 Key 以替换' : '输入 API Key'"
-                      class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                      @input="markDirty"
-                    />
+                  <div class="flex items-center gap-2">
+                    <div class="relative flex-1">
+                      <Key class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        v-model="cfg.personalKeyNew"
+                        type="password"
+                        :placeholder="cfg.hasExistingPersonalKey ? '输入新 Key 以替换' : '输入 API Key'"
+                        class="w-full pl-9 pr-3 py-1.5 rounded-md bg-background border border-border text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        @input="markDirty"
+                      />
+                    </div>
+                    <button
+                      v-if="cfg.personalKeyNew"
+                      class="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      :disabled="testingProvider === idx"
+                      @click="handleTestKey(idx)"
+                    >
+                      <Loader2 v-if="testingProvider === idx" class="w-3.5 h-3.5 animate-spin" />
+                      <Zap v-else class="w-3.5 h-3.5" />
+                      {{ t('llm.testKey') }}
+                    </button>
+                    <span v-if="testResults[idx]?.ok" class="shrink-0 flex items-center gap-1 text-xs text-green-500">
+                      <CheckCircle class="w-3.5 h-3.5" />
+                      {{ t('llm.testKeyAvailable') }}
+                    </span>
+                    <span v-else-if="testResults[idx] && !testResults[idx].ok" class="shrink-0 flex items-center gap-1 text-xs text-destructive max-w-[160px] truncate" :title="testResults[idx].message">
+                      <XCircle class="w-3.5 h-3.5 shrink-0" />
+                      {{ t('llm.testKeyFailed') }}
+                    </span>
                   </div>
 
                   <div v-if="cfg.isCustom || cfg.showBaseUrl">

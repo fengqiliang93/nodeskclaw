@@ -1,6 +1,7 @@
 """LLM Key management endpoints: model providers, user keys, instance configs."""
 
 import logging
+import time
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -23,6 +24,8 @@ from app.schemas.llm import (
     InstanceLlmConfigInfo,
     InstanceProviderConfigEntry,
     InstanceProviderConfigUpdate,
+    LlmTestConnectionRequest,
+    LlmTestConnectionResult,
     OpenClawConfigResponse,
     OrgModelProviderCreate,
     OrgModelProviderInfo,
@@ -431,6 +434,79 @@ async def list_provider_models(
     except ValueError as e:
         raise BadRequestError(str(e), "errors.llm.model_fetch_failed")
     return ApiResponse(data=ProviderModelsResponse(provider=provider, models=models))
+
+
+@router.post("/llm/test-connection", response_model=ApiResponse[LlmTestConnectionResult])
+async def test_llm_connection(
+    body: LlmTestConnectionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.model_catalog_service import fetch_provider_models
+
+    resolved_key = body.api_key
+    resolved_base_url = body.base_url
+    resolved_api_type = body.api_type
+
+    if not resolved_key and body.org_id:
+        result = await db.execute(
+            select(OrgModelProvider).where(
+                OrgModelProvider.org_id == body.org_id,
+                OrgModelProvider.provider == body.provider,
+                OrgModelProvider.is_active.is_(True),
+                not_deleted(OrgModelProvider),
+            ).limit(1)
+        )
+        org_key = result.scalar_one_or_none()
+        if org_key:
+            resolved_key = org_key.api_key
+            if not resolved_base_url:
+                resolved_base_url = org_key.base_url
+            if not resolved_api_type:
+                resolved_api_type = org_key.api_type
+
+    if not resolved_key:
+        pk_result = await db.execute(
+            select(UserLlmKey).where(
+                UserLlmKey.user_id == current_user.id,
+                UserLlmKey.provider == body.provider,
+                not_deleted(UserLlmKey),
+            ).limit(1)
+        )
+        personal_key = pk_result.scalar_one_or_none()
+        if personal_key:
+            resolved_key = personal_key.api_key
+            if not resolved_base_url:
+                resolved_base_url = personal_key.base_url
+            if not resolved_api_type:
+                resolved_api_type = personal_key.api_type
+
+    if not resolved_key:
+        return ApiResponse(data=LlmTestConnectionResult(
+            ok=False, message="无可用 Key，请先填写 API Key",
+        ))
+
+    t0 = time.monotonic()
+    try:
+        models = await fetch_provider_models(
+            body.provider, resolved_key,
+            base_url=resolved_base_url, api_type=resolved_api_type,
+            skip_cache=True,
+        )
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        return ApiResponse(data=LlmTestConnectionResult(
+            ok=True,
+            message="连接成功",
+            model_count=len(models),
+            latency_ms=latency_ms,
+        ))
+    except ValueError as e:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        return ApiResponse(data=LlmTestConnectionResult(
+            ok=False,
+            message=str(e),
+            latency_ms=latency_ms,
+        ))
 
 
 # ══════════════════════════════════════════════════════════

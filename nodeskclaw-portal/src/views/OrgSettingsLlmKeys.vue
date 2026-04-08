@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrgStore } from '@/stores/org'
-import { Settings, Loader2, KeyRound, Check, X, Save, Plus, Trash2, ChevronDown } from 'lucide-vue-next'
+import { Settings, Loader2, KeyRound, Check, X, Save, Plus, Trash2, ChevronDown, Zap, CheckCircle, XCircle } from 'lucide-vue-next'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
@@ -172,6 +172,7 @@ async function saveAllowedModels(provider: string) {
 
 function openConfigure(providerName: string) {
   resetForm()
+  testResult.value = null
   dialogProvider.value = providerName
   const existing = configuredMap()[providerName]
   if (existing) {
@@ -294,6 +295,38 @@ const canSave = computed(() => {
   if (isCustomProvider(dialogProvider.value) && !form.value.base_url) return false
   return true
 })
+
+const testing = ref(false)
+const testResult = ref<{ ok: boolean; message: string; model_count?: number | null; latency_ms?: number | null } | null>(null)
+
+const canTest = computed(() => {
+  if (!isEditing.value && !form.value.api_key) return false
+  if (isEditing.value && !form.value.api_key && !orgId.value) return false
+  return true
+})
+
+async function handleTest() {
+  testing.value = true
+  testResult.value = null
+  try {
+    const payload: Record<string, any> = {
+      provider: dialogProvider.value,
+      base_url: form.value.base_url || undefined,
+      api_type: form.value.api_type || undefined,
+    }
+    if (form.value.api_key) {
+      payload.api_key = form.value.api_key
+    } else if (isEditing.value && orgId.value) {
+      payload.org_id = orgId.value
+    }
+    const res = await api.post('/llm/test-connection', payload)
+    testResult.value = res.data.data
+  } catch (e: any) {
+    testResult.value = { ok: false, message: resolveApiErrorMessage(e) || t('orgSettings.llmTestConnectionFailed') }
+  } finally {
+    testing.value = false
+  }
+}
 
 onMounted(async () => {
   if (!orgStore.currentOrg) await orgStore.fetchMyOrg()
@@ -636,24 +669,48 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="flex justify-end gap-2 px-6 py-4 mt-2">
+          <div v-if="testResult" class="mx-6 mt-2 px-3 py-2 rounded-md text-sm" :class="testResult.ok ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-destructive/10 text-destructive'">
+            <div class="flex items-center gap-1.5">
+              <CheckCircle v-if="testResult.ok" class="w-4 h-4 shrink-0" />
+              <XCircle v-else class="w-4 h-4 shrink-0" />
+              <span>{{ testResult.message }}</span>
+            </div>
+            <div v-if="testResult.ok && (testResult.model_count != null || testResult.latency_ms != null)" class="mt-1 text-xs opacity-80 ml-5.5">
+              <span v-if="testResult.model_count != null">{{ t('orgSettings.testConnectionModelCount', { count: testResult.model_count }) }}</span>
+              <span v-if="testResult.model_count != null && testResult.latency_ms != null" class="mx-1">/</span>
+              <span v-if="testResult.latency_ms != null">{{ t('orgSettings.testConnectionLatency', { ms: testResult.latency_ms }) }}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between px-6 py-4 mt-2">
             <button
-              class="px-4 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors"
-              @click="showDialog = false"
+              class="flex items-center gap-1.5 px-3 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!canTest || testing"
+              @click="handleTest"
             >
-              {{ t('common.cancel') }}
+              <Loader2 v-if="testing" class="w-3.5 h-3.5 animate-spin" />
+              <Zap v-else class="w-3.5 h-3.5" />
+              {{ testing ? t('orgSettings.llmTestConnectionTesting') : t('orgSettings.llmTestConnection') }}
             </button>
-            <button
-              class="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="!canSave || saving"
-              @click="handleSave"
-            >
-              <span v-if="saving" class="flex items-center gap-1.5">
-                <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                {{ t('common.saving') }}
-              </span>
-              <span v-else>{{ t('common.save') }}</span>
-            </button>
+            <div class="flex gap-2">
+              <button
+                class="px-4 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors"
+                @click="showDialog = false"
+              >
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                class="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="!canSave || saving"
+                @click="handleSave"
+              >
+                <span v-if="saving" class="flex items-center gap-1.5">
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                  {{ t('common.saving') }}
+                </span>
+                <span v-else>{{ t('common.save') }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -65,13 +65,15 @@ def _set_cache(provider: str, api_key: str, models: list[ModelInfo]) -> None:
 
 async def fetch_provider_models(
     provider: str, api_key: str, *, base_url: str | None = None, api_type: str | None = None,
+    skip_cache: bool = False,
 ) -> list[ModelInfo]:
     if is_codex_provider(provider):
         return list(CODEX_MODELS)
 
-    cached = _get_cached(provider, api_key)
-    if cached is not None:
-        return cached
+    if not skip_cache:
+        cached = _get_cached(provider, api_key)
+        if cached is not None:
+            return cached
 
     if base_url:
         _url = base_url

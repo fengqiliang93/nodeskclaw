@@ -159,6 +159,23 @@ class OpenClawConfigResponse(BaseModel):
     providers: list[OpenClawProviderEntry]
 
 
+# ── Test Connection ──────────────────────────────────────
+
+class LlmTestConnectionRequest(BaseModel):
+    provider: str
+    api_key: str | None = None
+    base_url: str | None = None
+    api_type: str | None = None
+    org_id: str | None = None
+
+
+class LlmTestConnectionResult(BaseModel):
+    ok: bool
+    message: str
+    model_count: int | None = None
+    latency_ms: int | None = None
+
+
 # ── Deprecated (kept for import compat) ──────────────────
 
 class UserLlmConfigInfo(BaseModel):
