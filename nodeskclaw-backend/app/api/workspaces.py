@@ -497,9 +497,36 @@ async def get_performance(
     done = sum(1 for t in rows if t.status in ("done", "archived"))
     completion_rate = done / total if total > 0 else 0.0
     total_value = sum(t.actual_value or 0 for t in rows if t.status in ("done", "archived"))
-    total_tokens = sum(t.token_cost or 0 for t in rows)
-    total_prompt = sum(t.prompt_token_cost or 0 for t in rows)
-    total_completion = sum(t.completion_token_cost or 0 for t in rows)
+    from app.models.workspace_agent import WorkspaceAgent
+    from app.models.llm_usage_log import LlmUsageLog
+
+    agent_q = await db.execute(
+        sa_select(WorkspaceAgent.instance_id).where(
+            WorkspaceAgent.workspace_id == workspace_id,
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+    )
+    ws_instance_ids = [r[0] for r in agent_q.all()]
+
+    total_tokens = 0
+    total_prompt = 0
+    total_completion = 0
+    filter_ids = ws_instance_ids
+    if instance_id:
+        filter_ids = [instance_id] if instance_id in ws_instance_ids else []
+    if filter_ids:
+        llm_result = await db.execute(
+            sa_select(
+                func.coalesce(func.sum(LlmUsageLog.total_tokens), 0),
+                func.coalesce(func.sum(LlmUsageLog.prompt_tokens), 0),
+                func.coalesce(func.sum(LlmUsageLog.completion_tokens), 0),
+            ).where(LlmUsageLog.instance_id.in_(filter_ids))
+        )
+        llm_row = llm_result.one()
+        total_tokens = int(llm_row[0])
+        total_prompt = int(llm_row[1])
+        total_completion = int(llm_row[2])
+
     roi = total_value / total_tokens * 1000 if total_tokens > 0 else 0.0
 
     return _ok({
