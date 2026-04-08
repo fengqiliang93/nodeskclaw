@@ -129,8 +129,11 @@ async def _seed_template_from_image(config: InstanceComputeConfig, data_dir: Pat
     if not rt_spec:
         return
 
+    template_rel = rt_spec.docker_seed_template_rel
+    if not template_rel:
+        return
+
     container_data_dir = rt_spec.data_dir_container_path
-    template_rel = "openclaw.json.template"
     host_template = data_dir / template_rel
 
     # 已存在则跳过（已有实例或已迁移数据）
