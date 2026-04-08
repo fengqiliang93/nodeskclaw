@@ -623,20 +623,26 @@ def build_ingress(
 def build_external_name_service(
     cluster_id: str,
     external_name: str,
+    api_server_url: str | None = None,
 ) -> V1Service:
     """构建 ExternalName Service，用于 infra 网关代理到 inst 集群 ALB。
 
-    每个 inst 集群对应一个 ExternalName Service，部署在 infra 的 GATEWAY_NS。
+    每个物理 inst 集群对应一个 ExternalName Service，部署在 infra 的 GATEWAY_NS。
+    当提供 api_server_url 时，会添加 api-server-hash label 用于物理集群去重。
     """
+    labels: dict[str, str] = {
+        "app.kubernetes.io/managed-by": MANAGED_BY,
+        "nodeskclaw/proxy-type": "inst-cluster",
+        "nodeskclaw/cluster-id": cluster_id,
+    }
+    if api_server_url:
+        from app.services.k8s.proxy_helpers import compute_api_server_hash
+        labels["nodeskclaw/api-server-hash"] = compute_api_server_hash(api_server_url)
     return V1Service(
         metadata=V1ObjectMeta(
             name=f"proxy-inst-{cluster_id[:8]}",
             namespace=GATEWAY_NS,
-            labels={
-                "app.kubernetes.io/managed-by": MANAGED_BY,
-                "nodeskclaw/proxy-type": "inst-cluster",
-                "nodeskclaw/cluster-id": cluster_id,
-            },
+            labels=labels,
         ),
         spec=V1ServiceSpec(
             type="ExternalName",

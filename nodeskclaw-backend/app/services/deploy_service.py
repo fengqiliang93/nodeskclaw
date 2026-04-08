@@ -351,6 +351,7 @@ class _DeployContext:
     env_vars: dict | None
     advanced_config: dict | None
     proxy_endpoint: str | None = None
+    api_server_url: str | None = None
     org_id: str | None = None
     has_llm_configs: bool = False
     template_id: str | None = None
@@ -576,6 +577,7 @@ async def deploy_instance(
         env_vars=env_vars,
         advanced_config=req.advanced_config,
         proxy_endpoint=cluster.proxy_endpoint,
+        api_server_url=cluster.api_server_url,
         org_id=org_id,
         has_llm_configs=bool(req.llm_configs),
         template_id=req.template_id,
@@ -1387,6 +1389,7 @@ async def rebuild_instance(
         env_vars=env_vars,
         advanced_config=advanced,
         proxy_endpoint=cluster.proxy_endpoint,
+        api_server_url=cluster.api_server_url,
         org_id=instance.org_id,
         compute_provider=instance.compute_provider,
         runtime=instance.runtime,

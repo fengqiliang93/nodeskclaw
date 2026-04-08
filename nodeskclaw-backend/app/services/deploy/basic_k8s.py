@@ -50,20 +50,39 @@ class BasicK8sAdapter(DeploymentAdapter):
             gateway_api = await k8s_manager.get_gateway_client()
             gateway_k8s = K8sClient(gateway_api)
 
-            ext_svc = build_external_name_service(ctx.cluster_id, ctx.proxy_endpoint)
-            await gateway_k8s.create_or_skip(
-                gateway_k8s.core.create_namespaced_service, GATEWAY_NS, ext_svc,
-            )
+            api_url = getattr(ctx, "api_server_url", None)
+            svc_name: str | None = None
 
-            proxy_ing = build_proxy_ingress(
-                ctx.name, ingress_host, ext_svc.metadata.name,
-            )
+            if api_url:
+                from app.services.k8s.proxy_helpers import (
+                    compute_api_server_hash,
+                    find_proxy_svc_for_cluster,
+                )
+                api_hash = compute_api_server_hash(api_url)
+                svc_name = await find_proxy_svc_for_cluster(
+                    gateway_k8s.core, GATEWAY_NS, api_hash,
+                )
+                if svc_name:
+                    logger.info(
+                        "复用已有 ExternalName Service %s（同物理集群）", svc_name,
+                    )
+
+            if not svc_name:
+                ext_svc = build_external_name_service(
+                    ctx.cluster_id, ctx.proxy_endpoint, api_url,
+                )
+                await gateway_k8s.create_or_skip(
+                    gateway_k8s.core.create_namespaced_service, GATEWAY_NS, ext_svc,
+                )
+                svc_name = ext_svc.metadata.name
+
+            proxy_ing = build_proxy_ingress(ctx.name, ingress_host, svc_name)
             await gateway_k8s.create_or_skip(
                 gateway_k8s.networking.create_namespaced_ingress, GATEWAY_NS, proxy_ing,
             )
             logger.info(
-                "已在网关集群创建代理 Ingress: %s -> %s",
-                ingress_host, ctx.proxy_endpoint,
+                "已在网关集群创建代理 Ingress: %s -> %s (svc=%s)",
+                ingress_host, ctx.proxy_endpoint, svc_name,
             )
         except Exception as e:
             logger.warning("创建网关代理 Ingress 失败（非致命）: %s", e)
