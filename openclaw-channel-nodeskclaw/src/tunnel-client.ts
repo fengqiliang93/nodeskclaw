@@ -365,9 +365,10 @@ export class TunnelClient {
 
       if (!resp.ok || !resp.body) {
         let errorMsg = `OpenClaw API returned ${resp.status}`;
+        let rawBody: string | undefined;
         try {
-          const text = await resp.text();
-          const body = JSON.parse(text);
+          rawBody = await resp.text();
+          const body = JSON.parse(rawBody);
           const detail =
             typeof body?.error === "object"
               ? body.error.message ?? JSON.stringify(body.error)
@@ -378,12 +379,17 @@ export class TunnelClient {
         } catch {
           /* body unreadable or not JSON — keep default message */
         }
+        const payload: Record<string, string> = {
+          error: errorMsg,
+          error_type: "llm",
+        };
+        if (rawBody) payload.error_raw = rawBody;
         this.send({
           id: crypto.randomUUID(),
           type: "chat.response.error",
           replyTo: msg.id,
           traceId: msg.traceId,
-          payload: { error: errorMsg, error_type: "llm" },
+          payload,
           ts: Date.now(),
         });
         return;

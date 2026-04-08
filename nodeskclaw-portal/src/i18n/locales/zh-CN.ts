@@ -1568,6 +1568,7 @@ const zhCN = {
       unknown: '服务异常',
       view_detail: '查看详情',
       hide_detail: '收起详情',
+      raw_error: '原始错误',
     },
     common: {
       not_found: "资源不存在",

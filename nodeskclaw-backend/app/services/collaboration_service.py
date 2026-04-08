@@ -457,12 +457,16 @@ async def _invoke_target_agent(
                 err_type = chunk_msg.payload.get("error_type")
                 logger.error("Target agent %s returned error: %s", agent_name, raw_error)
                 error_code = "llm_error" if err_type == "llm" else "stream_error"
-                broadcast_event(workspace_id, "agent:error", {
+                evt: dict = {
                     "instance_id": instance_id,
                     "agent_name": agent_name,
                     "error": error_code,
                     "error_detail": str(raw_error)[:256],
-                })
+                }
+                raw_body = chunk_msg.payload.get("error_raw")
+                if raw_body:
+                    evt["error_raw"] = str(raw_body)[:2048]
+                broadcast_event(workspace_id, "agent:error", evt)
                 return False
             if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
                 break

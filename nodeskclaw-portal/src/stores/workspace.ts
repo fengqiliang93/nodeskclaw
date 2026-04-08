@@ -250,6 +250,7 @@ export interface GroupChatMessage {
   error?: {
     code: string
     detail?: string
+    raw?: string
   }
 }
 
@@ -817,15 +818,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const agentName = data.agent_name as string
     const errorCode = (data.error as string) || 'unknown'
     const errorDetail = (data.error_detail as string) || undefined
+    const errorRaw = (data.error_raw as string) || undefined
     typingAgents.value.delete(instanceId)
     _clearTypingTimer(instanceId)
+
+    const errorObj: GroupChatMessage['error'] = {
+      code: errorCode,
+      detail: errorDetail,
+      raw: errorRaw,
+    }
 
     const streaming = chatMessages.value.find(
       (m) => m.sender_id === instanceId && m.streaming,
     )
     if (streaming) {
       streaming.streaming = false
-      streaming.error = { code: errorCode, detail: errorDetail }
+      streaming.error = errorObj
     } else {
       chatMessages.value.push({
         id: `error-${instanceId}-${Date.now()}`,
@@ -835,7 +843,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         content: '',
         message_type: 'chat',
         created_at: new Date().toISOString(),
-        error: { code: errorCode, detail: errorDetail },
+        error: errorObj,
       })
     }
   }

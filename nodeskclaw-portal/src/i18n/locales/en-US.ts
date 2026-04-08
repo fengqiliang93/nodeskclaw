@@ -1568,6 +1568,7 @@ const enUS = {
       unknown: 'Service error.',
       view_detail: 'View details',
       hide_detail: 'Hide details',
+      raw_error: 'Raw error',
     },
     common: {
       not_found: "Resource not found",

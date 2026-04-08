@@ -683,12 +683,29 @@ function renderMarkdownHighlighted(content: string): string {
 
 const feedbackGiven = ref<Record<string, 'up' | 'down'>>({})
 const expandedErrors = ref<Set<string>>(new Set())
+const expandedRawErrors = ref<Set<string>>(new Set())
 
 function toggleErrorDetail(msgId: string) {
   if (expandedErrors.value.has(msgId)) {
     expandedErrors.value.delete(msgId)
   } else {
     expandedErrors.value.add(msgId)
+  }
+}
+
+function toggleRawError(msgId: string) {
+  if (expandedRawErrors.value.has(msgId)) {
+    expandedRawErrors.value.delete(msgId)
+  } else {
+    expandedRawErrors.value.add(msgId)
+  }
+}
+
+function formatRawError(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
   }
 }
 
@@ -1006,6 +1023,19 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 class="mt-1.5 rounded bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 text-xs font-mono text-orange-800 dark:text-orange-200 break-all"
               >
                 {{ msg.error.detail }}
+              </div>
+              <div v-if="msg.error.raw" class="mt-1.5">
+                <button
+                  class="flex items-center gap-0.5 text-xs text-orange-500 hover:text-orange-700 dark:hover:text-orange-200 transition-colors"
+                  @click="toggleRawError(msg.id)"
+                >
+                  <component :is="expandedRawErrors.has(msg.id) ? ChevronDown : ChevronRight" class="w-3 h-3" />
+                  {{ t('errors.agent.raw_error') }}
+                </button>
+                <pre
+                  v-if="expandedRawErrors.has(msg.id)"
+                  class="mt-1 max-h-[200px] overflow-y-auto rounded bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1.5 text-xs font-mono text-orange-800 dark:text-orange-200 whitespace-pre-wrap break-all"
+                >{{ formatRawError(msg.error.raw) }}</pre>
               </div>
             </div>
             <div

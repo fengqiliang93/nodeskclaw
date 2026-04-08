@@ -561,6 +561,7 @@ class TunnelAdapter:
         full_response = ""
         error_msg: str | None = None
         error_type: str | None = None
+        error_raw: str | None = None
 
         try:
             async for chunk_msg in chat_stream:
@@ -568,6 +569,9 @@ class TunnelAdapter:
                     raw_error = chunk_msg.payload.get("error", "unknown_error")
                     error_msg = str(raw_error)[:256]
                     error_type = chunk_msg.payload.get("error_type")
+                    raw_body = chunk_msg.payload.get("error_raw")
+                    if raw_body:
+                        error_raw = str(raw_body)[:2048]
                     break
                 if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
                     break
@@ -611,10 +615,13 @@ class TunnelAdapter:
 
         if error_msg:
             error_code = "llm_error" if error_type == "llm" else "stream_error"
-            broadcast_event(workspace_id, "agent:error", {
+            evt: dict = {
                 "instance_id": target_node_id, "agent_name": agent_name,
                 "error": error_code, "error_detail": error_msg,
-            })
+            }
+            if error_raw:
+                evt["error_raw"] = error_raw
+            broadcast_event(workspace_id, "agent:error", evt)
             return DeliveryResult(
                 success=False, target_node_id=target_node_id,
                 transport=self.transport_id, error=error_msg,
