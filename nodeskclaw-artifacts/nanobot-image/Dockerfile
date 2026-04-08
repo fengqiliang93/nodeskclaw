@@ -2,8 +2,17 @@ FROM python:3.13-slim-bookworm
 
 ARG NANOBOT_VERSION=0.1.4
 ARG IMAGE_VERSION=v0.1.4
+ARG PIP_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+ARG APT_MIRROR=""
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
+
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gettext-base && \
     rm -rf /var/lib/apt/lists/*
 

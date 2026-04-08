@@ -20,6 +20,10 @@ services:
     build:
       context: .
       dockerfile: nodeskclaw-backend/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        APT_MIRROR: ${APT_MIRROR:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +60,11 @@ services:
     image: nodesk-center-cn-beijing.cr.volces.com/public/nodeskclaw-llm-proxy:${DESKCLAW_VERSION}
     build:
       context: nodeskclaw-llm-proxy
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        APT_MIRROR: ${APT_MIRROR:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +82,9 @@ services:
     image: nodesk-center-cn-beijing.cr.volces.com/public/nodeskclaw-portal:${DESKCLAW_VERSION}
     build:
       context: nodeskclaw-portal
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     depends_on:
       - nodeskclaw-backend
     environment:

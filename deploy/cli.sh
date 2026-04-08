@@ -27,6 +27,7 @@
 #   --deploy-only   仅更新 K8s（需 --tag）
 #   --tag TAG       镜像标签（默认 YYYYMMDD-<git-hash>）
 #   --skip-proxy    all 时跳过 proxy
+#   --mirrors NAME  使用镜像源预设（如 cn），加速构建依赖下载
 #   --no-cache      不使用 Docker 缓存
 #   --env-file FILE init 时指定 .env 文件
 #   --force         init 时跳过 Secret 差异确认
@@ -220,7 +221,16 @@ build_and_push() {
         ;;
       portal)
         cat > "$ee_df" <<EODF
+ARG NPM_REGISTRY=""
+ARG ALPINE_MIRROR=""
+
 FROM node:22-alpine AS builder
+ARG NPM_REGISTRY
+ARG ALPINE_MIRROR
+RUN if [ -n "\$ALPINE_MIRROR" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|\${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi && \
+    if [ -n "\$NPM_REGISTRY" ]; then npm config set registry "\$NPM_REGISTRY"; fi
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -264,6 +274,11 @@ EODF
     --build-arg https_proxy= \
     --build-arg HTTP_PROXY= \
     --build-arg HTTPS_PROXY= \
+    --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-}" \
+    --build-arg PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-}" \
+    --build-arg NPM_REGISTRY="${NPM_REGISTRY:-}" \
+    --build-arg APT_MIRROR="${APT_MIRROR:-}" \
+    --build-arg ALPINE_MIRROR="${ALPINE_MIRROR:-}" \
     -t "$image" \
     "$context"; then
     err "[$(ctag "$component")] 镜像构建失败"
@@ -645,6 +660,7 @@ usage() {
   --deploy-only   仅更新 K8s（需 --tag）
   --tag TAG       镜像标签（默认 YYYYMMDD-<git-hash>）
   --skip-proxy    all 时跳过 proxy
+  --mirrors NAME  使用镜像源预设（如 cn），加速依赖下载
   --no-cache      不使用 Docker 缓存
   --env-file FILE init 时指定 .env 文件
   --force         init 时跳过 Secret 差异确认
@@ -668,6 +684,7 @@ FORCE=false
 IS_PROD=false
 EE_MODE=false
 CE_ONLY=""
+MIRRORS=""
 
 case "$COMMAND" in
   deploy)
@@ -707,6 +724,7 @@ while [[ $# -gt 0 ]]; do
     --env-file)    ENV_FILE="$2"; shift ;;
     --force)       FORCE=true ;;
     --ee)          EE_MODE=true ;;
+    --mirrors)     MIRRORS="$2"; shift ;;
     *)             err "未知参数: $1"; usage ;;
   esac
   shift
@@ -744,6 +762,22 @@ if [[ "$EE_MODE" == true ]]; then
   fi
 else
   CE_ONLY=true
+fi
+
+# ── 镜像源预设加载 ───────────────────────────────────────
+
+if [[ -n "$MIRRORS" ]]; then
+  MIRRORS_FILE="$SCRIPT_DIR/mirrors/${MIRRORS}.env"
+  if [[ ! -f "$MIRRORS_FILE" ]]; then
+    err "镜像预设不存在: $MIRRORS_FILE"
+    echo "可用预设:"
+    for f in "$SCRIPT_DIR/mirrors/"*.env 2>/dev/null; do
+      [[ -f "$f" ]] && echo "  $(basename "$f" .env)"
+    done
+    exit 1
+  fi
+  source "$MIRRORS_FILE"
+  log "使用镜像预设: $MIRRORS"
 fi
 
 KUBECTL="kubectl"

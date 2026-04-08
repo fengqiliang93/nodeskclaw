@@ -76,6 +76,7 @@ fi
 
 check_docker
 parse_common_args "$@"
+load_mirrors
 
 REGISTRY="$(registry_for "${ENGINE}")"
 

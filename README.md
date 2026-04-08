@@ -243,6 +243,34 @@ K8s deployments are managed by `deploy/cli.sh`. The typical workflow is **deploy
 
 Database migrations run automatically when the new backend pod starts. See [deploy/README.md](deploy/README.md) for full CLI usage and options.
 
+### Docker Compose
+
+For quick self-hosted deployment without Kubernetes:
+
+```bash
+docker compose up -d                   # CE mode (default)
+docker compose up -d --build           # Rebuild images
+```
+
+### Build Mirrors
+
+If pulling dependencies (PyPI, npm, Debian/Alpine packages) is slow in your region, use a mirror preset to speed up builds:
+
+```bash
+# deploy/cli.sh
+./deploy/cli.sh deploy --mirrors cn
+
+# docker compose
+docker compose --env-file deploy/mirrors/cn.env up -d --build
+
+# artifacts (DeskClaw engine images)
+./nodeskclaw-artifacts/build.sh openclaw --mirrors cn
+```
+
+Available presets are in `deploy/mirrors/`. See [deploy/mirrors/README.md](deploy/mirrors/README.md) for details and customization.
+
+> **Note:** Docker Hub base image pulls (`FROM python:3.12-slim`, etc.) cannot be accelerated this way. Configure a [registry mirror](https://docs.docker.com/docker-hub/mirror/) in your Docker daemon instead.
+
 ### Upgrade Notes
 
 - **Back up your database** before any major version upgrade.
