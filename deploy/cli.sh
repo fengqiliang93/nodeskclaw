@@ -508,13 +508,42 @@ cmd_promote() {
   NAMESPACE="$PROD_NS"
   TAG="$VERSION"
 
-  log "=== PROMOTE: 将 ${VERSION} 部署到生产环境 ${PROD_NS} ==="
+  log "=== PROMOTE: ${VERSION} -> 生产环境 ==="
   echo ""
-
-  confirm "即将将 ${VERSION} 部署到生产环境 ${PROD_NS}（集群: ${KUBE_CONTEXT}）"
 
   local targets
   read -ra targets <<< "$(get_all_targets)"
+
+  log "部署计划（${#targets[@]} 个组件）:"
+  echo ""
+
+  for t in "${targets[@]}"; do
+    local image_name; image_name="$(get_image_name "$t")"
+    local comp_registry; comp_registry="$(get_component_registry "$t")"
+    local new_image="${comp_registry}/${image_name}:${TAG}"
+    local deployment; deployment="$(get_k8s_deployment "$t")"
+    local container; container="$(get_k8s_container "$t")"
+
+    local current_image=""
+    local jsonpath="{.spec.template.spec.containers[?(@.name==\"${container}\")].image}"
+    current_image=$($KUBECTL -n "$NAMESPACE" get deployment "$deployment" \
+      -o jsonpath="$jsonpath" 2>/dev/null) || true
+
+    echo -e "  $(ctag "$t")"
+    if [[ -z "$current_image" ]]; then
+      echo -e "    当前: ${YELLOW}(未部署)${NC}"
+    elif [[ "$current_image" == "$new_image" ]]; then
+      echo -e "    当前: $current_image ${YELLOW}(已是目标版本)${NC}"
+    else
+      echo -e "    当前: $current_image"
+    fi
+    echo -e "    目标: ${GREEN}${new_image}${NC}"
+    echo ""
+  done
+
+  log "目标环境: ${PROD_NS}（集群: ${KUBE_CONTEXT}）"
+
+  confirm "确认将以上 ${#targets[@]} 个组件部署到生产环境？"
 
   for t in "${targets[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
