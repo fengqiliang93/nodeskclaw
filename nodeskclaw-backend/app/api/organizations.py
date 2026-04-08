@@ -23,6 +23,7 @@ from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.schemas.organization import (
     AddMemberRequest,
+    CollaborationDepthUpdate,
     MemberInfo,
     OAuthOrgSetupRequest,
     OrgCreate,
@@ -127,6 +128,28 @@ async def update_current_org_name(
     await org_service.update_org(org.id, OrgUpdate(name=body.name), db)
     await db.refresh(org)
     data = await _enrich_org_info(org, db)
+    return ApiResponse(data=data)
+
+
+@router.put("/current/collaboration-depth", response_model=ApiResponse[OrgInfo])
+async def update_current_org_collaboration_depth(
+    body: CollaborationDepthUpdate,
+    db: AsyncSession = Depends(get_db),
+    org_ctx: tuple = Depends(require_org_admin),
+):
+    """组织管理员修改当前组织的最大协作深度。"""
+    _user, org = org_ctx
+    await org_service.update_org(
+        org.id, OrgUpdate(max_collaboration_depth=body.max_collaboration_depth), db,
+    )
+    await db.refresh(org)
+    data = await _enrich_org_info(org, db)
+    await hooks.emit(
+        "operation_audit", action="org.collaboration_depth_updated",
+        target_type="organization", target_id=org.id,
+        actor_id=_user.id, org_id=org.id,
+        details={"max_collaboration_depth": body.max_collaboration_depth},
+    )
     return ApiResponse(data=data)
 
 
