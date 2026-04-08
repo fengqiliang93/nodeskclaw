@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -6,10 +5,12 @@ from sqlalchemy import select
 
 from app.core.deps import get_current_org
 from app.main import app
+from app.models.cluster import Cluster
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_template import WorkspaceTemplate
+from app.services.workspace_template_deploy_service import start_workspace_template_deploy
 from tests.conftest import TestSessionLocal
 
 
@@ -144,3 +145,55 @@ async def test_delete_template_keeps_other_org_template_undeleted(client, templa
             )
         ).scalar_one()
     assert template.deleted_at is None
+
+
+@pytest.mark.asyncio
+async def test_start_workspace_template_deploy_rejects_other_org_cluster():
+    suffix = uuid4().hex[:8]
+    org_a = Organization(id=f"org-deploy-a-{suffix}", name="Deploy Org A", slug=f"deploy-org-a-{suffix}")
+    org_b = Organization(id=f"org-deploy-b-{suffix}", name="Deploy Org B", slug=f"deploy-org-b-{suffix}")
+    user_a = User(
+        id=f"user-deploy-a-{suffix}",
+        name="Deploy User A",
+        email=f"deploy-a-{suffix}@example.com",
+        username=f"deploy-a-{suffix}",
+        password_hash="x",
+        current_org_id=org_a.id,
+    )
+    cluster_b = Cluster(
+        id=f"cluster-deploy-b-{suffix}",
+        name=f"Cluster B {suffix}",
+        compute_provider="k8s",
+        created_by=user_a.id,
+        org_id=org_b.id,
+    )
+    template = WorkspaceTemplate(
+        id=f"template-deploy-{suffix}",
+        name="Deploy Template",
+        description="",
+        org_id=org_a.id,
+        visibility="org_private",
+        created_by=user_a.id,
+        topology_snapshot={"nodes": [], "edges": []},
+        blackboard_snapshot={},
+        gene_assignments=[],
+        agent_specs=[{"display_name": "Agent 1", "runtime": "openclaw", "compute_provider": "k8s"}],
+        human_specs=[],
+    )
+
+    try:
+        async with TestSessionLocal() as db:
+            db.add_all([org_a, org_b, user_a, cluster_b])
+            await db.commit()
+
+            with pytest.raises(ValueError, match="集群不存在"):
+                await start_workspace_template_deploy(
+                    db,
+                    template=template,
+                    workspace_name="Workspace Deploy",
+                    cluster_id=cluster_b.id,
+                    user=user_a,
+                    org_id=org_a.id,
+                )
+    except Exception:
+        pytest.skip("test database unavailable")
