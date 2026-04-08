@@ -1251,6 +1251,12 @@ const zhCN = {
     nameUpdateFailed: "组织名称更新失败",
     basicInfo: "基本信息",
     relatedInfo: "关联信息",
+    collaborationTitle: "协作设置",
+    collaborationDepthLabel: "最大协作深度",
+    collaborationDepthDesc: "Agent 之间连续转发消息的最大跳数，设置过大可能导致 Agent 循环调用",
+    collaborationDepthSave: "保存",
+    collaborationDepthSaved: "协作深度已更新",
+    collaborationDepthSaveFailed: "协作深度更新失败",
   },
   clusters: {
     title: "集群管理",

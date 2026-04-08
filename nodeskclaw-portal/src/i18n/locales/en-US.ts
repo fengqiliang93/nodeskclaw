@@ -1251,6 +1251,12 @@ const enUS = {
     nameUpdateFailed: "Failed to update organization name",
     basicInfo: "Basic Info",
     relatedInfo: "Related Info",
+    collaborationTitle: "Collaboration",
+    collaborationDepthLabel: "Max Collaboration Depth",
+    collaborationDepthDesc: "Maximum number of consecutive hops when agents forward messages to each other. Setting too high may cause agent loops",
+    collaborationDepthSave: "Save",
+    collaborationDepthSaved: "Collaboration depth updated",
+    collaborationDepthSaveFailed: "Failed to update collaboration depth",
   },
   clusters: {
     title: "Cluster Management",
