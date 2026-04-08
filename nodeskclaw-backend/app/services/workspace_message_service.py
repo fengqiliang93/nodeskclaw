@@ -11,7 +11,24 @@ from app.models.workspace_message import WorkspaceMessage
 logger = logging.getLogger(__name__)
 
 NO_REPLY_TOKEN = "NO_REPLY"
-MAX_COLLABORATION_DEPTH = 3
+DEFAULT_COLLABORATION_DEPTH = 3
+ABSOLUTE_MAX_COLLABORATION_DEPTH = 20
+
+
+async def get_collaboration_depth_limit(db: AsyncSession, workspace_id: str) -> int:
+    """从 workspace 所属组织读取协作深度限制，查不到则回退默认值。"""
+    from app.models.organization import Organization
+    from app.models.workspace import Workspace
+
+    result = await db.execute(
+        select(Organization.max_collaboration_depth)
+        .join(Workspace, Workspace.org_id == Organization.id)
+        .where(Workspace.id == workspace_id)
+    )
+    value = result.scalar_one_or_none()
+    if value is None:
+        return DEFAULT_COLLABORATION_DEPTH
+    return min(value, ABSOLUTE_MAX_COLLABORATION_DEPTH)
 
 
 async def record_message(
