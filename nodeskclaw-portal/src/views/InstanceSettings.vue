@@ -224,6 +224,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   if (cfg?.baseUrl) {
     params.base_url = cfg.baseUrl
   }
+  if (cfg?.apiType) {
+    params.api_type = cfg.apiType
+  }
   if (instanceOrgId.value) {
     params.org_id = instanceOrgId.value
   }

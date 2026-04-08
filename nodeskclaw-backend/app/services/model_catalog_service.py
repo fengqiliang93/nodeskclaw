@@ -38,6 +38,13 @@ PROVIDER_API_TYPE: dict[str, str] = {
 }
 
 
+_ANTHROPIC_PROVIDERS = {"anthropic", "minimax-anthropic"}
+
+
+def _infer_api_type(provider: str) -> str:
+    return "anthropic-messages" if provider in _ANTHROPIC_PROVIDERS else "openai-completions"
+
+
 def _cache_key(provider: str, api_key: str) -> str:
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:12]
     return f"{provider}:{key_hash}"
@@ -57,7 +64,7 @@ def _set_cache(provider: str, api_key: str, models: list[ModelInfo]) -> None:
 
 
 async def fetch_provider_models(
-    provider: str, api_key: str, *, base_url: str | None = None,
+    provider: str, api_key: str, *, base_url: str | None = None, api_type: str | None = None,
 ) -> list[ModelInfo]:
     if is_codex_provider(provider):
         return list(CODEX_MODELS)
@@ -68,9 +75,13 @@ async def fetch_provider_models(
 
     if base_url:
         _url = base_url
-
-        async def _custom_fetcher(key: str) -> list[ModelInfo]:
-            return await _fetch_openai_compatible(key, _url)
+        resolved_type = api_type or _infer_api_type(provider)
+        if resolved_type == "anthropic-messages":
+            async def _custom_fetcher(key: str) -> list[ModelInfo]:
+                return await _fetch_anthropic_compatible(key, _url)
+        else:
+            async def _custom_fetcher(key: str) -> list[ModelInfo]:
+                return await _fetch_openai_compatible(key, _url)
 
         fetcher = _custom_fetcher
     else:
@@ -213,6 +224,32 @@ async def _fetch_openai_compatible(api_key: str, base_url: str) -> list[ModelInf
         name = m.get("name") or mid
         ctx = m.get("context_length") or m.get("context_window")
         max_tok = m.get("max_tokens") or m.get("max_output_tokens")
+        models.append(ModelInfo(id=mid, name=name, context_window=ctx, max_tokens=max_tok))
+    models.sort(key=lambda x: x.id)
+    return models
+
+
+async def _fetch_anthropic_compatible(api_key: str, base_url: str) -> list[ModelInfo]:
+    url = f"{base_url.rstrip('/')}/models"
+    async with _make_client(timeout=15) as client:
+        resp = await client.get(
+            url,
+            headers={
+                "X-Api-Key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+            params={"limit": 100},
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    models = []
+    for m in data:
+        mid = m.get("id", "")
+        if not mid:
+            continue
+        name = m.get("display_name") or m.get("name") or mid
+        ctx = m.get("max_input_tokens")
+        max_tok = m.get("max_tokens")
         models.append(ModelInfo(id=mid, name=name, context_window=ctx, max_tokens=max_tok))
     models.sort(key=lambda x: x.id)
     return models

@@ -177,6 +177,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   if (cfg?.baseUrl) {
     params.base_url = cfg.baseUrl
   }
+  if (cfg?.apiType) {
+    params.api_type = cfg.apiType
+  }
   if (authStore.user?.current_org_id) {
     params.org_id = authStore.user.current_org_id
   }
