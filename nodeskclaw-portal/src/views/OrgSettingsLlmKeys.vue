@@ -2,12 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrgStore } from '@/stores/org'
-import { Settings, Loader2, KeyRound, Check, X, Save } from 'lucide-vue-next'
+import { Settings, Loader2, KeyRound, Check, X, Save, Plus, Trash2, ChevronDown } from 'lucide-vue-next'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { resolveApiErrorMessage } from '@/i18n/error'
-import { PROVIDERS, PROVIDER_LABELS, WP_PROVIDERS } from '@/utils/llmProviders'
+import { PROVIDERS, PROVIDER_LABELS, WP_PROVIDERS, ALL_KNOWN_PROVIDERS } from '@/utils/llmProviders'
 import { useEdition } from '@/composables/useFeature'
 
 const { t } = useI18n()
@@ -25,6 +25,7 @@ interface ModelProvider {
   label: string | null
   api_key_masked: string
   base_url: string | null
+  api_type: string | null
   org_token_limit: number | null
   system_token_limit: number | null
   is_active: boolean
@@ -56,13 +57,32 @@ const saving = ref(false)
 const form = ref({
   api_key: '',
   base_url: '',
+  api_type: '',
+  label: '',
   org_token_limit: '',
   system_token_limit: '',
   is_active: true,
 })
 
+const showCustomForm = ref(false)
+const customSlug = ref('')
+const customSlugError = ref('')
+
+const API_TYPE_OPTIONS = [
+  { value: 'openai-completions', label: 'OpenAI Compatible' },
+  { value: 'anthropic-messages', label: 'Anthropic Compatible' },
+]
+
+function isCustomProvider(providerName: string): boolean {
+  return !ALL_KNOWN_PROVIDERS.has(providerName)
+}
+
+const customProviders = computed(() =>
+  providers.value.filter(p => isCustomProvider(p.provider)),
+)
+
 function resetForm() {
-  form.value = { api_key: '', base_url: '', org_token_limit: '', system_token_limit: '', is_active: true }
+  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true }
 }
 
 function configuredMap(): Record<string, ModelProvider> {
@@ -160,6 +180,8 @@ function openConfigure(providerName: string) {
     form.value = {
       api_key: '',
       base_url: existing.base_url || '',
+      api_type: existing.api_type || '',
+      label: existing.label || '',
       org_token_limit: existing.org_token_limit?.toString() ?? '',
       system_token_limit: existing.system_token_limit?.toString() ?? '',
       is_active: existing.is_active,
@@ -167,8 +189,32 @@ function openConfigure(providerName: string) {
   } else {
     isEditing.value = false
     editingId.value = null
+    if (isCustomProvider(providerName)) {
+      form.value.api_type = 'openai-completions'
+    }
   }
   showDialog.value = true
+}
+
+function addCustomProvider() {
+  const slug = customSlug.value.trim()
+  if (!slug) return
+  if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(slug) || slug.length < 2 || slug.length > 32) {
+    customSlugError.value = t('orgSettings.customProviderSlugInvalid')
+    return
+  }
+  if (ALL_KNOWN_PROVIDERS.has(slug)) {
+    customSlugError.value = t('orgSettings.customProviderSlugConflict')
+    return
+  }
+  if (providers.value.some(p => p.provider === slug)) {
+    customSlugError.value = t('orgSettings.customProviderSlugConflict')
+    return
+  }
+  customSlugError.value = ''
+  showCustomForm.value = false
+  customSlug.value = ''
+  openConfigure(slug)
 }
 
 async function handleSave() {
@@ -181,16 +227,25 @@ async function handleSave() {
       payload.base_url = form.value.base_url || null
       payload.org_token_limit = form.value.org_token_limit ? Number(form.value.org_token_limit) : null
       payload.system_token_limit = form.value.system_token_limit ? Number(form.value.system_token_limit) : null
+      if (isCustomProvider(dialogProvider.value)) {
+        payload.api_type = form.value.api_type || null
+        payload.label = form.value.label || null
+      }
       await api.patch(`/orgs/${orgId.value}/model-providers/${editingId.value}`, payload)
       toast.success(t('orgSettings.llmKeysUpdated'))
     } else {
-      await api.post(`/orgs/${orgId.value}/model-providers`, {
+      const body: Record<string, any> = {
         provider: dialogProvider.value,
         api_key: form.value.api_key,
         base_url: form.value.base_url || undefined,
         org_token_limit: form.value.org_token_limit ? Number(form.value.org_token_limit) : undefined,
         system_token_limit: form.value.system_token_limit ? Number(form.value.system_token_limit) : undefined,
-      })
+      }
+      if (isCustomProvider(dialogProvider.value)) {
+        body.api_type = form.value.api_type || undefined
+        body.label = form.value.label || undefined
+      }
+      await api.post(`/orgs/${orgId.value}/model-providers`, body)
       toast.success(t('orgSettings.llmKeysCreated'))
     }
     showDialog.value = false
@@ -235,7 +290,9 @@ function usagePercent(used: number, limit: number | null): number {
 
 const canSave = computed(() => {
   if (isEditing.value) return true
-  return !!form.value.api_key
+  if (!form.value.api_key) return false
+  if (isCustomProvider(dialogProvider.value) && !form.value.base_url) return false
+  return true
 })
 
 onMounted(async () => {
@@ -403,6 +460,96 @@ onMounted(async () => {
     </div>
     </div>
 
+    <!-- Custom Providers section -->
+    <div class="space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold">{{ t('orgSettings.customProviderTitle') }}</h2>
+        <p class="text-sm text-muted-foreground mt-1">{{ t('orgSettings.customProviderDescription') }}</p>
+      </div>
+
+      <div v-if="!loading" class="space-y-3">
+        <div
+          v-for="cp in customProviders"
+          :key="cp.id"
+          class="rounded-lg border border-border bg-card p-4"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <span class="font-medium text-sm">{{ cp.label || cp.provider }}</span>
+              <span v-if="cp.label" class="text-xs text-muted-foreground ml-2">{{ cp.provider }}</span>
+            </div>
+            <span
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+              :class="cp.is_active ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'"
+            >
+              <Check v-if="cp.is_active" class="w-3 h-3" />
+              <X v-else class="w-3 h-3" />
+              {{ cp.is_active ? t('orgSettings.llmKeysConfigured') : t('orgSettings.llmKeysDisabled') }}
+            </span>
+          </div>
+          <div class="space-y-1 text-xs text-muted-foreground mb-3">
+            <div class="font-mono">{{ cp.api_key_masked }}</div>
+            <div v-if="cp.base_url" class="truncate">{{ cp.base_url }}</div>
+            <div v-if="cp.api_type" class="inline-flex px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px]">
+              {{ API_TYPE_OPTIONS.find(o => o.value === cp.api_type)?.label || cp.api_type }}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-sm hover:bg-muted transition-colors"
+              @click="openConfigure(cp.provider)"
+            >
+              <Settings class="w-3.5 h-3.5" />
+              {{ t('orgSettings.llmKeysSettings') }}
+            </button>
+            <button
+              class="px-3 py-1.5 rounded-md text-sm text-destructive hover:bg-destructive/10 transition-colors"
+              @click="handleDelete(cp.provider)"
+            >
+              <Trash2 class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Add custom provider -->
+        <div v-if="showCustomForm" class="rounded-lg border border-dashed border-violet-400/50 bg-card p-4 space-y-3">
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium">{{ t('orgSettings.customProviderSlug') }}</label>
+            <input
+              v-model="customSlug"
+              class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+              :placeholder="t('orgSettings.customProviderSlugHint')"
+              @keyup.enter="addCustomProvider"
+            />
+            <p v-if="customSlugError" class="text-xs text-destructive">{{ customSlugError }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+              @click="addCustomProvider"
+            >
+              {{ t('common.next') }}
+            </button>
+            <button
+              class="px-4 py-1.5 rounded-md border border-border text-sm hover:bg-muted transition-colors"
+              @click="showCustomForm = false; customSlug = ''; customSlugError = ''"
+            >
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+
+        <button
+          v-if="!showCustomForm"
+          class="w-full px-4 py-3 rounded-lg border border-dashed border-violet-400/50 bg-card text-sm text-violet-400 hover:border-violet-400 hover:bg-violet-500/5 transition-colors flex items-center justify-center gap-1.5"
+          @click="showCustomForm = true"
+        >
+          <Plus class="w-4 h-4" />
+          {{ t('orgSettings.customProviderAdd') }}
+        </button>
+      </div>
+    </div>
+
     <Teleport to="body">
       <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="absolute inset-0 bg-black/50" @click="showDialog = false" />
@@ -417,6 +564,29 @@ onMounted(async () => {
           </div>
 
           <div class="px-6 space-y-4">
+            <template v-if="isCustomProvider(dialogProvider)">
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium">{{ t('orgSettings.customProviderLabel') }}</label>
+                <input
+                  v-model="form.label"
+                  class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  :placeholder="t('orgSettings.customProviderLabelPlaceholder')"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium">{{ t('orgSettings.customProviderApiType') }}</label>
+                <div class="relative">
+                  <select
+                    v-model="form.api_type"
+                    class="w-full appearance-none px-3 py-2 pr-8 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  >
+                    <option v-for="opt in API_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <ChevronDown class="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
+            </template>
+
             <div class="space-y-1.5">
               <label class="text-sm font-medium">{{ t('orgSettings.llmKeysApiKey') }}</label>
               <input
@@ -428,11 +598,14 @@ onMounted(async () => {
             </div>
 
             <div class="space-y-1.5">
-              <label class="text-sm font-medium">{{ t('orgSettings.llmKeysBaseUrl') }}</label>
+              <label class="text-sm font-medium">
+                {{ t('orgSettings.llmKeysBaseUrl') }}
+                <span v-if="isCustomProvider(dialogProvider)" class="text-destructive ml-0.5">*</span>
+              </label>
               <input
                 v-model="form.base_url"
                 class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                :placeholder="t('orgSettings.llmKeysBaseUrlPlaceholder')"
+                :placeholder="isCustomProvider(dialogProvider) ? t('orgSettings.customProviderBaseUrlRequired') : t('orgSettings.llmKeysBaseUrlPlaceholder')"
               />
             </div>
 
