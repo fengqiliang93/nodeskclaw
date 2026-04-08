@@ -127,7 +127,7 @@ async def _in_deploy_grace(instance_id: str, db: AsyncSession, grace_seconds: in
     return (datetime.now(timezone.utc) - finished_at).total_seconds() < grace_seconds
 
 
-def _compute_endpoint_url(instance: Instance) -> str | None:
+def _compute_endpoint_url(instance: Instance, *, tls_enabled: bool = True) -> str | None:
     from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
     spec = RUNTIME_REGISTRY.get(instance.runtime)
     if spec and not spec.has_web_ui:
@@ -135,7 +135,8 @@ def _compute_endpoint_url(instance: Instance) -> str | None:
     if instance.compute_provider == "docker" and instance.ingress_domain:
         return f"http://{instance.ingress_domain}"
     elif instance.ingress_domain:
-        return f"https://{instance.ingress_domain}"
+        proto = "https" if tls_enabled else "http"
+        return f"{proto}://{instance.ingress_domain}"
     return None
 
 
@@ -187,6 +188,9 @@ async def list_instances(
     cluster_id: str | None = None,
     org_id: str | None = None,
 ) -> list[InstanceInfo]:
+    from app.services.config_service import get_config
+    tls_enabled = (await get_config("ingress_tls_enabled", db)) != "false"
+
     query = (
         select(Instance)
         .where(Instance.deleted_at.is_(None))
@@ -214,7 +218,7 @@ async def list_instances(
         ]
         info = InstanceInfo.model_validate(i)
         info.workspaces = workspaces
-        info.endpoint_url = _compute_endpoint_url(i)
+        info.endpoint_url = _compute_endpoint_url(i, tls_enabled=tls_enabled)
         items.append(info)
     return items
 
@@ -232,6 +236,9 @@ async def get_instance(instance_id: str, db: AsyncSession, org_id: str | None = 
 
 async def get_instance_detail(instance_id: str, db: AsyncSession, org_id: str | None = None) -> InstanceDetail:
     """Get instance info enriched with live K8s pod data."""
+    from app.services.config_service import get_config
+    tls_enabled = (await get_config("ingress_tls_enabled", db)) != "false"
+
     instance = await get_instance(instance_id, db, org_id)
 
     wa_result = await db.execute(
@@ -255,7 +262,7 @@ async def get_instance_detail(instance_id: str, db: AsyncSession, org_id: str | 
     cluster = cluster_result.scalar_one_or_none()
 
     info_base = InstanceInfo.model_validate(instance)
-    info_base.endpoint_url = _compute_endpoint_url(instance)
+    info_base.endpoint_url = _compute_endpoint_url(instance, tls_enabled=tls_enabled)
 
     detail = InstanceDetail(
         **info_base.model_dump(),
@@ -369,7 +376,7 @@ async def get_instance_detail(instance_id: str, db: AsyncSession, org_id: str | 
                 instance.ingress_domain = _ing.spec.rules[0].host
                 await db.commit()
                 detail.ingress_domain = instance.ingress_domain
-                detail.endpoint_url = _compute_endpoint_url(instance)
+                detail.endpoint_url = _compute_endpoint_url(instance, tls_enabled=tls_enabled)
         except Exception:
             pass
 
