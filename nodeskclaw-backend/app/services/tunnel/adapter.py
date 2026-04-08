@@ -560,12 +560,14 @@ class TunnelAdapter:
         flushed = False
         full_response = ""
         error_msg: str | None = None
+        error_type: str | None = None
 
         try:
             async for chunk_msg in chat_stream:
                 if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
                     raw_error = chunk_msg.payload.get("error", "unknown_error")
                     error_msg = str(raw_error)[:256]
+                    error_type = chunk_msg.payload.get("error_type")
                     break
                 if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_DONE:
                     break
@@ -608,9 +610,10 @@ class TunnelAdapter:
             logger.error("Agent %s streaming failed: %s", agent_name, e)
 
         if error_msg:
+            error_code = "llm_error" if error_type == "llm" else "stream_error"
             broadcast_event(workspace_id, "agent:error", {
                 "instance_id": target_node_id, "agent_name": agent_name,
-                "error": "stream_error", "error_detail": error_msg,
+                "error": error_code, "error_detail": error_msg,
             })
             return DeliveryResult(
                 success=False, target_node_id=target_node_id,

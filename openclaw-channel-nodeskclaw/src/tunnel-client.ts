@@ -364,14 +364,26 @@ export class TunnelClient {
       });
 
       if (!resp.ok || !resp.body) {
+        let errorMsg = `OpenClaw API returned ${resp.status}`;
+        try {
+          const text = await resp.text();
+          const body = JSON.parse(text);
+          const detail =
+            typeof body?.error === "object"
+              ? body.error.message ?? JSON.stringify(body.error)
+              : typeof body?.error === "string"
+                ? body.error
+                : undefined;
+          if (detail) errorMsg = `OpenClaw API ${resp.status}: ${detail}`;
+        } catch {
+          /* body unreadable or not JSON — keep default message */
+        }
         this.send({
           id: crypto.randomUUID(),
           type: "chat.response.error",
           replyTo: msg.id,
           traceId: msg.traceId,
-          payload: {
-            error: `Local OpenClaw API returned ${resp.status}`,
-          },
+          payload: { error: errorMsg, error_type: "llm" },
           ts: Date.now(),
         });
         return;
@@ -382,6 +394,7 @@ export class TunnelClient {
       let buffer = "";
       let dataAccum = "";
       let hasContent = false;
+      let lastError: string | undefined;
 
       const sendDoneOrError = () => {
         if (hasContent) {
@@ -399,7 +412,10 @@ export class TunnelClient {
             type: "chat.response.error",
             replyTo: msg.id,
             traceId: msg.traceId,
-            payload: { error: "empty_response" },
+            payload: {
+              error: lastError || "empty_response",
+              error_type: "llm",
+            },
             ts: Date.now(),
           });
         }
@@ -426,6 +442,12 @@ export class TunnelClient {
             }
             try {
               const chunk = JSON.parse(dataAccum);
+              if (chunk?.error && !lastError) {
+                lastError =
+                  typeof chunk.error === "object"
+                    ? chunk.error.message ?? JSON.stringify(chunk.error)
+                    : String(chunk.error);
+              }
               const content =
                 chunk?.choices?.[0]?.delta?.content ?? "";
               if (content) {
@@ -450,6 +472,12 @@ export class TunnelClient {
       if (dataAccum && dataAccum !== "[DONE]") {
         try {
           const chunk = JSON.parse(dataAccum);
+          if (chunk?.error && !lastError) {
+            lastError =
+              typeof chunk.error === "object"
+                ? chunk.error.message ?? JSON.stringify(chunk.error)
+                : String(chunk.error);
+          }
           const content = chunk?.choices?.[0]?.delta?.content ?? "";
           if (content) {
             hasContent = true;

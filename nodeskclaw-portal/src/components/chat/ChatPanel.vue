@@ -697,6 +697,11 @@ function agentErrorText(code: string): string {
   return te(key) ? t(key) : code
 }
 
+const UNHELPFUL_DETAILS = new Set(['empty_response', 'unknown', 'unknown_error'])
+function isHelpfulDetail(detail: string | undefined): detail is string {
+  return !!detail && !UNHELPFUL_DETAILS.has(detail)
+}
+
 async function handleFeedback(msg: GroupChatMessage, type: 'up' | 'down') {
   const key = msg.id
   feedbackGiven.value[key] = type
@@ -982,7 +987,7 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 <AlertTriangle class="w-3.5 h-3.5 shrink-0" />
                 <span>{{ agentErrorText(msg.error.code) }}</span>
                 <button
-                  v-if="msg.error.detail"
+                  v-if="msg.error.detail && !isHelpfulDetail(msg.error.detail)"
                   class="ml-1 flex items-center gap-0.5 text-xs text-orange-500 hover:text-orange-700 dark:hover:text-orange-200 transition-colors"
                   @click="toggleErrorDetail(msg.id)"
                 >
@@ -991,7 +996,13 @@ function updateSuggestionIndex(state: SuggestionState, idx: number) {
                 </button>
               </div>
               <div
-                v-if="msg.error.detail && expandedErrors.has(msg.id)"
+                v-if="isHelpfulDetail(msg.error.detail)"
+                class="mt-1 text-xs text-orange-600 dark:text-orange-300/80 break-all"
+              >
+                {{ msg.error.detail }}
+              </div>
+              <div
+                v-else-if="msg.error.detail && expandedErrors.has(msg.id)"
                 class="mt-1.5 rounded bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 text-xs font-mono text-orange-800 dark:text-orange-200 break-all"
               >
                 {{ msg.error.detail }}

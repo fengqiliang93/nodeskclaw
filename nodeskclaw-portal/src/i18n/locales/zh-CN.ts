@@ -1561,8 +1561,9 @@ const zhCN = {
   },
   errors: {
     agent: {
-      empty_response: '未能生成回复，请稍后重试',
+      empty_response: '未能生成回复，请检查 AI 员工的 LLM 配置',
       stream_error: '回复过程中出错',
+      llm_error: '模型调用失败，请检查 LLM 配置',
       instance_not_connected_locally: 'AI 员工离线，请检查实例状态',
       unknown: '服务异常',
       view_detail: '查看详情',

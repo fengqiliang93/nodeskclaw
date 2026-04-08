@@ -1561,8 +1561,9 @@ const enUS = {
   },
   errors: {
     agent: {
-      empty_response: 'Failed to generate a response. Please try again later.',
+      empty_response: 'Failed to generate a response. Please check the LLM configuration.',
       stream_error: 'An error occurred while generating the response.',
+      llm_error: 'LLM call failed. Please check your LLM configuration.',
       instance_not_connected_locally: 'AI employee is offline. Please check the instance status.',
       unknown: 'Service error.',
       view_detail: 'View details',

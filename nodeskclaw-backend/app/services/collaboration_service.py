@@ -454,11 +454,13 @@ async def _invoke_target_agent(
         async for chunk_msg in chat_stream:
             if chunk_msg.type == TunnelMessageType.CHAT_RESPONSE_ERROR:
                 raw_error = chunk_msg.payload.get("error", "unknown")
+                err_type = chunk_msg.payload.get("error_type")
                 logger.error("Target agent %s returned error: %s", agent_name, raw_error)
+                error_code = "llm_error" if err_type == "llm" else "stream_error"
                 broadcast_event(workspace_id, "agent:error", {
                     "instance_id": instance_id,
                     "agent_name": agent_name,
-                    "error": "stream_error",
+                    "error": error_code,
                     "error_detail": str(raw_error)[:256],
                 })
                 return False
