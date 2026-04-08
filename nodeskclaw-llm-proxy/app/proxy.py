@@ -38,6 +38,12 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
 
 _OPENAI_STREAM_PROVIDERS = {"openai", "openrouter", "minimax-openai"}
 
+_API_TYPE_AUTH: dict[str, str] = {
+    "openai-completions": "bearer",
+    "anthropic-messages": "x-api-key",
+    "google-generative-ai": "query_param",
+}
+
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -72,7 +78,9 @@ def _build_target_url(provider: str, path: str, base_url: str | None, api_key: s
     return url
 
 
-def _build_auth_headers(provider: str, api_key: str, original_headers: dict) -> dict:
+def _build_auth_headers(
+    provider: str, api_key: str, original_headers: dict, *, api_type: str | None = None,
+) -> dict:
     headers = {}
     for k, v in original_headers.items():
         lower = k.lower()
@@ -81,12 +89,16 @@ def _build_auth_headers(provider: str, api_key: str, original_headers: dict) -> 
         headers[k] = v
 
     prov_conf = PROVIDER_DEFAULTS.get(provider, {})
-    auth_type = prov_conf.get("auth_type", "bearer")
+    if prov_conf:
+        auth_type = prov_conf.get("auth_type", "bearer")
+    else:
+        auth_type = _API_TYPE_AUTH.get(api_type or "", "bearer")
 
     if auth_type == "bearer":
         headers["authorization"] = f"Bearer {api_key}"
     elif auth_type == "x-api-key":
         headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
 
     return headers
 
@@ -352,6 +364,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
         is_org_key = key_source == "org"
         real_key: str | None = None
         base_url: str | None = None
+        api_type: str | None = None
         org_key_id: str | None = None
 
         if is_org_key:
@@ -370,6 +383,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
                 })
             real_key = org_key.api_key
             base_url = org_key.base_url
+            api_type = org_key.api_type
             org_key_id = org_key.id
 
             ok, msg = await _check_quota(org_key.id, org_key.org_token_limit, org_key.system_token_limit, db)
@@ -390,6 +404,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
                 })
             real_key = user_key.api_key
             base_url = user_key.base_url
+            api_type = user_key.api_type
 
     raw_body = await request.body()
     body = _maybe_inject_stream_options(raw_body, provider)
@@ -417,7 +432,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
         return await _handle_codex_proxy(request, path, ctx, api_key=real_key)
 
     target_url = _build_target_url(provider, path, base_url, real_key)
-    req_headers = _build_auth_headers(provider, real_key, dict(request.headers))
+    req_headers = _build_auth_headers(provider, real_key, dict(request.headers), api_type=api_type)
 
     client = _get_http_client()
 

@@ -39,6 +39,7 @@ class OrgLlmKey(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    api_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     org_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     system_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -75,6 +76,7 @@ class UserLlmKey(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    api_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
