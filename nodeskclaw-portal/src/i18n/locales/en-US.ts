@@ -339,7 +339,18 @@ const enUS = {
     unsupportedRuntime: "LLM configuration is not supported by this engine",
   },
   evolutionLog: {
+    title: "Evolution Log",
+    empty: "No evolution events yet",
     unsupportedRuntime: "Evolution log is not supported by this engine",
+    eventLabels: {
+      learned: "Learned",
+      forgotten: "Forgotten",
+      simplified: "Simplified",
+      learn_failed: "Learning failed",
+      forget_failed: "Forgetting failed",
+      variant_published: "Variant published",
+      genome_applied: "Genome applied",
+    },
   },
   workspaceView: {
     addAgent: "Add AI Employee",
