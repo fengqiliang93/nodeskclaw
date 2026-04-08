@@ -41,6 +41,22 @@ def _publish(deploy_id: str, event: str, data: dict[str, Any]) -> None:
     event_bus.publish(_WS_DEPLOY_CHANNEL, payload)
 
 
+async def _get_org_cluster(
+    db: AsyncSession,
+    cluster_id: str,
+    org_id: str,
+) -> Cluster | None:
+    return (
+        await db.execute(
+            select(Cluster).where(
+                Cluster.id == cluster_id,
+                Cluster.org_id == org_id,
+                Cluster.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def _org_has_llm_key(db: AsyncSession, org_id: str, provider: str) -> bool:
     r = await db.execute(
         select(OrgLlmKey.id).where(
@@ -274,14 +290,7 @@ async def _run_deploy_pipeline_inner(workspace_deploy_id: str) -> None:
                     if not deploy_user:
                         last_err = "用户不存在"
                         break
-                    cluster = (
-                        await db_inner.execute(
-                            select(Cluster).where(
-                                Cluster.id == cluster_id,
-                                Cluster.deleted_at.is_(None),
-                            )
-                        )
-                    ).scalar_one_or_none()
+                    cluster = await _get_org_cluster(db_inner, cluster_id, org_id)
                     if not cluster:
                         last_err = "集群不存在"
                         break
@@ -527,11 +536,7 @@ async def start_workspace_template_deploy(
     if len(providers) > 1:
         raise ValueError("模板包含多种计算平台（K8s/Docker 混用），无法一键部署")
 
-    cluster = (
-        await db.execute(
-            select(Cluster).where(Cluster.id == cluster_id, Cluster.deleted_at.is_(None))
-        )
-    ).scalar_one_or_none()
+    cluster = await _get_org_cluster(db, cluster_id, org_id)
     if not cluster:
         raise ValueError("集群不存在")
     need = next(iter(providers))
