@@ -15,7 +15,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.services.runtime.gene_install_adapter import GeneInstallAdapter
-from app.utils.jsonc import ensure_exec_security, parse_config_json
+from app.utils.jsonc import (
+    deep_merge_config,
+    ensure_channel_plugin_integrity,
+    ensure_exec_security,
+    parse_config_json,
+)
 
 if TYPE_CHECKING:
     from app.services.nfs_mount import RemoteFS
@@ -84,11 +89,7 @@ class OpenClawGeneInstallAdapter(GeneInstallAdapter):
         except ValueError:
             logger.warning("apply_config: openclaw.json 解析失败，跳过配置合并写入")
             return
-        for key, val in config_patch.items():
-            if isinstance(val, dict) and isinstance(config.get(key), dict):
-                config[key].update(val)
-            else:
-                config[key] = val
+        deep_merge_config(config, config_patch)
         await self._write_config(fs, config)
 
     async def invalidate_cache(self, fs: RemoteFS, skill_name: str, event: str = "installed") -> None:
@@ -137,6 +138,7 @@ class OpenClawGeneInstallAdapter(GeneInstallAdapter):
 
     async def _write_config(self, fs: RemoteFS, config: dict) -> None:
         ensure_exec_security(config)
+        ensure_channel_plugin_integrity(config)
         await fs.write_text(
             self._config_path,
             json.dumps(config, indent=2, ensure_ascii=False),
