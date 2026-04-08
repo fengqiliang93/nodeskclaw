@@ -901,7 +901,7 @@ async def sync_gateway_token(instance_id: str, db: AsyncSession, org_id: str | N
     instance = await get_instance(instance_id, db, org_id)
 
     env_vars = json.loads(instance.env_vars) if instance.env_vars else {}
-    existing_token = env_vars.get("GATEWAY_TOKEN")
+    existing_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN")
     if existing_token:
         normalized_env_vars = _normalize_gateway_env_vars(env_vars, existing_token)
         changed = normalized_env_vars != env_vars or instance.proxy_token != existing_token
