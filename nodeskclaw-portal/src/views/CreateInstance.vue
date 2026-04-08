@@ -124,14 +124,14 @@ function addProvider(p: string) {
 async function loadStorageClasses(clusterId: string) {
   const scRes = await api.get('/storage-classes', {
     params: {
-      scope: 'all',
+      scope: 'allowed',
       cluster_id: clusterId,
     },
   })
   const items = (scRes.data.data ?? []) as StorageClassItem[]
   storageClasses.value = items
-  const def = items.find(sc => sc.is_default)
-  selectedStorageClass.value = def ? def.name : (items[0]?.name ?? null)
+  const def = items.find(sc => sc.is_default) ?? items[0]
+  selectedStorageClass.value = def?.name ?? null
 }
 
 function addCustomProvider() {
