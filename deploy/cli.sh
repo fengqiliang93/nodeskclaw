@@ -771,7 +771,7 @@ if [[ -n "$MIRRORS" ]]; then
   if [[ ! -f "$MIRRORS_FILE" ]]; then
     err "镜像预设不存在: $MIRRORS_FILE"
     echo "可用预设:"
-    for f in "$SCRIPT_DIR/mirrors/"*.env 2>/dev/null; do
+    for f in "$SCRIPT_DIR/mirrors/"*.env; do
       [[ -f "$f" ]] && echo "  $(basename "$f" .env)"
     done
     exit 1
