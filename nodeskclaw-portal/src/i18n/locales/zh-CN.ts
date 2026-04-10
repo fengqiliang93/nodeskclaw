@@ -1810,6 +1810,10 @@ const zhCN = {
     goToVersionSettings: "前往引擎版本管理",
     storageClass: "StorageClass",
     storageClassDefault: "(默认)",
+    storageClassNone: "集群中未发现 StorageClass，存储可能无法正常挂载",
+    storageClassNoneEnabled: "当前无可用的 StorageClass，请到集群设置中启用",
+    storageClassDisabled: "未启用",
+    storageClassPlaceholder: "请选择 StorageClass",
     comingSoon: "开发中待支持",
   },
   auditLogs: {

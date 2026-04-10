@@ -124,13 +124,14 @@ function addProvider(p: string) {
 async function loadStorageClasses(clusterId: string) {
   const scRes = await api.get('/storage-classes', {
     params: {
-      scope: 'allowed',
+      scope: 'all',
       cluster_id: clusterId,
     },
   })
   const items = (scRes.data.data ?? []) as StorageClassItem[]
   storageClasses.value = items
-  const def = items.find(sc => sc.is_default) ?? items[0]
+  const enabled = items.filter(sc => sc.enabled)
+  const def = enabled.find(sc => sc.is_default) ?? enabled[0]
   selectedStorageClass.value = def?.name ?? null
 }
 
@@ -267,6 +268,7 @@ interface StorageClassItem {
   name: string
   provisioner: string
   is_default: boolean
+  enabled: boolean
 }
 const storageClasses = ref<StorageClassItem[]>([])
 const selectedStorageClass = ref<string | null>(null)
@@ -276,7 +278,8 @@ const isK8sCluster = computed(() => {
   const first = clusters.value[0]
   return first && first.compute_provider === 'k8s'
 })
-const showStorageClassSelector = computed(() => isK8sCluster.value && storageClasses.value.length > 0)
+const enabledStorageClasses = computed(() => storageClasses.value.filter(sc => sc.enabled))
+const showStorageClassSelector = computed(() => isK8sCluster.value)
 
 interface SpecPreset {
   key: string
@@ -825,38 +828,55 @@ async function handleDeploy() {
             <span class="text-sm text-muted-foreground">{{ t('createInstance.storageCurrent') }}<span class="font-medium text-foreground">{{ storageGi }}Gi</span></span>
           </div>
 
-          <!-- StorageClass 选择器（仅 K8s 集群且有可用 SC 时显示） -->
-          <div v-if="showStorageClassSelector" class="relative">
-            <div class="flex items-center gap-2">
-              <HardDrive class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <span class="text-xs text-muted-foreground">{{ t('engine.storageClass') }}:</span>
-              <button
-                class="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-card text-xs font-mono hover:border-primary/40 transition-colors"
-                @click.stop="scDropdownOpen = !scDropdownOpen"
-              >
-                <span>{{ selectedStorageClass }}</span>
-                <span v-if="storageClasses.find(sc => sc.name === selectedStorageClass)?.is_default" class="text-muted-foreground">{{ t('engine.storageClassDefault') }}</span>
-                <ChevronDown class="w-3 h-3 text-muted-foreground" />
-              </button>
+          <!-- StorageClass 选择器（K8s 集群始终显示） -->
+          <div v-if="showStorageClassSelector" class="space-y-1.5">
+            <div v-if="storageClasses.length === 0" class="flex items-start gap-1.5 text-xs text-amber-500">
+              <AlertCircle class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{{ t('engine.storageClassNone') }}</span>
             </div>
-            <div
-              v-if="scDropdownOpen"
-              class="absolute left-0 top-full mt-1 z-20 w-72 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
-            >
-              <button
-                v-for="sc in storageClasses"
-                :key="sc.name"
-                class="w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center justify-between"
-                :class="sc.name === selectedStorageClass ? 'bg-accent/50' : ''"
-                @click="selectedStorageClass = sc.name; scDropdownOpen = false"
-              >
-                <span class="flex flex-col">
-                  <span class="font-mono">{{ sc.name }}<span v-if="sc.is_default" class="ml-1 text-muted-foreground">{{ t('engine.storageClassDefault') }}</span></span>
-                  <span class="text-muted-foreground text-[10px]">{{ sc.provisioner }}</span>
-                </span>
-                <Check v-if="sc.name === selectedStorageClass" class="w-3.5 h-3.5 text-primary shrink-0" />
-              </button>
-            </div>
+            <template v-else>
+              <div v-if="enabledStorageClasses.length === 0" class="flex items-start gap-1.5 text-xs text-amber-500">
+                <AlertCircle class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{{ t('engine.storageClassNoneEnabled') }}</span>
+              </div>
+              <div class="relative">
+                <div class="flex items-center gap-2">
+                  <HardDrive class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span class="text-xs text-muted-foreground">{{ t('engine.storageClass') }}:</span>
+                  <button
+                    class="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-card text-xs font-mono hover:border-primary/40 transition-colors"
+                    @click.stop="scDropdownOpen = !scDropdownOpen"
+                  >
+                    <span :class="selectedStorageClass ? '' : 'text-muted-foreground'">{{ selectedStorageClass || t('engine.storageClassPlaceholder') }}</span>
+                    <span v-if="storageClasses.find(sc => sc.name === selectedStorageClass)?.is_default" class="text-muted-foreground">{{ t('engine.storageClassDefault') }}</span>
+                    <ChevronDown class="w-3 h-3 text-muted-foreground" />
+                  </button>
+                </div>
+                <div
+                  v-if="scDropdownOpen"
+                  class="absolute left-0 top-full mt-1 z-20 w-72 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
+                >
+                  <button
+                    v-for="sc in storageClasses"
+                    :key="sc.name"
+                    class="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between"
+                    :class="[
+                      sc.name === selectedStorageClass ? 'bg-accent/50' : '',
+                      sc.enabled ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed',
+                    ]"
+                    :disabled="!sc.enabled"
+                    @click="sc.enabled && (selectedStorageClass = sc.name, scDropdownOpen = false)"
+                  >
+                    <span class="flex flex-col">
+                      <span class="font-mono">{{ sc.name }}<span v-if="sc.is_default" class="ml-1 text-muted-foreground">{{ t('engine.storageClassDefault') }}</span></span>
+                      <span class="text-muted-foreground text-[10px]">{{ sc.provisioner }}</span>
+                    </span>
+                    <Check v-if="sc.name === selectedStorageClass" class="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span v-else-if="!sc.enabled" class="text-[10px] text-muted-foreground">{{ t('engine.storageClassDisabled') }}</span>
+                  </button>
+                </div>
+              </div>
+            </template>
           </div>
 
           <div class="space-y-2">

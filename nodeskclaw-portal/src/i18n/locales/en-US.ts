@@ -1810,6 +1810,10 @@ const enUS = {
     goToVersionSettings: "Go to Engine Version Settings",
     storageClass: "StorageClass",
     storageClassDefault: "(default)",
+    storageClassNone: "No StorageClass found in cluster, storage may not mount properly",
+    storageClassNoneEnabled: "No StorageClass enabled, please enable one in cluster settings",
+    storageClassDisabled: "Disabled",
+    storageClassPlaceholder: "Select a StorageClass",
     comingSoon: "Coming Soon",
   },
   auditLogs: {
