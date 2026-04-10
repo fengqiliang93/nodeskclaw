@@ -462,6 +462,28 @@ cmd_release() {
   cat "$notes_file"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+  local tag_local=false tag_remote=false release_exists=false overwrite_tag=false overwrite_release=false
+  git -C "$PROJECT_ROOT" rev-parse "refs/tags/$VERSION" &>/dev/null && tag_local=true
+  git -C "$PROJECT_ROOT" ls-remote --tags origin "refs/tags/$VERSION" 2>/dev/null | grep -q . && tag_remote=true
+  gh release view "$VERSION" --repo NoDeskAI/nodeskclaw &>/dev/null && release_exists=true
+
+  if [[ "$tag_local" == true || "$tag_remote" == true || "$release_exists" == true ]]; then
+    echo ""
+    warn "检测到已有 release 产物:"
+    if [[ "$tag_local" == true || "$tag_remote" == true ]]; then
+      local where=""
+      [[ "$tag_local" == true ]] && where+="本地"
+      [[ "$tag_local" == true && "$tag_remote" == true ]] && where+=" + "
+      [[ "$tag_remote" == true ]] && where+="远程"
+      warn "  - git tag $VERSION（${where}）"
+      overwrite_tag=true
+    fi
+    [[ "$release_exists" == true ]] && warn "  - GitHub Release $VERSION" && overwrite_release=true
+    echo ""
+    read -rp "覆盖以上内容并继续 release? [y/N] " ans
+    [[ ! "$ans" =~ ^[Yy]$ ]] && err "已取消" && exit 1
+  fi
+
   local confirm_msg="即将构建镜像（${targets[*]} → ${ce_registry}"
   [[ "$has_admin" == true ]] && confirm_msg+="，admin → ${REGISTRY}"
   confirm_msg+="）、创建 git tag ${VERSION} 并发布 GitHub Pre-release"
@@ -480,10 +502,18 @@ cmd_release() {
 
   echo ""
   log "创建 git tag..."
-  git -C "$PROJECT_ROOT" tag "$VERSION"
-  git -C "$PROJECT_ROOT" push origin "$VERSION"
+  if [[ "$overwrite_tag" == true ]]; then
+    [[ "$tag_local" == true ]] && git -C "$PROJECT_ROOT" tag -d "$VERSION"
+    git -C "$PROJECT_ROOT" tag "$VERSION"
+    git -C "$PROJECT_ROOT" push origin "$VERSION" --force
+  else
+    git -C "$PROJECT_ROOT" tag "$VERSION"
+    git -C "$PROJECT_ROOT" push origin "$VERSION"
+  fi
 
   log "创建 GitHub Pre-release..."
+  [[ "$overwrite_release" == true ]] && gh release delete "$VERSION" --repo NoDeskAI/nodeskclaw --yes
+
   gh release create "$VERSION" \
     --repo NoDeskAI/nodeskclaw \
     --prerelease \
