@@ -243,6 +243,7 @@ async def list_available_model_providers(
             api_key_masked=_mask_key(k.api_key, k.provider), is_active=k.is_active,
             allowed_models=k.allowed_models,
             api_type=k.api_type, base_url=k.base_url,
+            skip_ssl_verify=k.skip_ssl_verify,
         )
         for k in keys
     ])
@@ -376,6 +377,7 @@ async def list_provider_models(
     org_id: str | None = Query(None),
     base_url: str | None = Query(None),
     api_type: str | None = Query(None),
+    skip_ssl_verify: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -388,6 +390,7 @@ async def list_provider_models(
     resolved_key = api_key
     resolved_base_url = base_url
     resolved_api_type = api_type
+    resolved_skip_ssl = skip_ssl_verify
     if not resolved_key:
         pk_result = await db.execute(
             select(UserLlmKey).where(
@@ -403,6 +406,8 @@ async def list_provider_models(
                 resolved_base_url = personal_key.base_url
             if not resolved_api_type:
                 resolved_api_type = personal_key.api_type
+            if resolved_skip_ssl is None:
+                resolved_skip_ssl = personal_key.skip_ssl_verify
 
     if not resolved_key and org_id:
         result = await db.execute(
@@ -420,6 +425,8 @@ async def list_provider_models(
                 resolved_base_url = org_key.base_url
             if not resolved_api_type:
                 resolved_api_type = org_key.api_type
+            if resolved_skip_ssl is None:
+                resolved_skip_ssl = org_key.skip_ssl_verify
 
     if not resolved_key:
         raise BadRequestError(
@@ -430,6 +437,7 @@ async def list_provider_models(
     try:
         models = await fetch_provider_models(
             provider, resolved_key, base_url=resolved_base_url, api_type=resolved_api_type,
+            skip_ssl_verify=bool(resolved_skip_ssl),
         )
     except ValueError as e:
         raise BadRequestError(str(e), "errors.llm.model_fetch_failed")
@@ -491,7 +499,7 @@ async def test_llm_connection(
         models = await fetch_provider_models(
             body.provider, resolved_key,
             base_url=resolved_base_url, api_type=resolved_api_type,
-            skip_cache=True,
+            skip_cache=True, skip_ssl_verify=body.skip_ssl_verify,
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
         return ApiResponse(data=LlmTestConnectionResult(

@@ -45,9 +45,18 @@ _API_TYPE_AUTH: dict[str, str] = {
 }
 
 _http_client: httpx.AsyncClient | None = None
+_http_client_no_verify: httpx.AsyncClient | None = None
 
 
-def _get_http_client() -> httpx.AsyncClient:
+def _get_http_client(skip_ssl_verify: bool = False) -> httpx.AsyncClient:
+    if skip_ssl_verify:
+        global _http_client_no_verify
+        if _http_client_no_verify is None or _http_client_no_verify.is_closed:
+            _http_client_no_verify = httpx.AsyncClient(
+                timeout=httpx.Timeout(300, connect=10), trust_env=False, verify=False,
+            )
+        return _http_client_no_verify
+
     global _http_client
     if _http_client is None or _http_client.is_closed:
         _http_client = httpx.AsyncClient(timeout=httpx.Timeout(300, connect=10), trust_env=False)
@@ -366,6 +375,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
         base_url: str | None = None
         api_type: str | None = None
         org_key_id: str | None = None
+        skip_ssl_verify: bool = False
 
         if is_org_key:
             key_result = await db.execute(
@@ -385,6 +395,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
             base_url = org_key.base_url
             api_type = org_key.api_type
             org_key_id = org_key.id
+            skip_ssl_verify = org_key.skip_ssl_verify
 
             ok, msg = await _check_quota(org_key.id, org_key.org_token_limit, org_key.system_token_limit, db)
             if not ok:
@@ -405,6 +416,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
             real_key = user_key.api_key
             base_url = user_key.base_url
             api_type = user_key.api_type
+            skip_ssl_verify = user_key.skip_ssl_verify
 
     raw_body = await request.body()
     body = _maybe_inject_stream_options(raw_body, provider)
@@ -434,7 +446,7 @@ async def llm_proxy(provider: str, path: str, request: Request):
     target_url = _build_target_url(provider, path, base_url, real_key)
     req_headers = _build_auth_headers(provider, real_key, dict(request.headers), api_type=api_type)
 
-    client = _get_http_client()
+    client = _get_http_client(skip_ssl_verify=skip_ssl_verify)
 
     if is_stream:
         return await _handle_stream(client, request.method, target_url, req_headers, body, ctx)

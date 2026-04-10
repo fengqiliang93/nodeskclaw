@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 600
 
 
-def _make_client(**kwargs) -> httpx.AsyncClient:
+def _make_client(verify: bool = True, **kwargs) -> httpx.AsyncClient:
     proxy = settings.HTTPS_PROXY or None
-    return httpx.AsyncClient(proxy=proxy, **kwargs)
+    return httpx.AsyncClient(proxy=proxy, verify=verify, **kwargs)
 
 _cache: dict[str, tuple[float, list[ModelInfo]]] = {}
 
@@ -65,7 +65,7 @@ def _set_cache(provider: str, api_key: str, models: list[ModelInfo]) -> None:
 
 async def fetch_provider_models(
     provider: str, api_key: str, *, base_url: str | None = None, api_type: str | None = None,
-    skip_cache: bool = False,
+    skip_cache: bool = False, skip_ssl_verify: bool = False,
 ) -> list[ModelInfo]:
     if is_codex_provider(provider):
         return list(CODEX_MODELS)
@@ -77,13 +77,14 @@ async def fetch_provider_models(
 
     if base_url:
         _url = base_url
+        _verify = not skip_ssl_verify
         resolved_type = api_type or _infer_api_type(provider)
         if resolved_type == "anthropic-messages":
             async def _custom_fetcher(key: str) -> list[ModelInfo]:
-                return await _fetch_anthropic_compatible(key, _url)
+                return await _fetch_anthropic_compatible(key, _url, verify=_verify)
         else:
             async def _custom_fetcher(key: str) -> list[ModelInfo]:
-                return await _fetch_openai_compatible(key, _url)
+                return await _fetch_openai_compatible(key, _url, verify=_verify)
 
         fetcher = _custom_fetcher
     else:
@@ -209,9 +210,9 @@ async def _fetch_minimax(_api_key: str) -> list[ModelInfo]:
     return list(_MINIMAX_TEXT_MODELS)
 
 
-async def _fetch_openai_compatible(api_key: str, base_url: str) -> list[ModelInfo]:
+async def _fetch_openai_compatible(api_key: str, base_url: str, *, verify: bool = True) -> list[ModelInfo]:
     url = f"{base_url.rstrip('/')}/models"
-    async with _make_client(timeout=15) as client:
+    async with _make_client(verify=verify, timeout=15) as client:
         resp = await client.get(
             url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -231,9 +232,9 @@ async def _fetch_openai_compatible(api_key: str, base_url: str) -> list[ModelInf
     return models
 
 
-async def _fetch_anthropic_compatible(api_key: str, base_url: str) -> list[ModelInfo]:
+async def _fetch_anthropic_compatible(api_key: str, base_url: str, *, verify: bool = True) -> list[ModelInfo]:
     url = f"{base_url.rstrip('/')}/models"
-    async with _make_client(timeout=15) as client:
+    async with _make_client(verify=verify, timeout=15) as client:
         resp = await client.get(
             url,
             headers={

@@ -27,6 +27,7 @@ class OrgModelProviderCreate(BaseModel):
     api_type: str | None = None
     org_token_limit: int | None = None
     system_token_limit: int | None = None
+    skip_ssl_verify: bool = False
 
 
 class OrgModelProviderUpdate(BaseModel):
@@ -38,6 +39,7 @@ class OrgModelProviderUpdate(BaseModel):
     system_token_limit: int | None = None
     is_active: bool | None = None
     allowed_models: list[str] | None = None
+    skip_ssl_verify: bool | None = None
 
 
 class OrgModelProviderInfo(BaseModel):
@@ -51,6 +53,7 @@ class OrgModelProviderInfo(BaseModel):
     org_token_limit: int | None
     system_token_limit: int | None
     is_active: bool
+    skip_ssl_verify: bool = False
     allowed_models: list[str] | None = None
     usage_total_tokens: int = 0
     created_by: str
@@ -71,6 +74,7 @@ class UserLlmKeyCreate(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     api_type: str | None = None
+    skip_ssl_verify: bool = False
 
 
 class UserLlmKeyInfo(BaseModel):
@@ -80,6 +84,7 @@ class UserLlmKeyInfo(BaseModel):
     base_url: str | None
     api_type: str | None
     is_active: bool
+    skip_ssl_verify: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -139,6 +144,7 @@ class AvailableModelProvider(BaseModel):
     allowed_models: list[str] | None = None
     api_type: str | None = None
     base_url: str | None = None
+    skip_ssl_verify: bool = False
 
 
 AvailableLlmKey = AvailableModelProvider
@@ -167,6 +173,7 @@ class LlmTestConnectionRequest(BaseModel):
     base_url: str | None = None
     api_type: str | None = None
     org_id: str | None = None
+    skip_ssl_verify: bool = False
 
 
 class LlmTestConnectionResult(BaseModel):

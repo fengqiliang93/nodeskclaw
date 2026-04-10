@@ -28,6 +28,7 @@ class OrgModelProvider(BaseModel):
     org_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     system_token_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    skip_ssl_verify: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     allowed_models: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
