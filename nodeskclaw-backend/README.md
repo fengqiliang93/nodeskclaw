@@ -86,7 +86,7 @@ nodeskclaw-backend/
 │   │   ├── workspace_message_service.py  # 群聊消息记录 + 上下文构建
 │   │   ├── collaboration_service.py      # 协作消息处理（由 Tunnel 调用）
 │   │   ├── tunnel/                       # Agent Tunnel（WebSocket 隧道，替代 SSE + HTTP 直连，支持 @mention no_reply）
-│   │   ├── llm_config_service.py # DeskClaw LLM 配置 + 系统 Channel plugin 分发
+│   │   ├── llm_config_service.py # DeskClaw LLM 配置 + 系统 Channel plugin 分发 + 自动同步（hash-based stale detection）
 │   │   ├── channel_config_service.py # Channel 发现、配置读写（runtime-aware）、自定义部署
 │   │   ├── unified_channel_schema.py # 统一 Channel Schema 注册表（三引擎 field mapping）
 │   │   ├── enterprise_file_service.py # 企业空间文件浏览（PodFS 只读）

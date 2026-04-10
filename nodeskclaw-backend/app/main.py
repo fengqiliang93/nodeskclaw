@@ -782,6 +782,16 @@ async def lifespan(app: FastAPI):
     registry_aggregator.init(_reg_adapters)
     logger.info("RegistryAggregator 已初始化 (adapters=%s)", [a.registry_id for a in _reg_adapters])
 
+    async def _run_startup_plugin_sync():
+        try:
+            from app.services.llm_config_service import startup_plugin_sync
+            async with async_session_factory() as db:
+                await startup_plugin_sync(db)
+        except Exception as e:
+            logger.warning("startup_plugin_sync 失败（非致命）: %s", e)
+
+    asyncio.create_task(_run_startup_plugin_sync())
+
     yield
 
     # ── Security Pipeline 销毁 ────────────────────────

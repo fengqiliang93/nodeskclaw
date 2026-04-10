@@ -1,9 +1,14 @@
 """LLM config service: read/write openclaw.json via kubectl exec."""
 
+from __future__ import annotations
+
 import asyncio
+import hashlib
 import json
 import logging
 import re
+from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from urllib.parse import urlparse as _urlparse
 
@@ -676,18 +681,31 @@ def _get_plugin_source_dir() -> Path:
     )
 
 
-async def _deploy_plugin_files(fs: RemoteFS, plugin_source: Path) -> None:
-    """Copy channel plugin files to the Pod (.openclaw/extensions/)."""
-    target_base = f".openclaw/extensions/{CHANNEL_PLUGIN_DIR}"
+async def _deploy_plugin_files_generic(
+    fs: RemoteFS, source_dir: Path, spec: ChannelPluginSpec,
+) -> None:
+    """Copy channel plugin files to the Pod and write a content hash marker."""
+    target_base = f".openclaw/extensions/{spec.dir_name}"
     await fs.mkdir(f"{target_base}/src")
 
-    for rel_path in PLUGIN_FILES:
-        src = plugin_source / rel_path
+    for rel_path in spec.file_list:
+        src = source_dir / rel_path
         if src.exists():
             await fs.write_text(
                 f"{target_base}/{rel_path}",
                 src.read_text(encoding="utf-8"),
             )
+
+    content_hash = _get_plugin_hash(spec.plugin_id)
+    if content_hash:
+        await fs.write_text(f"{target_base}/.plugin-hash", content_hash)
+
+
+async def _deploy_plugin_files(fs: RemoteFS, plugin_source: Path) -> None:
+    """Copy nodeskclaw channel plugin files (backward-compat wrapper)."""
+    await _deploy_plugin_files_generic(
+        fs, plugin_source, CHANNEL_PLUGIN_REGISTRY["nodeskclaw"],
+    )
 
 
 def _docker_rewrite_url(url: str) -> str:
@@ -943,16 +961,10 @@ def _get_learning_plugin_source_dir() -> Path:
 
 
 async def _deploy_learning_plugin_files(fs: RemoteFS, plugin_source: Path) -> None:
-    target_base = f".openclaw/extensions/{LEARNING_PLUGIN_DIR}"
-    await fs.mkdir(f"{target_base}/src")
-
-    for rel_path in LEARNING_PLUGIN_FILES:
-        src = plugin_source / rel_path
-        if src.exists():
-            await fs.write_text(
-                f"{target_base}/{rel_path}",
-                src.read_text(encoding="utf-8"),
-            )
+    """Copy learning channel plugin files (backward-compat wrapper)."""
+    await _deploy_plugin_files_generic(
+        fs, plugin_source, CHANNEL_PLUGIN_REGISTRY["learning"],
+    )
 
 
 def _inject_learning_channel_config(
@@ -1044,16 +1056,10 @@ def _get_dingtalk_plugin_source_dir() -> Path:
 
 
 async def _deploy_dingtalk_plugin_files(fs: RemoteFS, plugin_source: Path) -> None:
-    target_base = f".openclaw/extensions/{DINGTALK_PLUGIN_DIR}"
-    await fs.mkdir(f"{target_base}/src")
-
-    for rel_path in DINGTALK_PLUGIN_FILES:
-        src = plugin_source / rel_path
-        if src.exists():
-            await fs.write_text(
-                f"{target_base}/{rel_path}",
-                src.read_text(encoding="utf-8"),
-            )
+    """Copy dingtalk channel plugin files (backward-compat wrapper)."""
+    await _deploy_plugin_files_generic(
+        fs, plugin_source, CHANNEL_PLUGIN_REGISTRY["dingtalk"],
+    )
 
 
 def _inject_dingtalk_plugin_path(config: dict) -> None:
@@ -1098,6 +1104,156 @@ async def deploy_dingtalk_channel_plugin(
     logger.info("已部署 dingtalk channel plugin: instance=%s", instance.name)
 
 
+# ── Channel Plugin Registry & Auto-Sync ──────────────────────
+
+
+@dataclass(frozen=True)
+class ChannelPluginSpec:
+    plugin_id: str
+    dir_name: str
+    file_list: tuple[str, ...]
+    min_openclaw_version: tuple[int, ...]
+
+
+CHANNEL_PLUGIN_REGISTRY: dict[str, ChannelPluginSpec] = {
+    "nodeskclaw": ChannelPluginSpec(
+        plugin_id="nodeskclaw",
+        dir_name=CHANNEL_PLUGIN_DIR,
+        file_list=tuple(PLUGIN_FILES),
+        min_openclaw_version=(2026, 1, 0),
+    ),
+    "learning": ChannelPluginSpec(
+        plugin_id="learning",
+        dir_name=LEARNING_PLUGIN_DIR,
+        file_list=tuple(LEARNING_PLUGIN_FILES),
+        min_openclaw_version=(2026, 1, 0),
+    ),
+    "dingtalk": ChannelPluginSpec(
+        plugin_id="dingtalk",
+        dir_name=DINGTALK_PLUGIN_DIR,
+        file_list=tuple(DINGTALK_PLUGIN_FILES),
+        min_openclaw_version=(2026, 1, 0),
+    ),
+}
+
+
+def _find_plugin_source_dir(dir_name: str) -> Path | None:
+    """Locate a channel plugin source directory. Returns None if not found."""
+    candidates = [
+        Path(__file__).resolve().parents[3] / dir_name,
+        Path("/app") / dir_name,
+    ]
+    for p in candidates:
+        if p.exists() and (p / "index.ts").exists():
+            return p
+    return None
+
+
+@cache
+def _get_plugin_hash(plugin_id: str) -> str | None:
+    """Compute content hash for a channel plugin (lazy, cached).
+
+    Returns 16-char hex digest, or None if source dir not found.
+    """
+    spec = CHANNEL_PLUGIN_REGISTRY.get(plugin_id)
+    if not spec:
+        return None
+    source_dir = _find_plugin_source_dir(spec.dir_name)
+    if source_dir is None:
+        return None
+    h = hashlib.sha256()
+    for rel_path in sorted(spec.file_list):
+        src = source_dir / rel_path
+        if src.exists():
+            h.update(rel_path.encode())
+            h.update(src.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _parse_version(version_str: str) -> tuple[int, ...]:
+    """Parse '2026.4.8' or 'v2026.4.8' into a comparable tuple.
+
+    Returns (0,) on parse failure — treated as "unknown, allow sync".
+    """
+    if not version_str:
+        return (0,)
+    cleaned = version_str.lstrip("v")
+    try:
+        return tuple(int(x) for x in cleaned.split("."))
+    except (ValueError, TypeError):
+        return (0,)
+
+
+async def _check_plugin_stale(
+    fs: RemoteFS, spec: ChannelPluginSpec,
+) -> bool | None:
+    """Check if a deployed plugin needs updating.
+
+    Returns:
+        True  - plugin is deployed but hash mismatches (stale)
+        False - plugin is deployed and hash matches (up-to-date)
+        None  - plugin is not deployed on this instance
+    """
+    target_base = f".openclaw/extensions/{spec.dir_name}"
+    expected_hash = _get_plugin_hash(spec.plugin_id)
+    if expected_hash is None:
+        return None
+
+    try:
+        remote_hash = (await fs.read_text(f"{target_base}/.plugin-hash")).strip()
+        return remote_hash != expected_hash
+    except Exception:
+        pass
+
+    try:
+        await fs.read_text(f"{target_base}/index.ts")
+        return True
+    except Exception:
+        return None
+
+
+async def _sync_stale_plugins(
+    fs: RemoteFS, instance: Instance,
+) -> list[str]:
+    """Check all registered plugins and re-deploy stale ones.
+
+    Respects the version guard: skips sync if the instance's OpenClaw version
+    is lower than the plugin's min_openclaw_version.
+
+    Returns list of plugin_ids that were actually updated.
+    """
+    instance_version = _parse_version(instance.image_version)
+    updated: list[str] = []
+
+    for plugin_id, spec in CHANNEL_PLUGIN_REGISTRY.items():
+        if _get_plugin_hash(plugin_id) is None:
+            continue
+
+        stale = await _check_plugin_stale(fs, spec)
+        if stale is None or stale is False:
+            continue
+
+        if instance_version >= spec.min_openclaw_version:
+            source_dir = _find_plugin_source_dir(spec.dir_name)
+            if source_dir is None:
+                continue
+            await _deploy_plugin_files_generic(fs, source_dir, spec)
+            updated.append(plugin_id)
+            logger.info(
+                "Plugin %s 已同步: instance=%s", plugin_id, instance.name,
+            )
+        else:
+            logger.warning(
+                "Plugin %s 要求 OpenClaw >= %s，实例 %s 运行 %s，跳过同步",
+                plugin_id,
+                ".".join(str(x) for x in spec.min_openclaw_version),
+                instance.name,
+                instance.image_version,
+            )
+
+    return updated
+
+
 async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
     """Restart runtime process (config is assumed to be already written by the caller).
 
@@ -1111,6 +1267,21 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
     3. Remove FORCE_RECONFIG env → second rolling restart → Pod reads correct config
     4. Clear llm_config_pending flag
     """
+    if instance.runtime == "openclaw":
+        try:
+            async with remote_fs(instance, db) as fs:
+                updated = await _sync_stale_plugins(fs, instance)
+                if updated:
+                    logger.info(
+                        "restart_runtime: 已同步 plugin %s: instance=%s",
+                        updated, instance.name,
+                    )
+        except Exception as e:
+            logger.warning(
+                "restart_runtime: plugin 同步失败（不阻断重启）: instance=%s error=%s",
+                instance.name, e,
+            )
+
     if instance.compute_provider == "docker":
         return await _restart_runtime_docker(instance)
 
@@ -1262,7 +1433,6 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
     instances = list(inst_result.scalars().all())
 
     new_api_url = settings.AGENT_API_BASE_URL
-    plugin_source = _get_plugin_source_dir()
     repaired = []
     skipped = []
     failed = []
@@ -1287,7 +1457,7 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
                 continue
 
             async with remote_fs(inst, db) as fs:
-                await _deploy_plugin_files(fs, plugin_source)
+                await _sync_stale_plugins(fs, inst)
 
                 try:
                     config = await _read_config_file(fs)
@@ -1340,3 +1510,61 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
         len(repaired), len(skipped), len(failed),
     )
     return {"repaired": repaired, "skipped": skipped, "failed": failed}
+
+
+async def startup_plugin_sync(db: AsyncSession) -> dict:
+    """Scan all active OpenClaw instances and update stale plugin files.
+
+    Called as a background task during backend startup.
+    Only updates files — does NOT restart instances.
+    """
+    from app.models.workspace_agent import WorkspaceAgent
+
+    wa_result = await db.execute(
+        select(WorkspaceAgent.instance_id)
+        .where(WorkspaceAgent.deleted_at.is_(None))
+        .distinct()
+    )
+    instance_ids_with_workspace = {r.instance_id for r in wa_result.all()}
+
+    if not instance_ids_with_workspace:
+        logger.info("startup_plugin_sync: 无 WorkspaceAgent 记录，跳过")
+        return {"updated": 0, "skipped": 0, "failed": 0}
+
+    inst_result = await db.execute(
+        select(Instance).where(
+            Instance.id.in_(instance_ids_with_workspace),
+            Instance.deleted_at.is_(None),
+            Instance.runtime == "openclaw",
+            Instance.status == "running",
+        )
+    )
+    instances = list(inst_result.scalars().all())
+
+    updated_count = 0
+    skipped_count = 0
+    failed_list: list[dict] = []
+
+    for inst in instances:
+        try:
+            async with remote_fs(inst, db) as fs:
+                updated = await _sync_stale_plugins(fs, inst)
+                if updated:
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+        except Exception as e:
+            failed_list.append({"id": inst.id, "name": inst.name, "error": str(e)})
+            logger.warning(
+                "startup_plugin_sync: 实例 %s 同步失败: %s", inst.name, e,
+            )
+
+    logger.info(
+        "startup_plugin_sync: updated=%d skipped=%d failed=%d",
+        updated_count, skipped_count, len(failed_list),
+    )
+    return {
+        "updated": updated_count,
+        "skipped": skipped_count,
+        "failed": len(failed_list),
+    }
