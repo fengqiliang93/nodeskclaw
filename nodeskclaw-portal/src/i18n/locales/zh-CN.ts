@@ -1202,6 +1202,8 @@ const zhCN = {
     llmKeysApiKeyEditHint: "留空不修改",
     llmKeysBaseUrl: "Base URL（可选）",
     llmKeysBaseUrlPlaceholder: "留空使用默认地址",
+    llmKeysSkipSslVerify: "跳过 SSL 证书验证",
+    llmKeysSkipSslVerifyHint: "自签证书或内部 CA 时启用",
     llmKeysOrgTokenLimit: "组织额度上限（可选）",
     llmKeysOrgTokenLimitHint: "留空表示不限",
     llmKeysSysTokenLimit: "系统额度上限（可选）",

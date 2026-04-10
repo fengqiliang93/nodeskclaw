@@ -95,6 +95,7 @@ interface LlmConfigEntry {
   isCustom: boolean
   showBaseUrl: boolean
   selectedModel: ModelItem | null
+  skipSslVerify: boolean
 }
 
 const llmConfigs = ref<LlmConfigEntry[]>([])
@@ -109,6 +110,7 @@ const unusedProviders = computed(() =>
 
 function addProvider(p: string) {
   if (!p) return
+  const orgDetail = orgProviderDetails.value[p]
   llmConfigs.value.push({
     provider: p,
     keySource: isCodexProvider(p) ? 'personal' : (isOrgKeyAvailable(p) ? 'org' : 'personal'),
@@ -118,6 +120,7 @@ function addProvider(p: string) {
     isCustom: false,
     showBaseUrl: false,
     selectedModel: defaultModelForProvider(p),
+    skipSslVerify: orgDetail?.skip_ssl_verify ?? false,
   })
 }
 
@@ -155,6 +158,7 @@ function addCustomProvider() {
     isCustom: true,
     showBaseUrl: true,
     selectedModel: null,
+    skipSslVerify: false,
   })
   customSlug.value = ''
   customSlugError.value = ''
@@ -171,6 +175,7 @@ function addOrgCustomProvider(orgProvider: any) {
     isCustom: true,
     showBaseUrl: true,
     selectedModel: null,
+    skipSslVerify: orgProvider.skip_ssl_verify ?? false,
   })
 }
 
@@ -191,7 +196,7 @@ const orgKeyLabel = computed(() => isEE.value ? 'Working Plan' : t('llm.teamKey'
 
 async function handleFetchModels(provider: string, callback: (models: ModelItem[], error?: string) => void) {
   const cfg = llmConfigs.value.find(c => c.provider === provider)
-  const params: Record<string, string> = {}
+  const params: Record<string, any> = {}
   if (cfg?.keySource === 'personal' && cfg.personalKey) {
     params.api_key = cfg.personalKey
   }
@@ -200,6 +205,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   }
   if (cfg?.apiType) {
     params.api_type = cfg.apiType
+  }
+  if (cfg?.skipSslVerify) {
+    params.skip_ssl_verify = true
   }
   if (authStore.user?.current_org_id) {
     params.org_id = authStore.user.current_org_id
@@ -238,6 +246,7 @@ async function handleTestKey(idx: number) {
       api_key: cfg.personalKey,
       base_url: cfg.baseUrl || undefined,
       api_type: cfg.apiType || undefined,
+      skip_ssl_verify: cfg.skipSslVerify,
     })
     testResults.value[idx] = res.data.data
   } catch (e: any) {
@@ -520,6 +529,7 @@ async function handleDeploy() {
           api_key: isCodexProvider(cfg.provider) ? undefined : cfg.personalKey,
           base_url: isCodexProvider(cfg.provider) ? null : (cfg.baseUrl || null),
           api_type: cfg.isCustom ? cfg.apiType : null,
+          skip_ssl_verify: cfg.skipSslVerify,
         })
       }
     }
@@ -1059,6 +1069,11 @@ async function handleDeploy() {
                           <X class="w-3.5 h-3.5" />
                         </button>
                       </div>
+                      <label v-if="cfg.baseUrl" class="flex items-center gap-2 mt-1.5 cursor-pointer">
+                        <input type="checkbox" v-model="cfg.skipSslVerify" class="accent-primary" />
+                        <span class="text-xs">{{ t('orgSettings.llmKeysSkipSslVerify') }}</span>
+                        <span class="text-xs text-muted-foreground">{{ t('orgSettings.llmKeysSkipSslVerifyHint') }}</span>
+                      </label>
                     </div>
                     <button
                       v-if="!cfg.isCustom && !cfg.showBaseUrl"

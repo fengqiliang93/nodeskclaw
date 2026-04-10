@@ -1202,6 +1202,8 @@ const enUS = {
     llmKeysApiKeyEditHint: "Leave empty to keep current",
     llmKeysBaseUrl: "Base URL (optional)",
     llmKeysBaseUrlPlaceholder: "Leave empty for default",
+    llmKeysSkipSslVerify: "Skip SSL certificate verification",
+    llmKeysSkipSslVerifyHint: "Enable for self-signed or internal CA certificates",
     llmKeysOrgTokenLimit: "Org Token Limit (optional)",
     llmKeysOrgTokenLimitHint: "Leave empty for unlimited",
     llmKeysSysTokenLimit: "System Token Limit (optional)",

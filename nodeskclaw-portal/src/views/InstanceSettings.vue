@@ -42,6 +42,7 @@ interface PersonalKey {
   base_url: string | null
   api_type: string | null
   is_active: boolean
+  skip_ssl_verify?: boolean
 }
 
 interface ProviderConfig {
@@ -55,6 +56,7 @@ interface ProviderConfig {
   isCustom: boolean
   showBaseUrl: boolean
   selectedModel: ModelItem | null
+  skipSslVerify: boolean
 }
 
 const { isEE } = useEdition()
@@ -141,6 +143,7 @@ async function loadAll() {
     for (const c of podConfigs) {
       const pk = personalKeyForProvider(c.provider)
       const isCustom = !ALL_KNOWN_PROVIDERS.has(c.provider)
+      const orgDetail = orgProviderDetails.value[c.provider]
       configs.push({
         provider: c.provider,
         keySource: isCodexProvider(c.provider)
@@ -154,6 +157,7 @@ async function loadAll() {
         isCustom,
         showBaseUrl: isCustom || !!(c.base_url || pk?.base_url),
         selectedModel: (c.selected_models ?? [])[0] ?? defaultModelForProvider(c.provider),
+        skipSslVerify: pk?.skip_ssl_verify ?? orgDetail?.skip_ssl_verify ?? false,
       })
     }
 
@@ -176,6 +180,7 @@ async function loadAll() {
 function addProvider(provider: string) {
   if (providerConfigs.value.some(c => c.provider === provider)) return
   const pk = personalKeyForProvider(provider)
+  const orgDetail = orgProviderDetails.value[provider]
   const isCustom = !ALL_KNOWN_PROVIDERS.has(provider)
   providerConfigs.value.push({
     provider,
@@ -190,6 +195,7 @@ function addProvider(provider: string) {
     isCustom,
     showBaseUrl: isCustom || !!pk?.base_url,
     selectedModel: defaultModelForProvider(provider),
+    skipSslVerify: pk?.skip_ssl_verify ?? orgDetail?.skip_ssl_verify ?? false,
   })
   newProviderOpen.value = false
   dirty.value = true
@@ -217,6 +223,7 @@ function addCustomProvider() {
     isCustom: true,
     showBaseUrl: true,
     selectedModel: null,
+    skipSslVerify: false,
   })
   customSlug.value = ''
   customSlugError.value = ''
@@ -235,6 +242,7 @@ function addOrgCustomProvider(orgProvider: any) {
     isCustom: true,
     showBaseUrl: true,
     selectedModel: null,
+    skipSslVerify: orgProvider.skip_ssl_verify ?? false,
   })
   dirty.value = true
   dirty.value = true
@@ -242,7 +250,7 @@ function addOrgCustomProvider(orgProvider: any) {
 
 async function handleFetchModels(provider: string, callback: (models: ModelItem[], error?: string) => void) {
   const cfg = providerConfigs.value.find(c => c.provider === provider)
-  const params: Record<string, string> = {}
+  const params: Record<string, any> = {}
   if (cfg?.keySource === 'personal' && cfg.personalKeyNew) {
     params.api_key = cfg.personalKeyNew
   }
@@ -251,6 +259,9 @@ async function handleFetchModels(provider: string, callback: (models: ModelItem[
   }
   if (cfg?.apiType) {
     params.api_type = cfg.apiType
+  }
+  if (cfg?.skipSslVerify) {
+    params.skip_ssl_verify = true
   }
   if (instanceOrgId.value) {
     params.org_id = instanceOrgId.value
@@ -291,6 +302,7 @@ async function handleTestKey(idx: number) {
       api_key: key,
       base_url: cfg.baseUrl || undefined,
       api_type: cfg.apiType || undefined,
+      skip_ssl_verify: cfg.skipSslVerify,
     })
     testResults.value[idx] = res.data.data
   } catch (e: any) {
@@ -353,6 +365,7 @@ async function handleSave() {
         api_key: isCodexProvider(cfg.provider) ? undefined : (cfg.personalKeyNew || undefined),
         base_url: isCodexProvider(cfg.provider) ? null : (cfg.baseUrl || null),
         api_type: cfg.isCustom ? cfg.apiType : null,
+        skip_ssl_verify: cfg.skipSslVerify,
       })
       if (cfg.personalKeyNew) {
         cfg.personalKeyMasked = cfg.personalKeyNew.length > 8
@@ -689,6 +702,11 @@ watch(() => instanceOrgId.value, (newVal, oldVal) => {
                         <X class="w-3.5 h-3.5" />
                       </button>
                     </div>
+                    <label v-if="cfg.baseUrl" class="flex items-center gap-2 mt-1.5 cursor-pointer">
+                      <input type="checkbox" v-model="cfg.skipSslVerify" class="accent-primary" @change="markDirty" />
+                      <span class="text-xs">{{ t('orgSettings.llmKeysSkipSslVerify') }}</span>
+                      <span class="text-xs text-muted-foreground">{{ t('orgSettings.llmKeysSkipSslVerifyHint') }}</span>
+                    </label>
                   </div>
                   <button
                     v-if="!cfg.isCustom && !cfg.showBaseUrl"

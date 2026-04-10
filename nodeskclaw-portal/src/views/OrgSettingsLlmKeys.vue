@@ -29,6 +29,7 @@ interface ModelProvider {
   org_token_limit: number | null
   system_token_limit: number | null
   is_active: boolean
+  skip_ssl_verify: boolean
   allowed_models?: string[] | null
   usage_total_tokens: number
   created_by: string
@@ -62,6 +63,7 @@ const form = ref({
   org_token_limit: '',
   system_token_limit: '',
   is_active: true,
+  skip_ssl_verify: false,
 })
 
 const showCustomForm = ref(false)
@@ -82,7 +84,7 @@ const customProviders = computed(() =>
 )
 
 function resetForm() {
-  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true }
+  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true, skip_ssl_verify: false }
 }
 
 function configuredMap(): Record<string, ModelProvider> {
@@ -186,6 +188,7 @@ function openConfigure(providerName: string) {
       org_token_limit: existing.org_token_limit?.toString() ?? '',
       system_token_limit: existing.system_token_limit?.toString() ?? '',
       is_active: existing.is_active,
+      skip_ssl_verify: existing.skip_ssl_verify ?? false,
     }
   } else {
     isEditing.value = false
@@ -226,6 +229,7 @@ async function handleSave() {
       const payload: Record<string, any> = { is_active: form.value.is_active }
       if (form.value.api_key) payload.api_key = form.value.api_key
       payload.base_url = form.value.base_url || null
+      payload.skip_ssl_verify = form.value.skip_ssl_verify
       payload.org_token_limit = form.value.org_token_limit ? Number(form.value.org_token_limit) : null
       payload.system_token_limit = form.value.system_token_limit ? Number(form.value.system_token_limit) : null
       if (isCustomProvider(dialogProvider.value)) {
@@ -239,6 +243,7 @@ async function handleSave() {
         provider: dialogProvider.value,
         api_key: form.value.api_key,
         base_url: form.value.base_url || undefined,
+        skip_ssl_verify: form.value.skip_ssl_verify,
         org_token_limit: form.value.org_token_limit ? Number(form.value.org_token_limit) : undefined,
         system_token_limit: form.value.system_token_limit ? Number(form.value.system_token_limit) : undefined,
       }
@@ -313,6 +318,7 @@ async function handleTest() {
       provider: dialogProvider.value,
       base_url: form.value.base_url || undefined,
       api_type: form.value.api_type || undefined,
+      skip_ssl_verify: form.value.skip_ssl_verify,
     }
     if (form.value.api_key) {
       payload.api_key = form.value.api_key
@@ -640,6 +646,11 @@ onMounted(async () => {
                 class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
                 :placeholder="isCustomProvider(dialogProvider) ? t('orgSettings.customProviderBaseUrlRequired') : t('orgSettings.llmKeysBaseUrlPlaceholder')"
               />
+              <label v-if="form.base_url" class="flex items-center gap-2 mt-1.5 cursor-pointer">
+                <input type="checkbox" v-model="form.skip_ssl_verify" class="accent-primary" />
+                <span class="text-sm">{{ t('orgSettings.llmKeysSkipSslVerify') }}</span>
+                <span class="text-xs text-muted-foreground">{{ t('orgSettings.llmKeysSkipSslVerifyHint') }}</span>
+              </label>
             </div>
 
             <div class="grid grid-cols-2 gap-3">
