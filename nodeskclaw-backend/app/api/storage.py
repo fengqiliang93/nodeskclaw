@@ -73,14 +73,16 @@ async def _fetch_all_storage_classes(
         storage_api = StorageV1Api(k8s.core.api_client)
         sc_list = await storage_api.list_storage_class()
 
-        # 读取管理员启用列表
         allowed_raw = await get_config("allowed_storage_classes", db)
-        allowed_names: set[str] = set()
-        if allowed_raw:
+        if allowed_raw is None:
+            all_allowed = True
+            allowed_names: set[str] = set()
+        else:
+            all_allowed = False
             try:
                 allowed_names = set(json.loads(allowed_raw))
             except (json.JSONDecodeError, TypeError):
-                pass
+                allowed_names = set()
 
         items: list[StorageClassInfo] = []
         for sc in sc_list.items:
@@ -92,7 +94,7 @@ async def _fetch_all_storage_classes(
                 reclaim_policy=sc.reclaim_policy,
                 allow_volume_expansion=sc.allow_volume_expansion or False,
                 is_default=is_default,
-                enabled=sc.metadata.name in allowed_names,
+                enabled=all_allowed or sc.metadata.name in allowed_names,
             ))
         return items
     except Exception:
