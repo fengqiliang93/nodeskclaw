@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useClusterStore } from '@/stores/cluster'
 import { useToast } from '@/composables/useToast'
 import { resolveApiErrorMessage } from '@/i18n/error'
+import api from '@/services/api'
 import CustomSelect from '@/components/shared/CustomSelect.vue'
 import {
   ArrowLeft,
@@ -125,6 +126,27 @@ async function handleIngressClassChange(value: string | null) {
     toast.success(t('clusters.ingressClassUpdated'))
   } catch (e) {
     toast.error(resolveApiErrorMessage(e, t('clusters.ingressClassUpdateFailed')))
+  }
+}
+
+const togglingScName = ref<string | null>(null)
+
+async function handleToggleSc(scName: string, newEnabled: boolean) {
+  if (!overview.value) return
+  togglingScName.value = scName
+  try {
+    const newList = overview.value.storage_classes
+      .map(sc => sc.name === scName ? { ...sc, enabled: newEnabled } : sc)
+      .filter(sc => sc.enabled)
+      .map(sc => sc.name)
+    await api.put('/settings/allowed_storage_classes', { value: JSON.stringify(newList) })
+    const target = overview.value.storage_classes.find(sc => sc.name === scName)
+    if (target) target.enabled = newEnabled
+    toast.success(t('clusters.detail.storageClassUpdated'))
+  } catch (e) {
+    toast.error(resolveApiErrorMessage(e, t('clusters.detail.storageClassUpdateFailed')))
+  } finally {
+    togglingScName.value = null
   }
 }
 
@@ -301,7 +323,8 @@ function nodeStatusClass(status: string) {
 
           <!-- StorageClass -->
           <div v-if="overview.storage_classes.length > 0">
-            <h3 class="text-sm font-semibold mb-3">StorageClass</h3>
+            <h3 class="text-sm font-semibold mb-1">StorageClass</h3>
+            <p class="text-xs text-muted-foreground mb-3">{{ t('clusters.detail.storageClassDesc') }}</p>
             <div class="rounded-xl border border-border overflow-hidden">
               <table class="w-full text-sm">
                 <thead>
@@ -311,6 +334,7 @@ function nodeStatusClass(status: string) {
                     <th class="text-left px-4 py-2.5 font-medium text-muted-foreground">{{ t('clusters.detail.reclaimPolicy') }}</th>
                     <th class="text-left px-4 py-2.5 font-medium text-muted-foreground">{{ t('clusters.detail.expansion') }}</th>
                     <th class="text-left px-4 py-2.5 font-medium text-muted-foreground">{{ t('clusters.detail.default') }}</th>
+                    <th class="text-right px-4 py-2.5 font-medium text-muted-foreground">{{ t('clusters.detail.storageClassEnabled') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -326,6 +350,21 @@ function nodeStatusClass(status: string) {
                     </td>
                     <td class="px-4 py-2.5">
                       <span v-if="sc.is_default" class="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">{{ t('clusters.detail.default') }}</span>
+                    </td>
+                    <td class="px-4 py-2.5 text-right">
+                      <button
+                        role="switch"
+                        :aria-checked="sc.enabled"
+                        :disabled="togglingScName === sc.name"
+                        class="relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors duration-200 disabled:opacity-50"
+                        :class="sc.enabled ? 'bg-primary' : 'bg-muted-foreground/30'"
+                        @click="handleToggleSc(sc.name, !sc.enabled)"
+                      >
+                        <span
+                          class="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5"
+                          :class="sc.enabled ? 'translate-x-[18px]' : 'translate-x-0.5'"
+                        />
+                      </button>
                     </td>
                   </tr>
                 </tbody>
