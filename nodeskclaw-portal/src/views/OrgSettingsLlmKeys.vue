@@ -64,6 +64,7 @@ const form = ref({
   system_token_limit: '',
   is_active: true,
   skip_ssl_verify: false,
+  test_model: '',
 })
 
 const showCustomForm = ref(false)
@@ -84,7 +85,7 @@ const customProviders = computed(() =>
 )
 
 function resetForm() {
-  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true, skip_ssl_verify: false }
+  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true, skip_ssl_verify: false, test_model: '' }
 }
 
 function configuredMap(): Record<string, ModelProvider> {
@@ -189,6 +190,7 @@ function openConfigure(providerName: string) {
       system_token_limit: existing.system_token_limit?.toString() ?? '',
       is_active: existing.is_active,
       skip_ssl_verify: existing.skip_ssl_verify ?? false,
+      test_model: existing.allowed_models?.[0] ?? '',
     }
   } else {
     isEditing.value = false
@@ -302,7 +304,7 @@ const canSave = computed(() => {
 })
 
 const testing = ref(false)
-const testResult = ref<{ ok: boolean; message: string; model_count?: number | null; latency_ms?: number | null } | null>(null)
+const testResult = ref<{ ok: boolean; message: string; tested_model?: string | null; latency_ms?: number | null; error_detail?: string | null } | null>(null)
 
 const canTest = computed(() => {
   if (!isEditing.value && !form.value.api_key) return false
@@ -319,6 +321,7 @@ async function handleTest() {
       base_url: form.value.base_url || undefined,
       api_type: form.value.api_type || undefined,
       skip_ssl_verify: form.value.skip_ssl_verify,
+      model: form.value.test_model || undefined,
     }
     if (form.value.api_key) {
       payload.api_key = form.value.api_key
@@ -653,6 +656,15 @@ onMounted(async () => {
               </label>
             </div>
 
+            <div v-if="isCustomProvider(dialogProvider)" class="space-y-1.5">
+              <label class="text-sm font-medium">{{ t('orgSettings.testModelLabel') }}</label>
+              <input
+                v-model="form.test_model"
+                class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                :placeholder="t('orgSettings.testModelPlaceholder')"
+              />
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
                 <label class="text-sm font-medium">{{ t('orgSettings.llmKeysOrgTokenLimit') }}</label>
@@ -686,10 +698,13 @@ onMounted(async () => {
               <XCircle v-else class="w-4 h-4 shrink-0" />
               <span>{{ testResult.message }}</span>
             </div>
-            <div v-if="testResult.ok && (testResult.model_count != null || testResult.latency_ms != null)" class="mt-1 text-xs opacity-80 ml-5.5">
-              <span v-if="testResult.model_count != null">{{ t('orgSettings.testConnectionModelCount', { count: testResult.model_count }) }}</span>
-              <span v-if="testResult.model_count != null && testResult.latency_ms != null" class="mx-1">/</span>
+            <div v-if="testResult.ok && (testResult.tested_model || testResult.latency_ms != null)" class="mt-1 text-xs opacity-80 ml-5.5">
+              <span v-if="testResult.tested_model">{{ t('orgSettings.testConnectionModel', { model: testResult.tested_model }) }}</span>
+              <span v-if="testResult.tested_model && testResult.latency_ms != null" class="mx-1">/</span>
               <span v-if="testResult.latency_ms != null">{{ t('orgSettings.testConnectionLatency', { ms: testResult.latency_ms }) }}</span>
+            </div>
+            <div v-if="!testResult.ok && testResult.error_detail" class="mt-1.5 text-xs opacity-70 ml-5.5 font-mono break-all">
+              {{ testResult.error_detail }}
             </div>
           </div>
 

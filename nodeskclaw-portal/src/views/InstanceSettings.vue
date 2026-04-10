@@ -288,7 +288,7 @@ function removeProvider(idx: number) {
 }
 
 const testingProvider = ref<number | null>(null)
-const testResults = ref<Record<number, { ok: boolean; message: string; model_count?: number | null; latency_ms?: number | null }>>({})
+const testResults = ref<Record<number, { ok: boolean; message: string; tested_model?: string | null; latency_ms?: number | null; error_detail?: string | null }>>({})
 
 async function handleTestKey(idx: number) {
   const cfg = providerConfigs.value[idx]
@@ -303,6 +303,7 @@ async function handleTestKey(idx: number) {
       base_url: cfg.baseUrl || undefined,
       api_type: cfg.apiType || undefined,
       skip_ssl_verify: cfg.skipSslVerify,
+      model: cfg.selectedModel?.id || undefined,
     })
     testResults.value[idx] = res.data.data
   } catch (e: any) {
@@ -675,12 +676,16 @@ watch(() => instanceOrgId.value, (newVal, oldVal) => {
                     </button>
                     <span v-if="testResults[idx]?.ok" class="shrink-0 flex items-center gap-1 text-xs text-green-500">
                       <CheckCircle class="w-3.5 h-3.5" />
-                      {{ t('llm.testKeyAvailable') }}
+                      {{ testResults[idx].tested_model ? t('llm.testConnectionModel', { model: testResults[idx].tested_model }) : t('llm.testKeyAvailable') }}
+                      <template v-if="testResults[idx].latency_ms != null"> / {{ testResults[idx].latency_ms }}ms</template>
                     </span>
-                    <span v-else-if="testResults[idx] && !testResults[idx].ok" class="shrink-0 flex items-center gap-1 text-xs text-destructive max-w-[160px] truncate" :title="testResults[idx].message">
+                    <span v-else-if="testResults[idx] && !testResults[idx].ok" class="shrink-0 flex items-center gap-1 text-xs text-destructive">
                       <XCircle class="w-3.5 h-3.5 shrink-0" />
                       {{ t('llm.testKeyFailed') }}
                     </span>
+                  </div>
+                  <div v-if="testResults[idx] && !testResults[idx]?.ok" class="mt-1 px-2 py-1.5 rounded bg-destructive/5 text-xs text-destructive">
+                    {{ testResults[idx].message }}
                   </div>
 
                   <div v-if="cfg.isCustom || cfg.showBaseUrl">
