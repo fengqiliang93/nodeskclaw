@@ -1424,6 +1424,10 @@ const enUS = {
       default: "Default",
       colStatus: "Status",
       colName: "Name",
+      storageClassDesc: "Once enabled, users can select this StorageClass when creating AI employees",
+      storageClassEnabled: "Enabled",
+      storageClassUpdated: "StorageClass availability updated",
+      storageClassUpdateFailed: "Failed to update StorageClass availability",
     },
   },
   enterpriseFiles: {

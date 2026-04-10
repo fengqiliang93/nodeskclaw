@@ -1424,6 +1424,10 @@ const zhCN = {
       default: "默认",
       colStatus: "状态",
       colName: "名称",
+      storageClassDesc: "启用后，用户在创建 AI 员工时可选择该 StorageClass",
+      storageClassEnabled: "启用",
+      storageClassUpdated: "StorageClass 启用状态已更新",
+      storageClassUpdateFailed: "StorageClass 启用状态更新失败",
     },
   },
   enterpriseFiles: {
