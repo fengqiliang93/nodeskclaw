@@ -1,7 +1,6 @@
 """LLM Key management endpoints: model providers, user keys, instance configs."""
 
 import logging
-import time
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -450,7 +449,7 @@ async def test_llm_connection(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from app.services.model_catalog_service import fetch_provider_models
+    from app.services.model_catalog_service import test_provider_chat_completion
 
     resolved_key = body.api_key
     resolved_base_url = body.base_url
@@ -494,27 +493,18 @@ async def test_llm_connection(
             ok=False, message="无可用 Key，请先填写 API Key",
         ))
 
-    t0 = time.monotonic()
-    try:
-        models = await fetch_provider_models(
-            body.provider, resolved_key,
-            base_url=resolved_base_url, api_type=resolved_api_type,
-            skip_cache=True, skip_ssl_verify=body.skip_ssl_verify,
-        )
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        return ApiResponse(data=LlmTestConnectionResult(
-            ok=True,
-            message="连接成功",
-            model_count=len(models),
-            latency_ms=latency_ms,
-        ))
-    except ValueError as e:
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        return ApiResponse(data=LlmTestConnectionResult(
-            ok=False,
-            message=str(e),
-            latency_ms=latency_ms,
-        ))
+    r = await test_provider_chat_completion(
+        body.provider, resolved_key, body.model,
+        base_url=resolved_base_url, api_type=resolved_api_type,
+        skip_ssl_verify=body.skip_ssl_verify,
+    )
+    return ApiResponse(data=LlmTestConnectionResult(
+        ok=r.ok,
+        message=r.message,
+        tested_model=r.model if r.model else None,
+        latency_ms=r.latency_ms or None,
+        error_detail=r.error_detail,
+    ))
 
 
 # ══════════════════════════════════════════════════════════

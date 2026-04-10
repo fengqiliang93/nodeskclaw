@@ -174,13 +174,15 @@ class LlmTestConnectionRequest(BaseModel):
     api_type: str | None = None
     org_id: str | None = None
     skip_ssl_verify: bool = False
+    model: str | None = None
 
 
 class LlmTestConnectionResult(BaseModel):
     ok: bool
     message: str
-    model_count: int | None = None
+    tested_model: str | None = None
     latency_ms: int | None = None
+    error_detail: str | None = None
 
 
 # ── Deprecated (kept for import compat) ──────────────────
