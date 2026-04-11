@@ -242,7 +242,7 @@ fix(deploy): 修复 env_vars 存数据库未序列化的问题
 ### 目录结构
 
 - `features.yaml` — EE 功能清单定义
-- `ee/` — EE 私有仓库（`.gitignore` 排除，开发者通过 `scripts/setup-ee.sh` 拉取）
+- `ee/` — EE 私有仓库（`.gitignore` 排除，需手动 clone 到项目根目录）
   - `ee/backend/` — EE 后端（路由、Service、Model、Hook）
   - `ee/nodeskclaw-frontend/` — Admin 管理后台前端（EE-only，完整 Vue 项目）
   - `ee/frontend/portal/` — Portal 前端 EE 页面和路由

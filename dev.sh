@@ -124,7 +124,7 @@ if [ -z "$MODE" ]; then
 fi
 
 if [ "$MODE" = "ee" ] && [ ! -d "$EE_DIR" ]; then
-  err "EE 模式需要 ee/ 目录，请先运行 scripts/setup-ee.sh"
+  err "EE 模式需要 ee/ 目录，请将 EE 私有仓库 clone 到项目根目录的 ee/ 下"
   exit 1
 fi
 
