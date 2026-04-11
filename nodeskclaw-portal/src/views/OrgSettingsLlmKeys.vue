@@ -9,6 +9,8 @@ import { useConfirm } from '@/composables/useConfirm'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import { PROVIDERS, PROVIDER_LABELS, WP_PROVIDERS, ALL_KNOWN_PROVIDERS } from '@/utils/llmProviders'
 import { useEdition } from '@/composables/useFeature'
+import ModelSelect from '@/components/shared/ModelSelect.vue'
+import type { ModelItem } from '@/components/shared/ModelSelect.vue'
 
 const { t } = useI18n()
 const orgStore = useOrgStore()
@@ -64,8 +66,9 @@ const form = ref({
   system_token_limit: '',
   is_active: true,
   skip_ssl_verify: false,
-  test_model: '',
 })
+
+const testModel = ref<ModelItem | null>(null)
 
 const showCustomForm = ref(false)
 const customSlug = ref('')
@@ -85,7 +88,8 @@ const customProviders = computed(() =>
 )
 
 function resetForm() {
-  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true, skip_ssl_verify: false, test_model: '' }
+  form.value = { api_key: '', base_url: '', api_type: '', label: '', org_token_limit: '', system_token_limit: '', is_active: true, skip_ssl_verify: false }
+  testModel.value = null
 }
 
 function configuredMap(): Record<string, ModelProvider> {
@@ -190,7 +194,10 @@ function openConfigure(providerName: string) {
       system_token_limit: existing.system_token_limit?.toString() ?? '',
       is_active: existing.is_active,
       skip_ssl_verify: existing.skip_ssl_verify ?? false,
-      test_model: existing.allowed_models?.[0] ?? '',
+    }
+    const firstModel = existing.allowed_models?.[0]
+    if (firstModel) {
+      testModel.value = { id: firstModel, name: firstModel }
     }
   } else {
     isEditing.value = false
@@ -321,7 +328,7 @@ async function handleTest() {
       base_url: form.value.base_url || undefined,
       api_type: form.value.api_type || undefined,
       skip_ssl_verify: form.value.skip_ssl_verify,
-      model: form.value.test_model || undefined,
+      model: testModel.value?.id || undefined,
     }
     if (form.value.api_key) {
       payload.api_key = form.value.api_key
@@ -334,6 +341,24 @@ async function handleTest() {
     testResult.value = { ok: false, message: resolveApiErrorMessage(e) || t('orgSettings.llmTestConnectionFailed') }
   } finally {
     testing.value = false
+  }
+}
+
+async function handleFetchModels(
+  provider: string,
+  callback: (models: ModelItem[], error?: string) => void,
+) {
+  const params: Record<string, any> = {}
+  if (form.value.api_key) params.api_key = form.value.api_key
+  else if (isEditing.value && orgId.value) params.org_id = orgId.value
+  if (form.value.base_url) params.base_url = form.value.base_url
+  if (form.value.api_type) params.api_type = form.value.api_type
+  if (form.value.skip_ssl_verify) params.skip_ssl_verify = true
+  try {
+    const res = await api.get(`/llm/providers/${provider}/models`, { params })
+    callback(res.data.data?.models ?? [])
+  } catch {
+    callback([], t('orgSettings.llmTestConnectionFailed'))
   }
 }
 
@@ -656,14 +681,12 @@ onMounted(async () => {
               </label>
             </div>
 
-            <div v-if="isCustomProvider(dialogProvider)" class="space-y-1.5">
-              <label class="text-sm font-medium">{{ t('orgSettings.testModelLabel') }}</label>
-              <input
-                v-model="form.test_model"
-                class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                :placeholder="t('orgSettings.testModelPlaceholder')"
-              />
-            </div>
+            <ModelSelect
+              :provider="dialogProvider"
+              v-model="testModel"
+              allow-manual-input
+              @fetch-models="handleFetchModels"
+            />
 
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
