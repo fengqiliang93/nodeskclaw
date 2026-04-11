@@ -253,6 +253,9 @@ async def lifespan(app: FastAPI):
     egress_seeds = {
         "egress_deny_cidrs": os.environ.get("EGRESS_DENY_CIDRS", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"),
         "egress_allow_ports": os.environ.get("EGRESS_ALLOW_PORTS", "80,443"),
+        "network_policy_ingress_enabled": "true",
+        "network_policy_egress_enabled": "true",
+        "ingress_allow_cidrs": "",
     }
     async with async_session_factory() as db:
         for _eg_key, _eg_value in egress_seeds.items():
@@ -261,7 +264,7 @@ async def lifespan(app: FastAPI):
             )).scalar_one_or_none()
             if _eg_row is None:
                 await config_service.set_config(_eg_key, _eg_value, db)
-                logger.info("Egress 配置迁移: %s = %s", _eg_key, _eg_value)
+                logger.info("网络策略配置种子: %s = %s", _eg_key, _eg_value)
 
     # ── 种子数据（幂等，每次启动执行）──
     from app.startup.seed import run_seed, backfill_cluster_org_id, seed_engine_versions

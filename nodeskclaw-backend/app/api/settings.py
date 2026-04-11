@@ -28,6 +28,8 @@ _ALLOWED_KEYS = {
     "smtp_from_email", "smtp_from_name", "smtp_use_tls",
     "verification_email_subject", "verification_email_template",
     "egress_deny_cidrs", "egress_allow_ports",
+    "network_policy_ingress_enabled", "network_policy_egress_enabled",
+    "ingress_allow_cidrs",
     "instance_spec_presets",
 }
 

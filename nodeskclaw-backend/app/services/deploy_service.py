@@ -1008,44 +1008,55 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
 
             # Step 8: 配置网络策略（多租户隔离）
             _publish(8, steps[7])
-            peer_namespaces = []
-            if ctx.advanced_config and ctx.advanced_config.get("network", {}).get("peers"):
-                peer_ids = ctx.advanced_config["network"]["peers"]
-                for pid in peer_ids:
-                    peer_result = await db.execute(
-                        select(Instance).where(Instance.id == pid, Instance.deleted_at.is_(None))
-                    )
-                    peer_inst = peer_result.scalar_one_or_none()
-                    if peer_inst:
-                        peer_namespaces.append(peer_inst.namespace)
+            np_ingress_enabled = (await get_config("network_policy_ingress_enabled", db) or "true") != "false"
+            np_egress_enabled = (await get_config("network_policy_egress_enabled", db) or "true") != "false"
 
-            deny_str = await get_config("egress_deny_cidrs", db) or ""
-            ports_str = await get_config("egress_allow_ports", db) or ""
+            if not np_ingress_enabled and not np_egress_enabled:
+                logger.info("NetworkPolicy disabled (both ingress & egress off), skipping for %s", ctx.namespace)
+            else:
+                peer_namespaces = []
+                if ctx.advanced_config and ctx.advanced_config.get("network", {}).get("peers"):
+                    peer_ids = ctx.advanced_config["network"]["peers"]
+                    for pid in peer_ids:
+                        peer_result = await db.execute(
+                            select(Instance).where(Instance.id == pid, Instance.deleted_at.is_(None))
+                        )
+                        peer_inst = peer_result.scalar_one_or_none()
+                        if peer_inst:
+                            peer_namespaces.append(peer_inst.namespace)
 
-            deny_cidrs = [c.strip() for c in deny_str.split(",") if c.strip()]
-            allow_ports = [int(p.strip()) for p in ports_str.split(",") if p.strip()]
+                deny_str = await get_config("egress_deny_cidrs", db) or ""
+                ports_str = await get_config("egress_allow_ports", db) or ""
+                ingress_cidrs_str = await get_config("ingress_allow_cidrs", db) or ""
 
-            if ctx.advanced_config:
-                inst_egress = ctx.advanced_config.get("network", {}).get("egress", {})
-                if inst_egress.get("deny_cidrs") is not None:
-                    deny_cidrs = inst_egress["deny_cidrs"]
-                if inst_egress.get("allow_ports") is not None:
-                    allow_ports = inst_egress["allow_ports"]
+                deny_cidrs = [c.strip() for c in deny_str.split(",") if c.strip()]
+                allow_ports = [int(p.strip()) for p in ports_str.split(",") if p.strip()]
+                ingress_cidrs = [c.strip() for c in ingress_cidrs_str.split(",") if c.strip()]
 
-            np = build_network_policy(
-                f"{ctx.name}-isolation", ctx.namespace, labels,
-                peer_namespaces,
-                org_id=adapter.get_network_policy_org_id(ctx.org_id),
-                egress_deny_cidrs=deny_cidrs,
-                egress_allow_ports=allow_ports,
-                platform_namespace=settings.PLATFORM_NAMESPACE,
-            )
-            try:
-                await k8s.networking.create_namespaced_network_policy(ctx.namespace, np)
-            except Exception:
-                await k8s.networking.patch_namespaced_network_policy(
-                    f"{ctx.name}-isolation", ctx.namespace, np
+                if ctx.advanced_config:
+                    inst_egress = ctx.advanced_config.get("network", {}).get("egress", {})
+                    if inst_egress.get("deny_cidrs") is not None:
+                        deny_cidrs = inst_egress["deny_cidrs"]
+                    if inst_egress.get("allow_ports") is not None:
+                        allow_ports = inst_egress["allow_ports"]
+
+                np = build_network_policy(
+                    f"{ctx.name}-isolation", ctx.namespace, labels,
+                    peer_namespaces,
+                    org_id=adapter.get_network_policy_org_id(ctx.org_id),
+                    egress_deny_cidrs=deny_cidrs,
+                    egress_allow_ports=allow_ports,
+                    platform_namespace=settings.PLATFORM_NAMESPACE,
+                    ingress_enabled=np_ingress_enabled,
+                    egress_enabled=np_egress_enabled,
+                    ingress_allow_cidrs=ingress_cidrs,
                 )
+                try:
+                    await k8s.networking.create_namespaced_network_policy(ctx.namespace, np)
+                except Exception:
+                    await k8s.networking.patch_namespaced_network_policy(
+                        f"{ctx.name}-isolation", ctx.namespace, np
+                    )
 
             # Step 9: 等待 Deployment 就绪（最多 300 秒）
             _publish(9, steps[8], logs=["开始等待 Pod 就绪..."])
@@ -1509,16 +1520,62 @@ async def execute_rebuild_pipeline(ctx: _DeployContext) -> None:
 
             # NetworkPolicy
             _publish(8, steps[7])
-            np_org_id = adapter.get_network_policy_org_id(ctx.org_id)
-            np = build_network_policy(ctx.namespace, ctx.name, np_org_id)
-            try:
-                await k8s.create_or_skip(np)
-            except Exception:
+            np_ingress_on = (await get_config("network_policy_ingress_enabled", db) or "true") != "false"
+            np_egress_on = (await get_config("network_policy_egress_enabled", db) or "true") != "false"
+            np_name = f"{ctx.name}-isolation"
+
+            if not np_ingress_on and not np_egress_on:
+                logger.info("NetworkPolicy disabled, skipping for %s", ctx.namespace)
                 try:
-                    await k8s.networking.patch_namespaced_network_policy(
-                        f"{ctx.name}-policy", ctx.namespace, np)
+                    await k8s.networking.delete_namespaced_network_policy(np_name, ctx.namespace)
+                    logger.info("Cleaned up old NetworkPolicy %s/%s", ctx.namespace, np_name)
                 except Exception:
-                    logger.warning("NetworkPolicy create/patch failed for %s", ctx.namespace, exc_info=True)
+                    pass
+            else:
+                peer_namespaces: list[str] = []
+                if ctx.advanced_config and ctx.advanced_config.get("network", {}).get("peers"):
+                    for pid in ctx.advanced_config["network"]["peers"]:
+                        peer_result = await db.execute(
+                            select(Instance).where(Instance.id == pid, Instance.deleted_at.is_(None))
+                        )
+                        peer_inst = peer_result.scalar_one_or_none()
+                        if peer_inst:
+                            peer_namespaces.append(peer_inst.namespace)
+
+                deny_str = await get_config("egress_deny_cidrs", db) or ""
+                ports_str = await get_config("egress_allow_ports", db) or ""
+                ingress_cidrs_str = await get_config("ingress_allow_cidrs", db) or ""
+
+                deny_cidrs = [c.strip() for c in deny_str.split(",") if c.strip()]
+                allow_ports = [int(p.strip()) for p in ports_str.split(",") if p.strip()]
+                ingress_cidrs = [c.strip() for c in ingress_cidrs_str.split(",") if c.strip()]
+
+                if ctx.advanced_config:
+                    inst_egress = ctx.advanced_config.get("network", {}).get("egress", {})
+                    if inst_egress.get("deny_cidrs") is not None:
+                        deny_cidrs = inst_egress["deny_cidrs"]
+                    if inst_egress.get("allow_ports") is not None:
+                        allow_ports = inst_egress["allow_ports"]
+
+                np = build_network_policy(
+                    np_name, ctx.namespace, labels,
+                    peer_namespaces,
+                    org_id=adapter.get_network_policy_org_id(ctx.org_id),
+                    egress_deny_cidrs=deny_cidrs,
+                    egress_allow_ports=allow_ports,
+                    platform_namespace=settings.PLATFORM_NAMESPACE,
+                    ingress_enabled=np_ingress_on,
+                    egress_enabled=np_egress_on,
+                    ingress_allow_cidrs=ingress_cidrs,
+                )
+                try:
+                    await k8s.networking.create_namespaced_network_policy(ctx.namespace, np)
+                except Exception:
+                    try:
+                        await k8s.networking.patch_namespaced_network_policy(
+                            np_name, ctx.namespace, np)
+                    except Exception:
+                        logger.warning("NetworkPolicy create/patch failed for %s", ctx.namespace, exc_info=True)
 
             # Wait for Deployment ready
             _publish(9, steps[8])

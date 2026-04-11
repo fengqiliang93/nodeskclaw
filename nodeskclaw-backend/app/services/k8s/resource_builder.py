@@ -472,49 +472,48 @@ def build_network_policy(
     egress_deny_cidrs: list[str] | None = None,
     egress_allow_ports: list[int] | None = None,
     platform_namespace: str = "nodeskclaw-system",
+    ingress_enabled: bool = True,
+    egress_enabled: bool = True,
+    ingress_allow_cidrs: list[str] | None = None,
 ) -> dict:
     """Build NetworkPolicy for multi-tenant isolation + egress restriction.
 
-    Ingress 策略:
-    - 允许来自同 Namespace 内的 Pod 访问
-    - 允许来自平台服务命名空间（由 platform_namespace 参数决定）的流量
-    - 允许同组织其他 Namespace 的流量（通过 peer_namespaces）
-    - 拒绝其他所有入站流量
-
-    Egress 策略:
-    - 允许 DNS（kube-system, 端口 53）
-    - 允许平台服务（platform_namespace, 全端口）
-    - 允许同 Namespace 内 Pod 互访
-    - 允许 Peer Namespaces（已配置的互访实例）
-    - 允许公网出站（0.0.0.0/0 except deny_cidrs, 限 allow_ports）
-    - 拒绝其他所有出站流量
+    ingress_enabled / egress_enabled 控制 policyTypes 中包含哪些方向。
+    两个都为 False 时不应调用此函数（调用方负责跳过）。
     """
-    ingress_from: list[dict] = [
-        {"podSelector": {}},
-        {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": platform_namespace}}},
-    ]
-
-    for ns in peer_namespaces:
-        ingress_from.append({
-            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}},
-            "podSelector": {"matchLabels": {"app.kubernetes.io/managed-by": MANAGED_BY}},
-        })
-
     policy_labels = dict(labels)
     if org_id:
         policy_labels["nodeskclaw.io/org-id"] = org_id
 
-    spec: dict = {
-        "podSelector": {},
-        "policyTypes": ["Ingress", "Egress"],
-        "ingress": [{"from": ingress_from}],
-        "egress": _build_egress_rules(
+    policy_types: list[str] = []
+    spec: dict = {"podSelector": {}}
+
+    if ingress_enabled:
+        policy_types.append("Ingress")
+        ingress_from: list[dict] = [
+            {"podSelector": {}},
+            {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": platform_namespace}}},
+        ]
+        for ns in peer_namespaces:
+            ingress_from.append({
+                "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}},
+                "podSelector": {"matchLabels": {"app.kubernetes.io/managed-by": MANAGED_BY}},
+            })
+        for cidr in (ingress_allow_cidrs or []):
+            if cidr.strip():
+                ingress_from.append({"ipBlock": {"cidr": cidr.strip()}})
+        spec["ingress"] = [{"from": ingress_from}]
+
+    if egress_enabled:
+        policy_types.append("Egress")
+        spec["egress"] = _build_egress_rules(
             peer_namespaces=peer_namespaces,
             deny_cidrs=egress_deny_cidrs or [],
             allow_ports=egress_allow_ports or [80, 443],
             platform_namespace=platform_namespace,
-        ),
-    }
+        )
+
+    spec["policyTypes"] = policy_types
 
     return {
         "apiVersion": "networking.k8s.io/v1",
