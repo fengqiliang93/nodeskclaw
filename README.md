@@ -328,7 +328,7 @@ Available presets are in `deploy/mirrors/`. See [deploy/mirrors/README.md](deplo
 - [GitHub Issues](https://github.com/NoDeskAI/nodeskclaw/issues) -- Bug reports and feature requests
 - WeChat -- Scan the QR code below to join the developer group; if the WeChat group is full, please use Discord above
 
-<img src=".github/wechat-group-qr.jpg" alt="DeskClaw WeChat Developer Group" width="280">
+<img src=".github/wechat-group-qr.png" alt="DeskClaw WeChat Developer Group" width="280">
 
 ## Contributing
 
