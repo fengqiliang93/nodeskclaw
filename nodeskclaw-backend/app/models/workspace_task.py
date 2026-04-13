@@ -33,6 +33,11 @@ class WorkspaceTask(BaseModel):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    schedule_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("workspace_schedules.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     workspace = relationship("Workspace", foreign_keys=[workspace_id])
     assignee = relationship("Instance", foreign_keys=[assignee_instance_id])
+    schedule = relationship("WorkspaceSchedule", foreign_keys=[schedule_id])
