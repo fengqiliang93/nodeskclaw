@@ -793,15 +793,16 @@ async def create_schedule(
         cron_expr=data.get("cron_expr", ""),
         message_template=data.get("message_template", ""),
         is_active=data.get("is_active", True),
-        timeout_minutes=data.get("timeout_minutes", 120),
+        timeout_minutes=max(10, int(data.get("timeout_minutes", 120))),
     )
     db.add(schedule)
     await db.commit()
     await db.refresh(schedule)
     return _ok({
-        "id": schedule.id, "name": schedule.name,
+        "id": schedule.id, "workspace_id": schedule.workspace_id, "name": schedule.name,
         "cron_expr": schedule.cron_expr, "message_template": schedule.message_template,
-        "is_active": schedule.is_active,
+        "is_active": schedule.is_active, "timeout_minutes": schedule.timeout_minutes,
+        "created_at": schedule.created_at,
     })
 
 
@@ -825,9 +826,17 @@ async def update_schedule(
         raise _error(404, 40434, "errors.schedule.not_found", "定时器不存在")
     for field in ("name", "cron_expr", "message_template", "is_active", "timeout_minutes"):
         if field in data:
-            setattr(schedule, field, data[field])
+            value = data[field]
+            if field == "timeout_minutes":
+                value = max(10, int(value))
+            setattr(schedule, field, value)
     await db.commit()
-    return _ok({"id": schedule.id, "name": schedule.name, "is_active": schedule.is_active})
+    return _ok({
+        "id": schedule.id, "workspace_id": schedule.workspace_id, "name": schedule.name,
+        "cron_expr": schedule.cron_expr, "message_template": schedule.message_template,
+        "is_active": schedule.is_active, "timeout_minutes": schedule.timeout_minutes,
+        "created_at": schedule.created_at,
+    })
 
 
 @router.delete("/{workspace_id}/schedules/{schedule_id}")
