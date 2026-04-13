@@ -159,12 +159,12 @@ const contentViewMode = ref<'rendered' | 'source'>('rendered')
 const genomeGeneMap = ref<Record<string, GeneItem>>({})
 const activeGenomeGeneTab = ref('')
 
-async function openGeneDetail(id: string) {
+async function openGeneDetail(slug: string) {
   viewState.value = 'gene-detail'
   detailLoading.value = true
   contentViewMode.value = 'rendered'
   try {
-    const res = await api.get(`/genes/${id}`)
+    const res = await api.get(`/genes/${slug}`)
     detailGene.value = res.data.data
   } catch {
     detailGene.value = null
@@ -526,7 +526,7 @@ onUnmounted(() => {
                       v-for="gene in genes"
                       :key="gene.id"
                       class="p-4 rounded-xl border border-border bg-background hover:border-primary/30 transition cursor-pointer relative overflow-hidden"
-                      @click="openGeneDetail(gene.id)"
+                      @click="openGeneDetail(gene.slug)"
                     >
                       <div
                         v-if="isInstalled(gene.slug)"

@@ -195,9 +195,8 @@ function goBack() {
 }
 
 function goToGene(slug: string) {
-  const gene = geneMap.value[slug]
-  if (gene) {
-    router.push(`/gene-market/gene/${gene.id}`)
+  if (slug) {
+    router.push(`/gene-market/gene/${slug}`)
   }
 }
 </script>

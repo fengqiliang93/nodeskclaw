@@ -112,7 +112,7 @@ const ceRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/GeneMarket.vue'),
   },
   {
-    path: '/gene-market/gene/:id',
+    path: '/gene-market/gene/:slug',
     name: 'GeneDetail',
     component: () => import('@/views/GeneDetail.vue'),
   },

@@ -270,8 +270,8 @@ watch([viewMode, selectedTag, selectedCategory, selectedVisibility, sortBy], () 
 
 watch(page, loadData)
 
-function goToGene(id: string) {
-  router.push(`/gene-market/gene/${id}`)
+function goToGene(slug: string) {
+  router.push(`/gene-market/gene/${slug}`)
 }
 
 function goToGenome(id: string) {
@@ -401,7 +401,7 @@ function hasNativeTools(gene: GeneItem): boolean {
                   v-for="(g, i) in evoHotGenes"
                   :key="g.id"
                   class="px-4 py-3 flex items-center justify-between gap-4 cursor-pointer hover:bg-muted/50 transition-colors"
-                  @click="goToGene(g.id)"
+                  @click="goToGene(g.slug)"
                 >
                   <span class="text-muted-foreground w-6">{{ i + 1 }}</span>
                   <div class="min-w-0 flex-1">
@@ -575,7 +575,7 @@ function hasNativeTools(gene: GeneItem): boolean {
               v-for="item in featuredItems"
               :key="item.id"
               class="shrink-0 w-64 p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition cursor-pointer"
-              @click="viewMode === 'genes' ? goToGene((item as GeneItem).id) : goToGenome((item as GenomeItem).id)"
+              @click="viewMode === 'genes' ? goToGene((item as GeneItem).slug) : goToGenome((item as GenomeItem).id)"
             >
               <div class="flex items-start gap-3 mb-2">
                 <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -645,7 +645,7 @@ function hasNativeTools(gene: GeneItem): boolean {
                 v-for="gene in store.genes"
                 :key="gene.id"
                 class="p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition cursor-pointer"
-                @click="goToGene(gene.id)"
+                @click="goToGene(gene.slug)"
               >
               <div class="flex items-start gap-3 mb-2">
                 <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">

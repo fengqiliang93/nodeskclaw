@@ -107,53 +107,53 @@ async def featured_genes(
     return ApiResponse(data=genes)
 
 
-@router.get("/genes/{gene_id}")
+@router.get("/genes/{gene_slug}")
 async def get_gene(
-    gene_id: str,
+    gene_slug: str,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    gene = await gene_service.get_gene(db, gene_id)
+    gene = await gene_service.get_gene(db, gene_slug)
     return ApiResponse(data=gene)
 
 
-@router.get("/genes/{gene_id}/variants")
+@router.get("/genes/{gene_slug}/variants")
 async def gene_variants(
-    gene_id: str,
+    gene_slug: str,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    variants = await gene_service.get_gene_variants(db, gene_id)
+    variants = await gene_service.get_gene_variants(db, gene_slug)
     return ApiResponse(data=variants)
 
 
-@router.get("/genes/{gene_id}/synergies")
+@router.get("/genes/{gene_slug}/synergies")
 async def gene_synergies(
-    gene_id: str,
+    gene_slug: str,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    synergies = await gene_service.get_gene_synergies(db, gene_id)
+    synergies = await gene_service.get_gene_synergies(db, gene_slug)
     return ApiResponse(data=synergies)
 
 
-@router.get("/genes/{gene_id}/genomes")
+@router.get("/genes/{gene_slug}/genomes")
 async def gene_genomes(
-    gene_id: str,
+    gene_slug: str,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    data = await gene_service.get_gene_genomes(db, gene_id)
+    data = await gene_service.get_gene_genomes(db, gene_slug)
     return ApiResponse(data=data)
 
 
-@router.get("/genes/{gene_id}/installed-instances")
+@router.get("/genes/{gene_slug}/installed-instances")
 async def gene_installed_instances(
-    gene_id: str,
+    gene_slug: str,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    ids = await gene_service.get_gene_installed_instance_ids(db, gene_id)
+    ids = await gene_service.get_gene_installed_instance_ids(db, gene_slug)
     return ApiResponse(data=ids)
 
 

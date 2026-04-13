@@ -554,17 +554,19 @@ async def list_genes(
     return items, result.total
 
 
-async def get_gene(db: AsyncSession, gene_id: str) -> dict:
-    result = await db.execute(
-        select(Gene).where(Gene.id == gene_id, not_deleted(Gene))
-    )
-    gene = result.scalar_one_or_none()
-    if not gene:
+async def get_gene(db: AsyncSession, slug: str) -> dict:
+    aggregator = get_aggregator()
+    detail = await aggregator.get_skill(slug)
+    if not detail:
         raise NotFoundError("基因不存在")
 
-    data = _gene_to_dict(gene)
+    data = _registry_item_to_dict(detail)
 
-    data["effectiveness_breakdown"] = await _get_effectiveness_breakdown(db, gene_id, gene.avg_rating)
+    if detail.source_registry == "local" and detail.local_id:
+        data["effectiveness_breakdown"] = await _get_effectiveness_breakdown(
+            db, detail.local_id, detail.avg_rating
+        )
+
     return data
 
 
@@ -621,27 +623,27 @@ async def get_featured_genes(db: AsyncSession, limit: int = 10) -> list[dict]:
     return [_registry_item_to_dict(item) for item in items]
 
 
-async def get_gene_variants(db: AsyncSession, gene_id: str) -> list[dict]:
+async def get_gene_variants(db: AsyncSession, slug: str) -> list[dict]:
+    gene = await get_gene_by_slug(db, slug)
+    if not gene:
+        return []
     result = await db.execute(
         select(Gene)
-        .where(Gene.parent_gene_id == gene_id, not_deleted(Gene), Gene.is_published.is_(True))
+        .where(Gene.parent_gene_id == gene.id, not_deleted(Gene), Gene.is_published.is_(True))
         .order_by(Gene.effectiveness_score.desc())
     )
     return [_gene_to_dict(g) for g in result.scalars().all()]
 
 
-async def get_gene_synergies(db: AsyncSession, gene_id: str) -> list[dict]:
-    gene = await db.execute(
-        select(Gene).where(Gene.id == gene_id, not_deleted(Gene))
-    )
-    gene_obj = gene.scalar_one_or_none()
-    if not gene_obj:
-        return []
-
+async def get_gene_synergies(db: AsyncSession, slug: str) -> list[dict]:
     aggregator = get_aggregator()
-    agg_synergies = await aggregator.get_synergies(gene_obj.slug)
+    agg_synergies = await aggregator.get_synergies(slug)
     if agg_synergies is not None:
         return agg_synergies
+
+    gene_obj = await get_gene_by_slug(db, slug)
+    if not gene_obj:
+        return []
 
     slugs = _json_loads(gene_obj.synergies) or []
     if not slugs:
@@ -653,22 +655,15 @@ async def get_gene_synergies(db: AsyncSession, gene_id: str) -> list[dict]:
     return [_gene_to_dict(g) for g in result.scalars().all()]
 
 
-async def get_gene_genomes(db: AsyncSession, gene_id: str) -> list[dict]:
+async def get_gene_genomes(db: AsyncSession, slug: str) -> list[dict]:
     """返回包含该基因的所有基因组（通过 gene_slugs JSON 数组匹配）。"""
-    gene = await db.execute(
-        select(Gene).where(Gene.id == gene_id, not_deleted(Gene))
-    )
-    gene_obj = gene.scalar_one_or_none()
-    if not gene_obj:
-        return []
-
     result = await db.execute(
         select(Genome).where(not_deleted(Genome), Genome.is_published.is_(True))
     )
     matched = []
     for g in result.scalars().all():
-        slugs = _json_loads(g.gene_slugs) or []
-        if gene_obj.slug in slugs:
+        gene_slugs = _json_loads(g.gene_slugs) or []
+        if slug in gene_slugs:
             matched.append(_genome_to_dict(g))
     return await _enrich_genomes_tool_counts(db, matched)
 
@@ -970,11 +965,14 @@ async def get_instance_skills(db: AsyncSession, instance_id: str, org_id: str | 
     return items
 
 
-async def get_gene_installed_instance_ids(db: AsyncSession, gene_id: str) -> list[str]:
+async def get_gene_installed_instance_ids(db: AsyncSession, slug: str) -> list[str]:
     """Return instance IDs where this gene is currently installed."""
+    gene = await get_gene_by_slug(db, slug)
+    if not gene:
+        return []
     result = await db.execute(
         select(InstanceGene.instance_id).where(
-            InstanceGene.gene_id == gene_id,
+            InstanceGene.gene_id == gene.id,
             InstanceGene.status == InstanceGeneStatus.installed,
             not_deleted(InstanceGene),
         )
