@@ -779,6 +779,7 @@ def _task_to_info(
         estimated_value=t.estimated_value, actual_value=t.actual_value,
         token_cost=t.token_cost, blocker_reason=t.blocker_reason,
         completed_at=completed_at, archived_at=t.archived_at,
+        schedule_id=t.schedule_id, deadline=t.deadline,
         created_at=t.created_at, updated_at=t.updated_at,
     )
 
@@ -1051,6 +1052,8 @@ async def list_tasks_paginated(
 async def create_task(
     db: AsyncSession, workspace_id: str, data: TaskCreate,
     created_by_instance_id: str | None = None,
+    schedule_id: str | None = None,
+    deadline: "datetime | None" = None,
 ) -> TaskInfo:
     task = WorkspaceTask(
         workspace_id=workspace_id,
@@ -1060,6 +1063,8 @@ async def create_task(
         assignee_instance_id=data.assignee_id,
         created_by_instance_id=created_by_instance_id,
         estimated_value=data.estimated_value,
+        schedule_id=schedule_id,
+        deadline=deadline,
     )
     db.add(task)
     await db.commit()

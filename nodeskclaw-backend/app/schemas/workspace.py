@@ -98,6 +98,8 @@ class TaskInfo(BaseModel):
     blocker_reason: str | None = None
     completed_at: datetime | None = None
     archived_at: datetime | None = None
+    schedule_id: str | None = None
+    deadline: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
