@@ -781,6 +781,7 @@ def _task_to_info(
         completed_at=completed_at, archived_at=t.archived_at,
         started_at=t.started_at,
         schedule_id=t.schedule_id, deadline=t.deadline,
+        failure_reason=t.failure_reason,
         created_at=t.created_at, updated_at=t.updated_at,
     )
 

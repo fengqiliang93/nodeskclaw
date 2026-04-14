@@ -101,6 +101,7 @@ class TaskInfo(BaseModel):
     archived_at: datetime | None = None
     schedule_id: str | None = None
     deadline: datetime | None = None
+    failure_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
