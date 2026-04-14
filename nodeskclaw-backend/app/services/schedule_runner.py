@@ -78,8 +78,9 @@ class ScheduleRunner:
     async def _check_overdue(self, db: AsyncSession):
         """Mark overdue scheduled tasks as failed and write task_success=0.0."""
         from app.api.workspaces import broadcast_event, _fire_task, _notify_agents_task_failed
+        from app.models.workspace_task import FAILURE_TIMEOUT, FAILURE_UNCLAIMED_TIMEOUT
         from app.services import gene_service
-        from app.services.workspace_service import _task_to_info
+        from app.services.workspace_service import _task_to_info, update_schedule_failure_count
 
         now = datetime.now(timezone.utc)
         result = await db.execute(
@@ -96,6 +97,12 @@ class ScheduleRunner:
         for task in overdue:
             old_status = task.status
             task.status = "failed"
+            task.failure_reason = (
+                FAILURE_TIMEOUT if task.assignee_instance_id else FAILURE_UNCLAIMED_TIMEOUT
+            )
+            await update_schedule_failure_count(
+                db, task.schedule_id, success=False, workspace_id=task.workspace_id,
+            )
             await db.commit()
             await db.refresh(task)
 
@@ -109,15 +116,16 @@ class ScheduleRunner:
             if task.assignee_instance_id:
                 try:
                     await gene_service.log_task_outcome(
-                        db, task.assignee_instance_id, task.id, task.title, success=False
+                        db, task.assignee_instance_id, task.id, task.title,
+                        success=False, failure_reason=task.failure_reason,
                     )
                 except Exception as e:
                     logger.warning("超时任务写入 task_success 失败: %s", e)
 
             _fire_task(_notify_agents_task_failed(task.workspace_id, task.title))
             logger.info(
-                "Overdue scheduled task '%s' marked failed (workspace %s)",
-                task.title, task.workspace_id,
+                "Overdue scheduled task '%s' marked failed (reason=%s, workspace %s)",
+                task.title, task.failure_reason, task.workspace_id,
             )
 
     async def _fire(self, db, schedule: WorkspaceSchedule):

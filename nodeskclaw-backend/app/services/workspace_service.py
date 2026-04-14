@@ -785,6 +785,41 @@ def _task_to_info(
         created_at=t.created_at, updated_at=t.updated_at,
     )
 
+CONSECUTIVE_FAILURE_THRESHOLD = 3
+
+
+async def update_schedule_failure_count(
+    db: AsyncSession, schedule_id: str | None, *, success: bool, workspace_id: str,
+) -> None:
+    """Update schedule consecutive_failures / last_succeeded_at.
+
+    Does NOT commit — caller controls the transaction boundary.
+    """
+    if not schedule_id:
+        return
+    schedule = await db.get(WorkspaceSchedule, schedule_id)
+    if schedule is None or schedule.deleted_at is not None:
+        return
+
+    if success:
+        schedule.consecutive_failures = 0
+        from datetime import datetime, timezone as _tz
+        schedule.last_succeeded_at = datetime.now(_tz.utc)
+    else:
+        old = schedule.consecutive_failures
+        schedule.consecutive_failures = old + 1
+        new = schedule.consecutive_failures
+        if (old < CONSECUTIVE_FAILURE_THRESHOLD <= new) or (
+            new >= CONSECUTIVE_FAILURE_THRESHOLD and new % CONSECUTIVE_FAILURE_THRESHOLD == 0
+        ):
+            from app.api.workspaces import broadcast_event
+            broadcast_event(workspace_id, "schedule:consecutive_failures", {
+                "schedule_id": schedule.id,
+                "name": schedule.name,
+                "consecutive_failures": new,
+            })
+
+
 def _obj_to_info(o: WorkspaceObjective, children: list[ObjectiveInfo] | None = None) -> ObjectiveInfo:
     return ObjectiveInfo(
         id=o.id, workspace_id=o.workspace_id, title=o.title,
@@ -1127,6 +1162,9 @@ async def update_task(
         task.token_cost = data.token_cost
     if data.blocker_reason is not None:
         task.blocker_reason = data.blocker_reason
+    if normalized_status == "failed" and task.schedule_id and not task.failure_reason:
+        from app.models.workspace_task import FAILURE_AGENT_REPORTED
+        task.failure_reason = FAILURE_AGENT_REPORTED
 
     await db.commit()
     await db.refresh(task)
