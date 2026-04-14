@@ -188,7 +188,8 @@ class ScheduleRunner:
             else:
                 message = schedule.message_template or f"[{schedule.name}]"
             await send_system_message_to_agents(
-                workspace_id, agent_ids, message, db
+                workspace_id, agent_ids, message, db,
+                mention_targets=agent_ids,
             )
 
         logger.info(
