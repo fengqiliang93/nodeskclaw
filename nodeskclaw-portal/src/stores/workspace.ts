@@ -109,6 +109,7 @@ export interface TaskInfo {
   archived_at: string | null
   schedule_id: string | null
   deadline: string | null
+  failure_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -271,6 +272,8 @@ export interface ScheduleInfo {
   message_template: string
   is_active: boolean
   timeout_minutes: number
+  consecutive_failures: number
+  last_succeeded_at: string | null
   created_at: string | null
 }
 
@@ -1079,6 +1082,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         } catch { /* ignore */ }
       })
     }
+
+    eventSource.addEventListener('schedule:consecutive_failures', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        externalCallback?.('schedule:consecutive_failures', data)
+        fetchSchedules(workspaceId)
+      } catch { /* ignore */ }
+    })
 
     for (const evtName of ['post:created', 'post:updated', 'post:deleted', 'post:pinned', 'reply:created', 'file:created', 'file:uploaded', 'file:deleted']) {
       eventSource.addEventListener(evtName, (e: MessageEvent) => {
