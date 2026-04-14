@@ -188,7 +188,7 @@ async function toggle(schedule: ScheduleInfo) {
             <span
               v-if="schedule.consecutive_failures > 0"
               class="inline-flex items-center gap-0.5 shrink-0 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-400"
-              :title="t('blackboard.schedules.consecutiveFailures', { count: schedule.consecutive_failures }) + ' — ' + (schedule.last_succeeded_at ? new Date(schedule.last_succeeded_at).toLocaleString() : t('blackboard.schedules.neverSucceeded'))"
+              :title="t('blackboard.scheduleConsecutiveFailures', { count: schedule.consecutive_failures }) + ' — ' + (schedule.last_succeeded_at ? new Date(schedule.last_succeeded_at).toLocaleString() : t('blackboard.scheduleNeverSucceeded'))"
             >
               <TriangleAlert class="w-3 h-3" />
               {{ schedule.consecutive_failures }}

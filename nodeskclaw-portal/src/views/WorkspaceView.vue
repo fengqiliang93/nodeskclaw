@@ -319,6 +319,15 @@ function onSSEEvent(event: string, data: Record<string, unknown>) {
     return
   }
 
+  if (event === 'schedule:consecutive_failures') {
+    const name = typeof data.name === 'string' ? data.name : ''
+    const count = typeof data.consecutive_failures === 'number' ? data.consecutive_failures : 0
+    if (name && count) {
+      toast.warning(t('blackboard.scheduleConsecutiveFailureAlert', { name, count }))
+    }
+    return
+  }
+
   if (event === 'agent:collaboration') {
     const instanceId = data.instance_id as string
     const target = data.target as string
