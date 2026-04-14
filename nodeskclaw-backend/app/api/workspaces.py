@@ -1029,12 +1029,15 @@ async def update_schedule(
     schedule = result.scalar_one_or_none()
     if not schedule:
         raise _error(404, 40434, "errors.schedule.not_found", "定时器不存在")
+    was_active = schedule.is_active
     for field in ("name", "cron_expr", "message_template", "is_active", "timeout_minutes"):
         if field in data:
             value = data[field]
             if field == "timeout_minutes":
                 value = max(10, int(value))
             setattr(schedule, field, value)
+    if not was_active and schedule.is_active:
+        schedule.consecutive_failures = 0
     await db.commit()
     return _ok({
         "id": schedule.id, "workspace_id": schedule.workspace_id, "name": schedule.name,
