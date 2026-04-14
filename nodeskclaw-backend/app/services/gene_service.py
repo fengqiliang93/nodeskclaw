@@ -1785,6 +1785,7 @@ async def log_task_outcome(
     task_id: str,
     task_title: str,
     success: bool,
+    failure_reason: str | None = None,
 ) -> int:
     """Write task_success effect logs for all installed genes on the assignee instance."""
     ig_result = await db.execute(
@@ -1797,7 +1798,10 @@ async def log_task_outcome(
     installed_genes = ig_result.scalars().all()
 
     count = 0
-    context = json.dumps({"task_id": task_id, "title": task_title})
+    ctx = {"task_id": task_id, "title": task_title}
+    if failure_reason:
+        ctx["failure_reason"] = failure_reason
+    context = json.dumps(ctx)
     for ig in installed_genes:
         await log_effectiveness(
             db,
