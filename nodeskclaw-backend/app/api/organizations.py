@@ -362,8 +362,10 @@ async def org_akr_summary(
 ):
     """Aggregate AKR data across all workspaces in the org."""
     from app.models.workspace import Workspace
+    from app.models.workspace_agent import WorkspaceAgent
     from app.models.workspace_objective import WorkspaceObjective
     from app.models.workspace_task import WorkspaceTask
+    from app.models.llm_usage_log import LlmUsageLog
 
     ws_rows = (await db.execute(
         select(Workspace.id, Workspace.name).where(
@@ -392,6 +394,20 @@ async def org_akr_summary(
         )
     )).scalars().all()
 
+    token_rows = (await db.execute(
+        select(
+            WorkspaceAgent.workspace_id,
+            func.coalesce(func.sum(LlmUsageLog.total_tokens), 0),
+        )
+        .join(LlmUsageLog, LlmUsageLog.instance_id == WorkspaceAgent.instance_id)
+        .where(
+            WorkspaceAgent.workspace_id.in_(ws_ids),
+            WorkspaceAgent.deleted_at.is_(None),
+        )
+        .group_by(WorkspaceAgent.workspace_id)
+    )).all()
+    token_by_ws = {r[0]: int(r[1]) for r in token_rows}
+
     workspaces = []
     for ws_id in ws_ids:
         ws_objs = [o for o in objectives if o.workspace_id == ws_id]
@@ -400,7 +416,7 @@ async def org_akr_summary(
         done_t = sum(1 for t in ws_tasks if t.status in ("done", "archived"))
         failed_t = sum(1 for t in ws_tasks if t.status == "failed")
         total_value = sum(t.actual_value or 0 for t in ws_tasks if t.status in ("done", "archived"))
-        total_tokens = sum(t.token_cost or 0 for t in ws_tasks)
+        total_tokens = token_by_ws.get(ws_id, 0)
         roi = total_value / total_tokens * 1000 if total_tokens > 0 else 0.0
 
         obj_summaries = []
