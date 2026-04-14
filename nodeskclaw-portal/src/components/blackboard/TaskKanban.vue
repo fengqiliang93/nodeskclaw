@@ -306,6 +306,10 @@ defineExpose({ refresh: refreshAllBuckets })
                   {{ task.blocker_reason }}
                 </div>
 
+                <div v-if="task.failure_reason && task.status === 'failed'" class="text-[11px] text-red-400">
+                  {{ t(`blackboard.failureReason.${task.failure_reason}`, task.failure_reason) }}
+                </div>
+
                 <div v-if="task.deadline" class="flex items-center gap-1 text-[11px]" :class="new Date(task.deadline) < new Date() ? 'text-red-400' : 'text-muted-foreground'">
                   <Clock class="w-3 h-3" />
                   {{ t('blackboard.taskDeadline') }}: {{ new Date(task.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
