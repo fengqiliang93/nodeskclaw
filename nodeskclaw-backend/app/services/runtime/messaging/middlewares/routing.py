@@ -209,6 +209,9 @@ class RoutingMiddleware(MessageMiddleware):
                 resolved = await _resolve_targets_by_name(
                     explicit_targets, ctx.workspace_id, db,
                 )
+                resolved = await self._filter_unicast_by_topology(
+                    resolved, ctx.workspace_id, data, db,
+                )
             ctx.delivery_plan = DeliveryPlan(
                 targets=explicit_targets,
                 resolved_targets=resolved,
@@ -326,4 +329,56 @@ class RoutingMiddleware(MessageMiddleware):
             elif level == "CRITICAL_ONLY":
                 if msg_priority == Priority.CRITICAL:
                     kept.append(t)
+        return kept
+
+    @staticmethod
+    async def _filter_unicast_by_topology(
+        resolved: list[DeliveryTarget],
+        workspace_id: str,
+        data,
+        db,
+    ) -> list[DeliveryTarget]:
+        from app.services.runtime.messaging.envelope import SenderType
+
+        if not resolved or data.sender.type != SenderType.AGENT:
+            return resolved
+
+        from app.services.corridor_router import get_reachable_endpoints, has_any_connections
+        from app.models.base import not_deleted
+        from app.models.node_card import NodeCard
+        from sqlalchemy import select
+
+        if not await has_any_connections(workspace_id, db):
+            return resolved
+
+        sender_id = data.sender.instance_id or data.sender.id
+        src_q = await db.execute(
+            select(NodeCard.hex_q, NodeCard.hex_r).where(
+                NodeCard.node_id == sender_id,
+                NodeCard.workspace_id == workspace_id,
+                not_deleted(NodeCard),
+            ).limit(1)
+        )
+        src_row = src_q.first()
+        if src_row is None:
+            logger.warning(
+                "Routing: agent sender %s has no hex in workspace %s, dropping all unicast targets",
+                sender_id, workspace_id,
+            )
+            return []
+
+        endpoints, _hooks = await get_reachable_endpoints(
+            workspace_id, src_row.hex_q, src_row.hex_r, db,
+        )
+        reachable_ids = {ep.entity_id for ep in endpoints}
+
+        kept: list[DeliveryTarget] = []
+        for t in resolved:
+            if t.node_id in reachable_ids:
+                kept.append(t)
+            else:
+                logger.warning(
+                    "Routing: target %s unreachable from agent %s via topology, dropped",
+                    t.node_id, sender_id,
+                )
         return kept
