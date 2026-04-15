@@ -69,9 +69,16 @@ async def _notify_mentions(
     action_label: str,
     db: AsyncSession,
 ) -> None:
-    from app.services import collaboration_service
+    from app.services import collaboration_service, corridor_router
     agent_ids = [m.id for m in mentions if m.type == "agent"]
     if agent_ids:
+        has_topo = await corridor_router.has_any_connections(workspace_id, db)
+        if has_topo:
+            audience = await corridor_router.get_blackboard_audience(workspace_id, db)
+            reachable_ids = {ep.entity_id for ep in audience}
+            agent_ids = [aid for aid in agent_ids if aid in reachable_ids]
+        if not agent_ids:
+            return
         msg = (
             f'{author_name} mentioned you in a blackboard {action_label} '
             f'"{title}" (post_id: {post_id}). '
