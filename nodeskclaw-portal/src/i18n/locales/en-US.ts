@@ -1695,6 +1695,11 @@ const enUS = {
       ingress_base_domain_hint: "This requires organization admin configuration.",
       ingress_base_domain_go_configure: "Go to Network Routing settings",
     },
+    topology: {
+      blackboard_unreachable: "AI agent is not connected to the blackboard via topology",
+      target_unreachable: "AI agent cannot reach the target via topology",
+      caller_not_on_topology: "AI agent is not placed on the topology",
+    },
     workspace_deploy: {
       not_found: "Deployment record not found",
     },

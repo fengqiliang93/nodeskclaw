@@ -1695,6 +1695,11 @@ const zhCN = {
       ingress_base_domain_hint: "此配置需要组织管理员完成。",
       ingress_base_domain_go_configure: "前往网络路由配置",
     },
+    topology: {
+      blackboard_unreachable: "AI 员工与黑板之间无拓扑连接，无法操作黑板",
+      target_unreachable: "AI 员工与目标之间无拓扑连接，消息无法送达",
+      caller_not_on_topology: "AI 员工未放置在拓扑上，无法进行通信",
+    },
     workspace_deploy: {
       not_found: "部署记录不存在",
     },
