@@ -47,7 +47,8 @@ async def _resolve_targets_by_name(
 
 
 async def _resolve_broadcast(
-    workspace_id: str, db, *, sender_id: str = "", max_hops: int = 0, visited: list[str] | None = None,
+    workspace_id: str, db, *, sender_id: str = "", sender_type: str = "",
+    max_hops: int = 0, visited: list[str] | None = None,
 ) -> list[DeliveryTarget]:
     """BFS from sender (or fallback to all addressable) to find reachable endpoints."""
     from app.services.corridor_router import (
@@ -55,6 +56,7 @@ async def _resolve_broadcast(
         get_reachable_endpoints,
         has_any_connections,
     )
+    from app.services.runtime.messaging.envelope import SenderType
     from app.services.runtime.registries.node_type_registry import NODE_TYPE_REGISTRY
 
     has_topo = await has_any_connections(workspace_id, db)
@@ -92,6 +94,13 @@ async def _resolve_broadcast(
                     transport=transport or "",
                 ))
             return targets_list
+        else:
+            if sender_type == SenderType.AGENT:
+                logger.warning(
+                    "Routing: agent %s has no hex in workspace %s, returning empty broadcast",
+                    sender_id, workspace_id,
+                )
+                return []
 
     addressable = await get_all_addressable_nodes(workspace_id, db)
     targets = []
@@ -113,14 +122,16 @@ async def _resolve_broadcast(
 
 
 async def _resolve_anycast(
-    workspace_id: str, db, *, sender_id: str = "", max_hops: int = 0,
+    workspace_id: str, db, *, sender_id: str = "", sender_type: str = "", max_hops: int = 0,
 ) -> list[DeliveryTarget]:
     """Select the single least-loaded reachable node that consumes messages."""
     import random
 
     from app.services.runtime.messaging.queue import get_queue_depth
 
-    candidates = await _resolve_broadcast(workspace_id, db, sender_id=sender_id, max_hops=max_hops)
+    candidates = await _resolve_broadcast(
+        workspace_id, db, sender_id=sender_id, sender_type=sender_type, max_hops=max_hops,
+    )
     if not candidates:
         return []
 
@@ -220,7 +231,8 @@ class RoutingMiddleware(MessageMiddleware):
             )
         elif routing_mode == "anycast" and db is not None:
             resolved = await _resolve_anycast(
-                ctx.workspace_id, db, sender_id=sender_id, max_hops=max_hops,
+                ctx.workspace_id, db, sender_id=sender_id,
+                sender_type=data.sender.type, max_hops=max_hops,
             )
             resolved = [t for t in resolved if t.node_id != sender_id]
             from app.services.runtime.route_cache import route_table
@@ -239,7 +251,8 @@ class RoutingMiddleware(MessageMiddleware):
             if resolved is None and db is not None:
                 resolved = await _resolve_broadcast(
                     ctx.workspace_id, db,
-                    sender_id=sender_id, max_hops=max_hops, visited=visited_list,
+                    sender_id=sender_id, sender_type=data.sender.type,
+                    max_hops=max_hops, visited=visited_list,
                 )
                 route_table.put(ctx.workspace_id, resolved)
             resolved = resolved or []
