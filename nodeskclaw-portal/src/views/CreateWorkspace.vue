@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Plus, Loader2, Palette, Bot, ChevronLeft } from 'lucide-vue-next'
+import { ArrowLeft, Plus, Loader2, Palette, Bot, ChevronLeft, Server, Container } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { WorkspaceTemplateItem } from '@/stores/workspace'
+import { useClusterStore, type ClusterInfo } from '@/stores/cluster'
 import { resolveApiErrorMessage } from '@/i18n/error'
 import TemplateCard from '@/components/workspace/TemplateCard.vue'
 
 const { t } = useI18n()
 const router = useRouter()
 const store = useWorkspaceStore()
+const clusterStore = useClusterStore()
 
 const step = ref(1)
 const selectedTemplateId = ref<string | null>(null)
@@ -21,8 +23,15 @@ const loadingTemplates = ref(false)
 const name = ref('')
 const description = ref('')
 const selectedColor = ref('#a78bfa')
+const selectedClusterId = ref('')
 const creating = ref(false)
 const error = ref('')
+
+const availableClusters = computed(() => clusterStore.clusters)
+const clusterDropdownOpen = ref(false)
+const selectedCluster = computed(() =>
+  availableClusters.value.find(c => c.id === selectedClusterId.value) ?? null
+)
 
 const colors = [
   '#a78bfa', '#60a5fa', '#34d399', '#fbbf24',
@@ -32,6 +41,10 @@ const colors = [
 onMounted(async () => {
   loadingTemplates.value = true
   try {
+    await clusterStore.fetchClusters()
+    if (availableClusters.value.length === 1) {
+      selectedClusterId.value = availableClusters.value[0].id
+    }
     templates.value = await store.fetchWorkspaceTemplates()
   } catch {
     // Silently fall back to blank-only
@@ -39,6 +52,11 @@ onMounted(async () => {
     loadingTemplates.value = false
   }
 })
+
+function selectCluster(cluster: ClusterInfo) {
+  selectedClusterId.value = cluster.id
+  clusterDropdownOpen.value = false
+}
 
 function selectBlank() {
   selectedTemplateId.value = null
@@ -70,6 +88,7 @@ async function handleCreate() {
       name: name.value.trim(),
       description: description.value.trim(),
       color: selectedColor.value,
+      cluster_id: selectedClusterId.value,
     }
     if (selectedTemplateId.value) {
       payload.template_id = selectedTemplateId.value
@@ -140,6 +159,68 @@ async function handleCreate() {
           />
         </div>
 
+        <!-- Cluster -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium flex items-center gap-1.5">
+            <Server class="w-4 h-4 text-muted-foreground" />
+            {{ t('createWorkspace.clusterLabel') }}
+          </label>
+
+          <template v-if="availableClusters.length === 0">
+            <div class="px-3 py-4 rounded-lg border border-dashed border-border bg-muted/50 text-center">
+              <p class="text-sm text-muted-foreground">{{ t('createWorkspace.noCluster') }}</p>
+              <button
+                class="mt-2 text-sm text-primary hover:underline"
+                @click="router.push('/settings/clusters')"
+              >
+                {{ t('createWorkspace.goConfigCluster') }}
+              </button>
+            </div>
+          </template>
+
+          <template v-else-if="availableClusters.length === 1">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted border border-border text-sm">
+              <Container v-if="availableClusters[0].compute_provider === 'docker'" class="w-4 h-4 text-blue-500 shrink-0" />
+              <Server v-else class="w-4 h-4 text-primary shrink-0" />
+              <span>{{ availableClusters[0].name }}</span>
+              <span class="text-xs text-muted-foreground">({{ availableClusters[0].compute_provider === 'docker' ? 'Docker' : 'K8s' }})</span>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="relative">
+              <button
+                class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-muted border border-border text-sm outline-none focus:ring-1 focus:ring-primary/50"
+                @click="clusterDropdownOpen = !clusterDropdownOpen"
+              >
+                <span v-if="selectedCluster" class="flex items-center gap-2">
+                  <Container v-if="selectedCluster.compute_provider === 'docker'" class="w-4 h-4 text-blue-500 shrink-0" />
+                  <Server v-else class="w-4 h-4 text-primary shrink-0" />
+                  {{ selectedCluster.name }}
+                  <span class="text-xs text-muted-foreground">({{ selectedCluster.compute_provider === 'docker' ? 'Docker' : 'K8s' }})</span>
+                </span>
+                <span v-else class="text-muted-foreground">{{ t('createWorkspace.clusterPlaceholder') }}</span>
+              </button>
+              <div
+                v-if="clusterDropdownOpen"
+                class="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover shadow-md"
+              >
+                <button
+                  v-for="c in availableClusters"
+                  :key="c.id"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors first:rounded-t-lg last:rounded-b-lg"
+                  @click="selectCluster(c)"
+                >
+                  <Container v-if="c.compute_provider === 'docker'" class="w-4 h-4 text-blue-500 shrink-0" />
+                  <Server v-else class="w-4 h-4 text-primary shrink-0" />
+                  <span>{{ c.name }}</span>
+                  <span class="text-xs text-muted-foreground">({{ c.compute_provider === 'docker' ? 'Docker' : 'K8s' }})</span>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
         <!-- Description -->
         <div class="space-y-2">
           <label class="text-sm font-medium">{{ t('createWorkspace.descriptionLabel') }}</label>
@@ -191,7 +272,7 @@ async function handleCreate() {
         <!-- Submit -->
         <button
           class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          :disabled="creating || !name.trim()"
+          :disabled="creating || !name.trim() || !selectedClusterId"
           @click="handleCreate"
         >
           <Loader2 v-if="creating" class="w-4 h-4 animate-spin" />
