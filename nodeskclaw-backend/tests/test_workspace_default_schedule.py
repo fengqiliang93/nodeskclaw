@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base
+from app.models.cluster import Cluster
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.workspace_schedule import WorkspaceSchedule
@@ -52,14 +53,21 @@ async def test_create_workspace_uses_neutral_default_schedule_copy(setup_db):
             username=f"workspace-{suffix}",
             password_hash="x",
         )
-        db.add_all([org, user])
+        cluster = Cluster(
+            id=f"cluster-workspace-{suffix}",
+            org_id=org.id,
+            name="Test Cluster",
+            compute_provider="k8s",
+            created_by=user.id,
+        )
+        db.add_all([org, user, cluster])
         await db.commit()
 
         workspace = await create_workspace(
             db,
             org.id,
             user.id,
-            WorkspaceCreate(name="Workspace", description="", color="#000000", icon="bot"),
+            WorkspaceCreate(name="Workspace", description="", color="#000000", icon="bot", cluster_id=cluster.id),
         )
 
         result = await db.execute(

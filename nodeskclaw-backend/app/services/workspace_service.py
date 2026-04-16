@@ -98,6 +98,17 @@ def _agent_brief(inst: Instance, wa: WorkspaceAgent) -> AgentBrief:
 # ── Workspace CRUD ───────────────────────────────────
 
 async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: WorkspaceCreate) -> WorkspaceInfo:
+    from app.models.cluster import Cluster
+    cluster_result = await db.execute(
+        select(Cluster).where(
+            Cluster.id == data.cluster_id,
+            Cluster.deleted_at.is_(None),
+        )
+    )
+    cluster = cluster_result.scalar_one_or_none()
+    if cluster is None or cluster.org_id != org_id:
+        raise ValueError("集群不存在或不属于当前组织")
+
     ws = Workspace(
         org_id=org_id,
         name=data.name,
@@ -105,6 +116,7 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
         color=data.color,
         icon=data.icon,
         created_by=user_id,
+        cluster_id=data.cluster_id,
     )
     db.add(ws)
     await db.flush()
@@ -143,6 +155,7 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
     return WorkspaceInfo(
         id=ws.id, org_id=ws.org_id, name=ws.name, description=ws.description,
         color=ws.color, icon=ws.icon, created_by=ws.created_by,
+        cluster_id=ws.cluster_id,
         agent_count=0, agents=[], created_at=ws.created_at, updated_at=ws.updated_at,
     )
 
@@ -259,6 +272,7 @@ async def list_workspaces(
         items.append(WorkspaceListItem(
             id=ws.id, name=ws.name, description=ws.description,
             color=ws.color, icon=ws.icon,
+            cluster_id=ws.cluster_id,
             agent_count=len(agents),
             agents=[_agent_brief(inst, wa) for inst, wa in agents],
             created_at=ws.created_at,
@@ -288,6 +302,7 @@ async def get_workspace(db: AsyncSession, workspace_id: str) -> WorkspaceInfo | 
     return WorkspaceInfo(
         id=ws.id, org_id=ws.org_id, name=ws.name, description=ws.description,
         color=ws.color, icon=ws.icon, created_by=ws.created_by,
+        cluster_id=ws.cluster_id,
         agent_count=len(agents),
         agents=[_agent_brief(inst, wa) for inst, wa in agents],
         created_at=ws.created_at, updated_at=ws.updated_at,
@@ -333,12 +348,22 @@ async def delete_workspace(db: AsyncSession, workspace_id: str) -> bool:
 # ── Agent management ─────────────────────────────────
 
 async def add_agent(db: AsyncSession, workspace_id: str, data: AddAgentRequest, user_id: str) -> AgentBrief:
+    ws_result = await db.execute(
+        select(Workspace.cluster_id).where(
+            Workspace.id == workspace_id, Workspace.deleted_at.is_(None),
+        )
+    )
+    ws_cluster_id = ws_result.scalar_one_or_none()
+
     result = await db.execute(
         select(Instance).where(Instance.id == data.instance_id, Instance.deleted_at.is_(None))
     )
     inst = result.scalar_one_or_none()
     if inst is None:
         raise ValueError("实例不存在")
+
+    if ws_cluster_id is not None and inst.cluster_id != ws_cluster_id:
+        raise ValueError("该员工不属于本办公室所在集群，无法加入")
 
     existing_wa = await db.execute(
         select(WorkspaceAgent).where(

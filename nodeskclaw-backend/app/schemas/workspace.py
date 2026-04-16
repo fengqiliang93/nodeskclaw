@@ -15,6 +15,7 @@ class WorkspaceCreate(BaseModel):
     color: str = "#a78bfa"
     icon: str = "bot"
     template_id: str | None = None
+    cluster_id: str = Field(..., min_length=1)
 
 
 class WorkspaceUpdate(BaseModel):
@@ -45,6 +46,7 @@ class WorkspaceInfo(BaseModel):
     color: str
     icon: str
     created_by: str
+    cluster_id: str | None = None
     agent_count: int = 0
     agents: list[AgentBrief] = []
     created_at: datetime
@@ -57,6 +59,7 @@ class WorkspaceListItem(BaseModel):
     description: str
     color: str
     icon: str
+    cluster_id: str | None = None
     agent_count: int = 0
     agents: list[AgentBrief] = []
     created_at: datetime

@@ -547,7 +547,7 @@ async def start_workspace_template_deploy(
         db,
         org_id,
         user.id,
-        WorkspaceCreate(name=workspace_name, description=template.description or ""),
+        WorkspaceCreate(name=workspace_name, description=template.description or "", cluster_id=cluster_id),
     )
 
     wd = WorkspaceDeploy(
