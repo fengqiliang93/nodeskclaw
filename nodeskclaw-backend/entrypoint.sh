@@ -1,8 +1,8 @@
 #!/bin/sh
 ENV_FILE="/host-config/.env"
 if [ -f "$ENV_FILE" ]; then
-    set -a
+    set -af
     . "$ENV_FILE"
-    set +a
+    set +af
 fi
 exec "$@"
