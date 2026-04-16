@@ -1874,6 +1874,11 @@ const zhCN = {
     storageClassNoneEnabled: "当前无可用的 StorageClass，请到集群设置中启用",
     storageClassDisabled: "未启用",
     storageClassPlaceholder: "请选择 StorageClass",
+    pvcAccessMode: "卷访问模式",
+    pvcAccessModeRWO: "单节点读写 (RWO)",
+    pvcAccessModeRWX: "多节点读写 (RWX)",
+    pvcAccessModeRWODesc: "适用于本地存储 (local-path)",
+    pvcAccessModeRWXDesc: "适用于网络存储 (NAS/NFS)",
     comingSoon: "开发中待支持",
   },
   auditLogs: {

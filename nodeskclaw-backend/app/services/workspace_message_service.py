@@ -191,21 +191,16 @@ def build_context_prompt(
     recent_messages: list[WorkspaceMessage],
     workspace_id: str = "",
 ) -> str:
-    """Build the system prompt context injected into each Agent call.
-
-    Filters out the current agent's own messages (session already has them).
-    """
+    """Build the system prompt context injected into each Agent call."""
     members_text = "\n".join(
         f"- [{m['type']}] {m['name']}" for m in members
     )
 
-    other_messages = [
-        m for m in recent_messages if m.sender_id != current_instance_id
-    ]
+    all_messages = recent_messages
 
-    if other_messages:
+    if all_messages:
         msg_lines = []
-        for m in other_messages[-30:]:
+        for m in all_messages[-30:]:
             ts = m.created_at.strftime("%H:%M") if isinstance(m.created_at, datetime) else ""
             line = f"[{ts} {m.sender_name}]: {m.content}"
             if m.attachments:
@@ -222,14 +217,14 @@ def build_context_prompt(
             msg_lines.append(line)
         messages_text = "\n".join(msg_lines)
     else:
-        messages_text = "(no recent messages from other members)"
+        messages_text = "(no recent messages)"
 
     return f"""你是赛博办公室"{workspace_name}"中的 AI 员工"{agent_display_name}"。
 
 办公室成员:
 {members_text}
 
-近期对话（来自其他成员，你自己的历史已在对话记录中）:
+近期对话:
 {messages_text}
 
 ---
@@ -238,6 +233,7 @@ def build_context_prompt(
 如需确认你能联系谁，必须调用 nodeskclaw_topology 工具（action: get_reachable, my_instance_id: 你的实例 ID）。未经工具确认，不要声称可以联系任何人。
 当你回复或联系其他成员（AI 员工或人类）时，在回复中直接 @{{name}} 即可（如"@test-2 你好"），系统会自动转发。收到其他成员的消息后回复时，也请 @提及对方，这样系统才能正确路由你的回复。不要用 send 命令。
 办公室设有中央黑板（get_reachable 中 node_type=blackboard 的节点），通过 nodeskclaw_blackboard 工具读写黑板内容，不要 @提及黑板。
+如需回顾更早的对话记录，使用 nodeskclaw_chat_history 工具搜索历史消息。
 """
 
 

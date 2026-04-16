@@ -14,6 +14,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from typing import Any
 
 API_URL = os.environ.get("DESKCLAW_API_URL", "http://localhost:4510/api/v1")
@@ -50,6 +51,63 @@ def api_call(method: str, path: str, body: dict | None = None, *, ws: bool = Tru
     url = f"{base}{path}"
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, headers=_headers(), method=method)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else ""
+        try:
+            err = json.loads(error_body)
+        except (json.JSONDecodeError, ValueError):
+            err = {"status": e.code, "detail": error_body}
+        _output({"error": True, **err})
+        sys.exit(1)
+    except (urllib.error.URLError, OSError) as e:
+        _output({"error": True, "detail": str(e)})
+        sys.exit(1)
+
+
+def upload_file(
+    file_path: str,
+    endpoint: str,
+    filename: str,
+    parent_path: str = "/",
+    content_type: str = "application/octet-stream",
+) -> Any:
+    """Upload a local file via multipart/form-data POST."""
+    boundary = uuid.uuid4().hex
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+
+    parts: list[bytes] = []
+    parts.append(
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n".encode()
+        + file_data
+        + b"\r\n"
+    )
+    for name, value in [
+        ("parent_path", parent_path),
+        ("filename", filename),
+        ("content_type", content_type),
+    ]:
+        parts.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n".encode()
+        )
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+
+    base = _ws_base()
+    url = f"{base}{endpoint}"
+    headers: dict[str, str] = {
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read().decode())

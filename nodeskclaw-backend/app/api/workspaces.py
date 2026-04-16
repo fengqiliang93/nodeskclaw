@@ -1515,7 +1515,7 @@ async def list_workspace_messages(
     from_at: str | None = Query(default=None),
     to_at: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    user=Depends(_get_current_user_dep()),
+    user=Depends(_get_current_user_or_agent_dep()),
 ):
     """List recent workspace messages for chat history."""
     await wm_service.check_workspace_member(workspace_id, user, db)

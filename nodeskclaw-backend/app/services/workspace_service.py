@@ -1824,25 +1824,28 @@ async def create_shared_directory(
     return _file_to_info(d)
 
 
-async def upload_shared_file(
+async def upload_shared_file_bytes(
     db: AsyncSession,
     workspace_id: str,
     uploader_type: str,
     uploader_id: str,
     uploader_name: str,
-    data: FileWriteRequest,
+    *,
+    filename: str,
+    file_bytes: bytes,
+    content_type: str,
+    parent_path: str = "/",
 ) -> FileInfo:
-    parent_path = _validate_path(data.parent_path)
-    file_bytes = base64.b64decode(data.content)
+    parent_path = _validate_path(parent_path)
     storage_key = await storage_service.upload_file(
-        file_bytes, data.filename, data.content_type,
+        file_bytes, filename, content_type,
         workspace_id,
     )
     existing = (await db.execute(
         select(BlackboardFile).where(
             BlackboardFile.workspace_id == workspace_id,
             BlackboardFile.parent_path == parent_path,
-            BlackboardFile.name == data.filename,
+            BlackboardFile.name == filename,
             BlackboardFile.deleted_at.is_(None),
         )
     )).scalar_one_or_none()
@@ -1852,7 +1855,7 @@ async def upload_shared_file(
             await storage_service.delete_file(existing.storage_key)
         existing.storage_key = storage_key
         existing.file_size = len(file_bytes)
-        existing.content_type = data.content_type
+        existing.content_type = content_type
         existing.uploader_type = uploader_type
         existing.uploader_id = uploader_id
         existing.uploader_name = uploader_name
@@ -1863,10 +1866,10 @@ async def upload_shared_file(
     f = BlackboardFile(
         workspace_id=workspace_id,
         parent_path=parent_path,
-        name=data.filename,
+        name=filename,
         is_directory=False,
         file_size=len(file_bytes),
-        content_type=data.content_type,
+        content_type=content_type,
         storage_key=storage_key,
         uploader_type=uploader_type,
         uploader_id=uploader_id,
@@ -1876,6 +1879,52 @@ async def upload_shared_file(
     await db.commit()
     await db.refresh(f)
     return _file_to_info(f)
+
+
+async def upload_shared_file(
+    db: AsyncSession,
+    workspace_id: str,
+    uploader_type: str,
+    uploader_id: str,
+    uploader_name: str,
+    data: FileWriteRequest,
+) -> FileInfo:
+    file_bytes = base64.b64decode(data.content)
+    return await upload_shared_file_bytes(
+        db, workspace_id, uploader_type, uploader_id, uploader_name,
+        filename=data.filename, file_bytes=file_bytes,
+        content_type=data.content_type, parent_path=data.parent_path,
+    )
+
+
+async def copy_shared_file(
+    db: AsyncSession,
+    workspace_id: str,
+    uploader_type: str,
+    uploader_id: str,
+    uploader_name: str,
+    file_id: str,
+    target_parent_path: str,
+    target_filename: str | None = None,
+) -> FileInfo | None:
+    source = (await db.execute(
+        select(BlackboardFile).where(
+            BlackboardFile.id == file_id,
+            BlackboardFile.workspace_id == workspace_id,
+            BlackboardFile.is_directory.is_(False),
+            BlackboardFile.deleted_at.is_(None),
+        )
+    )).scalar_one_or_none()
+    if source is None or not source.storage_key:
+        return None
+    content = await storage_service.download_file(source.storage_key)
+    return await upload_shared_file_bytes(
+        db, workspace_id, uploader_type, uploader_id, uploader_name,
+        filename=target_filename or source.name,
+        file_bytes=content,
+        content_type=source.content_type,
+        parent_path=target_parent_path,
+    )
 
 
 async def get_shared_file_url(

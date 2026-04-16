@@ -130,11 +130,12 @@ def build_pvc(
     storage_size: str,
     storage_class: str | None,
     labels: dict,
+    access_modes: list[str] | None = None,
 ) -> V1PersistentVolumeClaim:
     return V1PersistentVolumeClaim(
         metadata=V1ObjectMeta(name=name, namespace=namespace, labels=labels),
         spec=V1PersistentVolumeClaimSpec(
-            access_modes=["ReadWriteMany"],
+            access_modes=access_modes or ["ReadWriteOnce"],
             resources=V1ResourceRequirements(requests={"storage": storage_size}),
             storage_class_name=storage_class,
         ),

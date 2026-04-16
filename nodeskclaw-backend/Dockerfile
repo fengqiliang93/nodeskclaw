@@ -39,10 +39,13 @@ COPY features.yaml ./features.yaml
 
 RUN mkdir -p /app/data
 
+COPY nodeskclaw-backend/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 ENV NODESKCLAW_ROOT=/app
 ENV PYTHONUNBUFFERED=1
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
 EXPOSE 8000
-
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["/bin/sh", "-c", ".venv/bin/alembic upgrade head && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000"]

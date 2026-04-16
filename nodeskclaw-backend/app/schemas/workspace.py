@@ -315,6 +315,11 @@ class MkdirRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
+class FileCopyRequest(BaseModel):
+    target_parent_path: str = Field("/", max_length=1024)
+    target_filename: str | None = Field(None, max_length=255)
+
+
 # ── Agent Performance ───────────────────────────────
 
 class ScheduleReliability(BaseModel):

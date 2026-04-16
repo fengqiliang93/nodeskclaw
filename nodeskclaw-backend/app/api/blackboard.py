@@ -2,12 +2,15 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db
 from app.core.security import get_auth_actor
 from app.schemas.workspace import (
+    FileCopyRequest,
     FileWriteRequest,
     MkdirRequest,
     PostCreate,
@@ -313,6 +316,54 @@ async def upload_file(
     info = await workspace_service.upload_shared_file(
         db, workspace_id, utype, uid, uname, data,
     )
+    _broadcast(workspace_id, "file:uploaded", info.model_dump(mode="json"))
+    return _ok(info.model_dump(mode="json"))
+
+
+@router.post("/{workspace_id}/blackboard/files/upload-multipart")
+async def upload_file_multipart(
+    workspace_id: str,
+    file: UploadFile,
+    parent_path: str = Form("/"),
+    filename: Optional[str] = Form(None),
+    content_type: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_or_agent_dep()),
+):
+    await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
+    await _enforce_agent_blackboard_topology(workspace_id, db)
+    utype, uid, uname = _caller_info()
+    file_bytes = await file.read()
+    resolved_filename = filename or file.filename or "untitled"
+    resolved_ct = content_type or file.content_type or "application/octet-stream"
+    info = await workspace_service.upload_shared_file_bytes(
+        db, workspace_id, utype, uid, uname,
+        filename=resolved_filename,
+        file_bytes=file_bytes,
+        content_type=resolved_ct,
+        parent_path=parent_path,
+    )
+    _broadcast(workspace_id, "file:uploaded", info.model_dump(mode="json"))
+    return _ok(info.model_dump(mode="json"))
+
+
+@router.post("/{workspace_id}/blackboard/files/{file_id}/copy")
+async def copy_file(
+    workspace_id: str,
+    file_id: str,
+    data: FileCopyRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(_get_current_user_or_agent_dep()),
+):
+    await wm_service.check_workspace_access(workspace_id, user, "edit_blackboard", db)
+    await _enforce_agent_blackboard_topology(workspace_id, db)
+    utype, uid, uname = _caller_info()
+    info = await workspace_service.copy_shared_file(
+        db, workspace_id, utype, uid, uname,
+        file_id, data.target_parent_path, data.target_filename,
+    )
+    if info is None:
+        return _ok(None, "source file not found")
     _broadcast(workspace_id, "file:uploaded", info.model_dump(mode="json"))
     return _ok(info.model_dump(mode="json"))
 

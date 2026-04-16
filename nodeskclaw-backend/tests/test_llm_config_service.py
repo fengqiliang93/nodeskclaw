@@ -8,5 +8,6 @@ def test_nodeskclaw_tool_names_are_complete() -> None:
         "nodeskclaw_performance",
         "nodeskclaw_proposals",
         "nodeskclaw_gene_discovery",
-        "nodeskclaw_shared_files",
+        "nodeskclaw_file_download",
+        "nodeskclaw_chat_history",
     )

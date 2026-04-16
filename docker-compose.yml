@@ -36,6 +36,10 @@ services:
       - type: bind
         source: ${NODESKCLAW_DATA_DIR:-${HOME:-.}/.nodeskclaw/docker-instances}
         target: /nodeskclaw-data
+      - type: bind
+        source: .
+        target: /host-config
+        read_only: true
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://nodeskclaw:nodeskclaw@postgres:5432/nodeskclaw}
       DATABASE_NAME_SUFFIX: ""

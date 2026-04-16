@@ -1874,6 +1874,11 @@ const enUS = {
     storageClassNoneEnabled: "No StorageClass enabled, please enable one in cluster settings",
     storageClassDisabled: "Disabled",
     storageClassPlaceholder: "Select a StorageClass",
+    pvcAccessMode: "Volume Access Mode",
+    pvcAccessModeRWO: "ReadWriteOnce (RWO)",
+    pvcAccessModeRWX: "ReadWriteMany (RWX)",
+    pvcAccessModeRWODesc: "For local storage (local-path)",
+    pvcAccessModeRWXDesc: "For network storage (NAS/NFS)",
     comingSoon: "Coming Soon",
   },
   auditLogs: {

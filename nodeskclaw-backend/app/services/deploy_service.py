@@ -358,6 +358,7 @@ class _DeployContext:
     template_gene_slugs: list[str] | None = None
     compute_provider: str = "k8s"
     runtime: str = "openclaw"
+    pvc_access_mode: str | None = None
 
 
 async def deploy_instance(
@@ -584,6 +585,7 @@ async def deploy_instance(
         template_gene_slugs=template_gene_slugs,
         compute_provider=instance.compute_provider,
         runtime=instance.runtime,
+        pvc_access_mode=req.pvc_access_mode,
     )
 
 
@@ -914,7 +916,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             _publish(4, steps[3])
             pvc_name = f"{ctx.name}-root-data"
             logger.info("使用 StorageClass: %s, 存储大小: %s", ctx.storage_class, ctx.storage_size)
-            pvc = build_pvc(pvc_name, ctx.namespace, ctx.storage_size, ctx.storage_class, labels)
+            access_modes = [ctx.pvc_access_mode] if ctx.pvc_access_mode else None
+            pvc = build_pvc(pvc_name, ctx.namespace, ctx.storage_size, ctx.storage_class, labels, access_modes=access_modes)
             await k8s.create_or_skip(k8s.core.create_namespaced_persistent_volume_claim, ctx.namespace, pvc)
 
             # Step 5: 创建 Deployment（含镜像拉取凭据）

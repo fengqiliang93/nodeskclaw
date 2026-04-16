@@ -24,6 +24,7 @@ class DeployRequest(BaseModel):
     quota_mem: str = "8Gi"
     storage_class: str | None = None
     storage_size: str = "80Gi"
+    pvc_access_mode: str | None = None
     advanced_config: dict | None = None  # Volume/Sidecar/Init/Network
     llm_configs: list[LlmConfigItem] | None = None
     template_id: str | None = None

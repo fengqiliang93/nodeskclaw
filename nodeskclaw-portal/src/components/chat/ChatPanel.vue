@@ -18,6 +18,7 @@ import { renderMarkdown as renderMd } from '@/utils/markdown'
 import { copyToClipboard } from '@/utils/clipboard'
 import { AgentMention } from './extensions/agentMention'
 import { SlashCommand } from './extensions/slashCommand'
+import { computeMentionCandidates } from '@/utils/topologyBfs'
 import { formatTime as formatLocaleTime } from '@/utils/localeFormat'
 
 const props = withDefaults(defineProps<{
@@ -462,7 +463,15 @@ const editor = useEditor({
             status: '',
             slug: '',
           }
+          const mentionIdsForBfs = new Set<string>()
+          for (const id of existingMentions) {
+            if (id !== '__all__') mentionIdsForBfs.add(id)
+          }
+          const candidateSet = new Set(
+            computeMentionCandidates(store.topology, mentionIdsForBfs).map(c => c.agentId),
+          )
           const agentItems = agents.value
+            .filter(a => candidateSet.has(a.instance_id))
             .filter(a => agentLabel(a).toLowerCase().includes(q))
             .filter(a => !existingMentions.has(a.instance_id))
             .sort((a, b) => hexDistToBlackboard(a.hex_q, a.hex_r) - hexDistToBlackboard(b.hex_q, b.hex_r))

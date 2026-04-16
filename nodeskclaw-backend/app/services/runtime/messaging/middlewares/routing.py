@@ -46,6 +46,26 @@ async def _resolve_targets_by_name(
     return targets
 
 
+def _endpoints_to_targets(endpoints) -> list[DeliveryTarget]:
+    """Convert ReachableEndpoint list to deduplicated DeliveryTarget list."""
+    from app.services.runtime.registries.node_type_registry import NODE_TYPE_REGISTRY
+
+    targets: list[DeliveryTarget] = []
+    seen: set[str] = set()
+    for ep in endpoints:
+        if ep.entity_id in seen:
+            continue
+        seen.add(ep.entity_id)
+        type_spec = NODE_TYPE_REGISTRY.get(ep.endpoint_type)
+        transport = type_spec.transport if type_spec else ""
+        targets.append(DeliveryTarget(
+            node_id=ep.entity_id,
+            node_type=ep.endpoint_type,
+            transport=transport or "",
+        ))
+    return targets
+
+
 async def _resolve_broadcast(
     workspace_id: str, db, *, sender_id: str = "", sender_type: str = "",
     max_hops: int = 0, visited: list[str] | None = None,
@@ -80,20 +100,7 @@ async def _resolve_broadcast(
                 workspace_id, src_row.hex_q, src_row.hex_r, db,
                 max_hops=max_hops, visited_ids=visited_set,
             )
-            targets_list: list[DeliveryTarget] = []
-            seen_ids: set[str] = set()
-            for ep in endpoints:
-                if ep.entity_id in seen_ids:
-                    continue
-                seen_ids.add(ep.entity_id)
-                type_spec = NODE_TYPE_REGISTRY.get(ep.endpoint_type)
-                transport = type_spec.transport if type_spec else ""
-                targets_list.append(DeliveryTarget(
-                    node_id=ep.entity_id,
-                    node_type=ep.endpoint_type,
-                    transport=transport or "",
-                ))
-            return targets_list
+            return _endpoints_to_targets(endpoints)
         else:
             if sender_type == SenderType.AGENT:
                 logger.warning(
@@ -101,6 +108,13 @@ async def _resolve_broadcast(
                     sender_id, workspace_id,
                 )
                 return []
+            elif sender_type == SenderType.USER:
+                visited_set = set(visited) if visited else None
+                endpoints, _hooks = await get_reachable_endpoints(
+                    workspace_id, 0, 0, db,
+                    max_hops=max_hops, visited_ids=visited_set,
+                )
+                return _endpoints_to_targets(endpoints)
 
     addressable = await get_all_addressable_nodes(workspace_id, db)
     targets = []

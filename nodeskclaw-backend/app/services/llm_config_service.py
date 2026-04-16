@@ -60,8 +60,8 @@ NODESKCLAW_TOOL_NAMES = (
     "nodeskclaw_performance",
     "nodeskclaw_proposals",
     "nodeskclaw_gene_discovery",
-    "nodeskclaw_shared_files",
     "nodeskclaw_file_download",
+    "nodeskclaw_chat_history",
 )
 
 

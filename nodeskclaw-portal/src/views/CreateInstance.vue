@@ -283,6 +283,7 @@ interface StorageClassItem {
 const storageClasses = ref<StorageClassItem[]>([])
 const selectedStorageClass = ref<string | null>(null)
 const scDropdownOpen = ref(false)
+const pvcAccessMode = ref<string>('ReadWriteOnce')
 
 const isK8sCluster = computed(() => {
   const first = clusters.value[0]
@@ -558,6 +559,7 @@ async function handleDeploy() {
       quota_mem: res_spec.quota_mem,
       storage_class: selectedStorageClass.value || undefined,
       storage_size: `${storageGi.value}Gi`,
+      pvc_access_mode: pvcAccessMode.value,
       runtime: selectedRuntime.value,
       description: description.value || undefined,
       llm_configs: activeLlm.length > 0 ? activeLlm : undefined,
@@ -888,6 +890,31 @@ async function handleDeploy() {
                 </div>
               </div>
             </template>
+          </div>
+
+          <!-- PVC Access Mode 选择器（K8s 集群显示） -->
+          <div v-if="showStorageClassSelector" class="space-y-1.5">
+            <div class="flex items-center gap-2">
+              <HardDrive class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span class="text-xs text-muted-foreground">{{ t('engine.pvcAccessMode') }}:</span>
+            </div>
+            <div class="flex gap-2">
+              <button
+                v-for="mode in ([
+                  { value: 'ReadWriteOnce', label: t('engine.pvcAccessModeRWO'), desc: t('engine.pvcAccessModeRWODesc') },
+                  { value: 'ReadWriteMany', label: t('engine.pvcAccessModeRWX'), desc: t('engine.pvcAccessModeRWXDesc') },
+                ] as const)"
+                :key="mode.value"
+                class="flex-1 px-3 py-2 rounded-lg border text-left text-xs transition-colors"
+                :class="pvcAccessMode === mode.value
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-card hover:border-primary/40'"
+                @click="pvcAccessMode = mode.value"
+              >
+                <span class="font-medium" :class="pvcAccessMode === mode.value ? 'text-primary' : ''">{{ mode.label }}</span>
+                <span class="block text-[10px] text-muted-foreground mt-0.5">{{ mode.desc }}</span>
+              </button>
+            </div>
           </div>
 
           <div class="space-y-2">

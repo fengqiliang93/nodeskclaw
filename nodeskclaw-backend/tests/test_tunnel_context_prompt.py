@@ -242,6 +242,26 @@ async def test_node_card_not_found_returns_error():
     assert db.execute.call_count == 1
 
 
+def test_build_context_prompt_includes_own_messages():
+    """build_context_prompt should include the agent's own messages, not filter them out."""
+    from app.services.workspace_message_service import build_context_prompt
+
+    own_msg = _make_fake_message(sender_id=TARGET_NODE_ID, sender_name=AGENT_NAME, content="my earlier reply")
+    other_msg = _make_fake_message(sender_id="inst-002", sender_name="Bob", content="hello from bob")
+
+    prompt = build_context_prompt(
+        workspace_name="Test Office",
+        agent_display_name=AGENT_NAME,
+        current_instance_id=TARGET_NODE_ID,
+        members=[{"type": "agent", "name": AGENT_NAME}, {"type": "agent", "name": "Bob"}],
+        recent_messages=[other_msg, own_msg],
+    )
+
+    assert "my earlier reply" in prompt
+    assert AGENT_NAME in prompt
+    assert "hello from bob" in prompt
+
+
 async def _fake_stream(content: str):
     """Async generator that yields a single chunk then stops."""
     yield {"choices": [{"delta": {"content": content}}]}

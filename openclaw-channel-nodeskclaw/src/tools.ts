@@ -18,8 +18,8 @@ export const NODESKCLAW_TOOL_NAMES = [
   "nodeskclaw_performance",
   "nodeskclaw_proposals",
   "nodeskclaw_gene_discovery",
-  "nodeskclaw_shared_files",
   "nodeskclaw_file_download",
+  "nodeskclaw_chat_history",
 ] as const;
 
 function resolveToolConfig(config: OpenClawConfig, sessionWorkspaceId?: string): ToolConfig {
@@ -472,67 +472,6 @@ function createGeneDiscoveryTool(cfg: ToolConfig): AnyAgentTool {
   };
 }
 
-function createSharedFilesTool(cfg: ToolConfig): AnyAgentTool {
-  return {
-    name: "nodeskclaw_shared_files",
-    description:
-      "Manage shared files in the workspace blackboard: list, read, write, delete files, create directories.",
-    parameters: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          enum: ["list_files", "read_file", "write_file", "delete_file", "mkdir", "get_file_url"],
-          description: "Which file operation to perform.",
-        },
-        parent_path: { type: "string", description: "list_files / write_file / mkdir: directory path (default '/')." },
-        file_id: { type: "string", description: "read_file / delete_file: target file ID." },
-        filename: { type: "string", description: "write_file: file name." },
-        content: { type: "string", description: "write_file: base64-encoded file content." },
-        content_type: { type: "string", description: "write_file: MIME type (default 'application/octet-stream')." },
-        name: { type: "string", description: "mkdir: directory name." },
-      },
-      required: ["action"],
-    },
-    execute: async (_toolCallId, args) => {
-      const p = args as Record<string, unknown>;
-      const ws = cfg.workspaceId;
-      switch (p.action) {
-        case "list_files": {
-          const pp = p.parent_path ? `?parent_path=${encodeURIComponent(p.parent_path as string)}` : "";
-          return jsonResult(await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files${pp}`));
-        }
-        case "read_file":
-          return jsonResult(await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files/${p.file_id}/content`));
-        case "write_file":
-          return jsonResult(
-            await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files/upload`, "POST", {
-              parent_path: p.parent_path || "/",
-              filename: p.filename,
-              content: p.content,
-              content_type: p.content_type || "application/octet-stream",
-            }),
-          );
-        case "delete_file":
-          return jsonResult(
-            await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files/${p.file_id}`, "DELETE"),
-          );
-        case "mkdir":
-          return jsonResult(
-            await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files/mkdir`, "POST", {
-              parent_path: p.parent_path || "/",
-              name: p.name,
-            }),
-          );
-        case "get_file_url":
-          return jsonResult(await bbApiFetch(cfg, `/workspaces/${ws}/blackboard/files/${p.file_id}/url`));
-        default:
-          return jsonResult({ error: `Unknown action: ${p.action}` });
-      }
-    },
-  };
-}
-
 function parseContentDispositionFilename(header: string | null): string | undefined {
   if (!header) return undefined;
   const utf8Match = header.match(/filename\*=UTF-8''(.+)/i);
@@ -629,6 +568,47 @@ function createFileDownloadTool(cfg: ToolConfig): AnyAgentTool {
   };
 }
 
+function createChatHistoryTool(cfg: ToolConfig): AnyAgentTool {
+  return {
+    name: "nodeskclaw_chat_history",
+    description:
+      "Query workspace chat history. Returns recent messages by default; pass q for keyword search, or from_at/to_at for time range filtering.",
+    parameters: {
+      type: "object",
+      properties: {
+        q: {
+          type: "string",
+          description: "Optional keyword to search in message content or sender name.",
+        },
+        limit: {
+          type: "number",
+          description: "Number of messages to return (default 20, max 100).",
+        },
+        from_at: {
+          type: "string",
+          description: "Start of time range (ISO 8601, e.g. 2026-04-16T00:00:00Z).",
+        },
+        to_at: {
+          type: "string",
+          description: "End of time range (ISO 8601).",
+        },
+      },
+      required: [],
+    },
+    execute: async (_toolCallId, args) => {
+      const p = args as Record<string, unknown>;
+      const ws = cfg.workspaceId;
+      const params = new URLSearchParams();
+      const limit = Math.min(Number(p.limit) || 20, 100);
+      params.set("limit", String(limit));
+      if (p.q) params.set("q", String(p.q));
+      if (p.from_at) params.set("from_at", String(p.from_at));
+      if (p.to_at) params.set("to_at", String(p.to_at));
+      return jsonResult(await apiFetch(cfg, `/workspaces/${ws}/messages?${params.toString()}`));
+    },
+  };
+}
+
 export function createNoDeskClawTools(config: OpenClawConfig, sessionWorkspaceId?: string): AnyAgentTool[] {
   const cfg = resolveToolConfig(config, sessionWorkspaceId);
   return [
@@ -637,7 +617,7 @@ export function createNoDeskClawTools(config: OpenClawConfig, sessionWorkspaceId
     createPerformanceTool(cfg),
     createProposalsTool(cfg),
     createGeneDiscoveryTool(cfg),
-    createSharedFilesTool(cfg),
     createFileDownloadTool(cfg),
+    createChatHistoryTool(cfg),
   ];
 }
