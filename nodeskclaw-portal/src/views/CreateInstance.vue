@@ -456,14 +456,6 @@ onMounted(async () => {
     const qCluster = route.query.cluster as string | undefined
     const matchedCluster = qCluster ? clusters.value.find(c => c.id === qCluster) : null
     selectedCluster.value = matchedCluster?.id ?? clusters.value[0]?.id ?? ''
-    const activeCluster = clusters.value.find(c => c.id === selectedCluster.value)
-    if (activeCluster?.compute_provider === 'k8s') {
-      try {
-        await loadStorageClasses(activeCluster.id)
-      } catch {
-        // StorageClass 列表获取失败不阻塞创建流程
-      }
-    }
     await fetchImageTags()
 
     try {
