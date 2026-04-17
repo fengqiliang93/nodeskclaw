@@ -29,6 +29,19 @@ export function buildTopoNodes(data: TemplateData): TopoNode[] {
     nodes.push(n)
   }
 
+  const snap = data.topology_snapshot
+  if (snap?.nodes) {
+    for (const n of snap.nodes) {
+      addNode({
+        hex_q: n.hex_q as number,
+        hex_r: n.hex_r as number,
+        node_type: (n.node_type as TopoNode['node_type']) || 'corridor',
+        entity_id: null,
+        display_name: (n.display_name as string) || '',
+        extra: {},
+      })
+    }
+  }
   for (const s of data.agent_specs) {
     addNode({
       hex_q: s.hex_q as number,
@@ -48,19 +61,6 @@ export function buildTopoNodes(data: TemplateData): TopoNode[] {
       display_name: (h.display_name as string) || '',
       extra: {},
     })
-  }
-  const snap = data.topology_snapshot
-  if (snap?.nodes) {
-    for (const n of snap.nodes) {
-      addNode({
-        hex_q: n.hex_q as number,
-        hex_r: n.hex_r as number,
-        node_type: (n.node_type as TopoNode['node_type']) || 'corridor',
-        entity_id: null,
-        display_name: (n.display_name as string) || '',
-        extra: {},
-      })
-    }
   }
   return nodes
 }
