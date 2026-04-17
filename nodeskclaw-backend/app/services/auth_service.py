@@ -78,14 +78,26 @@ async def oauth_login(
         if oauth_info.provider_tenant_id:
             connection.provider_tenant_id = oauth_info.provider_tenant_id
     else:
-        user = User(
-            name=oauth_info.name,
-            email=oauth_info.email,
-            avatar_url=oauth_info.avatar_url,
-            role=UserRole.user,
-        )
-        db.add(user)
-        await db.flush()
+        user = None
+        if oauth_info.email:
+            existing = await db.execute(
+                select(User).where(User.email == oauth_info.email, User.deleted_at.is_(None))
+            )
+            user = existing.scalar_one_or_none()
+
+        if user is not None:
+            user.name = oauth_info.name
+            if oauth_info.avatar_url:
+                user.avatar_url = oauth_info.avatar_url
+        else:
+            user = User(
+                name=oauth_info.name,
+                email=oauth_info.email,
+                avatar_url=oauth_info.avatar_url,
+                role=UserRole.user,
+            )
+            db.add(user)
+            await db.flush()
 
         connection = UserOAuthConnection(
             user_id=user.id,
