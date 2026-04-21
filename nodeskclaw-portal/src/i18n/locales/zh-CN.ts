@@ -460,6 +460,11 @@ const zhCN = {
     selectAll: "全选",
     deselectAll: "取消全选",
     saveTemplateWithCount: "保存模板 ({n} 个)",
+    existingTemplateHint: "该办公室已有关联模板「{name}」",
+    overwriteExisting: "覆盖已有模板「{name}」",
+    createNew: "新建模板",
+    overwriteSave: "覆盖保存",
+    templateOverwritten: "模板已覆盖更新",
   },
   deployFromTemplate: {
     title: "从模板创建办公室",
@@ -759,6 +764,14 @@ const zhCN = {
     nameRequired: "请输入办公室名称",
     createFailed: "创建失败",
     submit: "创建赛博办公室",
+  },
+  deleteTemplate: {
+    title: "删除模板",
+    confirmMessage: "确定要删除模板「{name}」吗？此操作不可撤销。",
+    inputLabel: "请输入模板名称以确认删除",
+    confirmButton: "确认删除",
+    success: "模板已删除",
+    failed: "删除模板失败",
   },
   workspaceList: {
     title: "我的赛博办公室",
@@ -1795,6 +1808,10 @@ const zhCN = {
       access_denied: "无权使用该模板",
       deploy_invalid: "一键部署参数不合法，请检查集群是否与模板计算平台一致",
       cannot_delete_preset: "预设模板不可删除",
+      cannot_update_preset: "预设模板不允许修改",
+      has_active_deploy: "该模板有正在进行的部署，请等待完成后再操作",
+      name_duplicate: "模板名称已存在，请使用其他名称",
+      name_empty: "模板名称不能为空",
     },
     http: {
       status_400: "请求参数错误",

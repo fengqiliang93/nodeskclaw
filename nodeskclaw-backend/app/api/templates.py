@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.corridors import _check_workspace
@@ -44,6 +45,25 @@ def _error(status_code: int, error_code: int, message_key: str, message: str) ->
     )
 
 
+async def _check_template_name_unique(
+    db: AsyncSession, org_id: str, name: str, *, exclude_id: str | None = None,
+) -> None:
+    q = select(WorkspaceTemplate.id).where(
+        WorkspaceTemplate.org_id == org_id,
+        WorkspaceTemplate.name == name,
+        not_deleted(WorkspaceTemplate),
+    )
+    if exclude_id:
+        q = q.where(WorkspaceTemplate.id != exclude_id)
+    existing = (await db.execute(q)).scalar_one_or_none()
+    if existing:
+        raise _error(
+            409, 40960,
+            "errors.template.name_duplicate",
+            f"模板名称「{name}」已存在，请使用其他名称",
+        )
+
+
 class TemplateCreateRequest(BaseModel):
     name: str
     description: str = ""
@@ -52,6 +72,14 @@ class TemplateCreateRequest(BaseModel):
     blackboard_snapshot: dict | None = None
     gene_assignments: list | None = None
     visibility: str = "org_private"
+    excluded_agent_indices: list[int] | None = None
+    excluded_corridor_coords: list[list[int]] | None = None
+
+
+class TemplateUpdateRequest(BaseModel):
+    workspace_id: str
+    name: str | None = None
+    description: str | None = None
     excluded_agent_indices: list[int] | None = None
     excluded_corridor_coords: list[list[int]] | None = None
 
@@ -65,6 +93,50 @@ class TemplateDeployRequest(BaseModel):
     cluster_id: str
     selected_agent_indices: list[int] | None = None
     excluded_corridor_coords: list[list[int]] | None = None
+
+
+def _apply_exclusions(
+    agent_specs: list,
+    topology_snapshot: dict,
+    excluded_agent_indices: list[int] | None,
+    excluded_corridor_coords: list[list[int]] | None,
+) -> tuple[list, dict]:
+    if excluded_agent_indices and agent_specs:
+        excluded = set(excluded_agent_indices)
+        excluded_coords = set()
+        for i, s in enumerate(agent_specs):
+            if i in excluded:
+                excluded_coords.add((s.get("hex_q"), s.get("hex_r")))
+        agent_specs = [s for i, s in enumerate(agent_specs) if i not in excluded]
+        if excluded_coords and isinstance(topology_snapshot, dict):
+            edges = topology_snapshot.get("edges") or []
+            topology_snapshot = {
+                **topology_snapshot,
+                "edges": [
+                    e for e in edges
+                    if (e.get("a_q"), e.get("a_r")) not in excluded_coords
+                    and (e.get("b_q"), e.get("b_r")) not in excluded_coords
+                ],
+            }
+
+    if excluded_corridor_coords and isinstance(topology_snapshot, dict):
+        excl_corridor_set = {(c[0], c[1]) for c in excluded_corridor_coords if len(c) >= 2}
+        nodes = topology_snapshot.get("nodes") or []
+        topology_snapshot = {
+            **topology_snapshot,
+            "nodes": [
+                n for n in nodes
+                if n.get("node_type") != "corridor"
+                or (n.get("hex_q"), n.get("hex_r")) not in excl_corridor_set
+            ],
+            "edges": [
+                e for e in (topology_snapshot.get("edges") or [])
+                if (e.get("a_q"), e.get("a_r")) not in excl_corridor_set
+                and (e.get("b_q"), e.get("b_r")) not in excl_corridor_set
+            ],
+        }
+
+    return agent_specs, topology_snapshot
 
 
 async def _get_template_with_access(
@@ -151,6 +223,7 @@ async def list_templates(
             "human_count": summ["human_count"],
             "agent_names": summ["agent_names"],
             "can_deploy_from_template": bool(t.agent_specs),
+            "source_workspace_id": t.source_workspace_id,
         })
     return _ok(rows)
 
@@ -162,6 +235,11 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
 ):
     user, org = org_ctx
+    org_id = _org_id(org)
+    template_name = body.name.strip()
+    if not template_name:
+        raise _error(400, 40056, "errors.template.name_empty", "模板名称不能为空")
+    await _check_template_name_unique(db, org_id, template_name)
 
     collect_warnings: list[str] = []
     agent_specs: list = []
@@ -191,44 +269,14 @@ async def create_template(
         blackboard_snapshot = body.blackboard_snapshot
         gene_assignments = body.gene_assignments or []
 
-    if body.excluded_agent_indices and agent_specs:
-        excluded = set(body.excluded_agent_indices)
-        excluded_coords = set()
-        for i, s in enumerate(agent_specs):
-            if i in excluded:
-                excluded_coords.add((s.get("hex_q"), s.get("hex_r")))
-        agent_specs = [s for i, s in enumerate(agent_specs) if i not in excluded]
-        if excluded_coords and isinstance(topology_snapshot, dict):
-            edges = topology_snapshot.get("edges") or []
-            topology_snapshot = {
-                **topology_snapshot,
-                "edges": [
-                    e for e in edges
-                    if (e.get("a_q"), e.get("a_r")) not in excluded_coords
-                    and (e.get("b_q"), e.get("b_r")) not in excluded_coords
-                ],
-            }
-
-    if body.excluded_corridor_coords and isinstance(topology_snapshot, dict):
-        excl_corridor_set = {(c[0], c[1]) for c in body.excluded_corridor_coords if len(c) >= 2}
-        nodes = topology_snapshot.get("nodes") or []
-        topology_snapshot = {
-            **topology_snapshot,
-            "nodes": [
-                n for n in nodes
-                if n.get("node_type") != "corridor"
-                or (n.get("hex_q"), n.get("hex_r")) not in excl_corridor_set
-            ],
-            "edges": [
-                e for e in (topology_snapshot.get("edges") or [])
-                if (e.get("a_q"), e.get("a_r")) not in excl_corridor_set
-                and (e.get("b_q"), e.get("b_r")) not in excl_corridor_set
-            ],
-        }
+    agent_specs, topology_snapshot = _apply_exclusions(
+        agent_specs, topology_snapshot,
+        body.excluded_agent_indices, body.excluded_corridor_coords,
+    )
 
     t = WorkspaceTemplate(
         id=str(uuid.uuid4()),
-        name=body.name,
+        name=template_name,
         description=body.description,
         is_preset=False,
         topology_snapshot=topology_snapshot,
@@ -242,7 +290,11 @@ async def create_template(
         source_workspace_id=source_workspace_id,
     )
     db.add(t)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise _error(409, 40960, "errors.template.name_duplicate", f"模板名称「{template_name}」已存在，请使用其他名称")
     await db.refresh(t)
     summ = template_summary_from_specs(t.agent_specs or [], t.human_specs or [])
     return _ok(
@@ -402,6 +454,79 @@ async def get_template(
     )
 
 
+@router.put("/{template_id}")
+async def update_template(
+    template_id: str,
+    body: TemplateUpdateRequest,
+    org_ctx=Depends(get_current_org),
+    db: AsyncSession = Depends(get_db),
+):
+    user, org = org_ctx
+    org_id = _org_id(org)
+    t = await _get_template_with_access(template_id, org_id, db, require_owner=True)
+    if t.is_preset:
+        raise _error(400, 40055, "errors.template.cannot_update_preset", "预设模板不可覆盖")
+
+    await _check_workspace(body.workspace_id, org, db)
+    bb_info = await workspace_service.get_blackboard(db, body.workspace_id)
+    gene_assignments = await _get_workspace_gene_assignments(db, body.workspace_id)
+    try:
+        agent_specs, human_specs, topology_snapshot, collect_warnings = (
+            await collect_internal_template_payload(db, body.workspace_id, org_id)
+        )
+    except ValueError as e:
+        raise _error(400, 40052, "errors.template.no_running_agents", str(e)) from e
+    blackboard_snapshot = {"content": bb_info.content} if bb_info else {}
+
+    agent_specs, topology_snapshot = _apply_exclusions(
+        agent_specs, topology_snapshot,
+        body.excluded_agent_indices, body.excluded_corridor_coords,
+    )
+
+    if body.name is not None:
+        new_name = body.name.strip()
+        if not new_name:
+            raise _error(400, 40056, "errors.template.name_empty", "模板名称不能为空")
+        if new_name != t.name:
+            await _check_template_name_unique(db, org_id, new_name, exclude_id=template_id)
+        t.name = new_name
+    if body.description is not None:
+        t.description = body.description
+    t.topology_snapshot = topology_snapshot
+    t.blackboard_snapshot = blackboard_snapshot
+    t.gene_assignments = gene_assignments
+    t.agent_specs = agent_specs
+    t.human_specs = human_specs
+    t.source_workspace_id = body.workspace_id
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise _error(409, 40960, "errors.template.name_duplicate", f"模板名称「{t.name}」已存在，请使用其他名称")
+    await db.refresh(t)
+    summ = template_summary_from_specs(t.agent_specs or [], t.human_specs or [])
+    return _ok({
+        "id": t.id,
+        "name": t.name,
+        "description": t.description,
+        "is_preset": t.is_preset,
+        "topology_snapshot": t.topology_snapshot,
+        "blackboard_snapshot": t.blackboard_snapshot,
+        "gene_assignments": t.gene_assignments,
+        "agent_specs": t.agent_specs,
+        "human_specs": t.human_specs,
+        "source_workspace_id": t.source_workspace_id,
+        "org_id": t.org_id,
+        "visibility": t.visibility,
+        "created_by": t.created_by,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "agent_count": summ["agent_count"],
+        "human_count": summ["human_count"],
+        "collect_warnings": collect_warnings,
+    })
+
+
 @router.delete("/{template_id}")
 async def delete_template(
     template_id: str,
@@ -412,6 +537,18 @@ async def delete_template(
     t = await _get_template_with_access(template_id, _org_id(org), db, require_owner=True)
     if t.is_preset:
         raise _error(400, 40050, "errors.template.cannot_delete_preset", "预设模板不可删除")
+
+    from app.models.workspace_deploy import WorkspaceDeploy
+    active = await db.execute(
+        select(WorkspaceDeploy.id).where(
+            WorkspaceDeploy.template_id == template_id,
+            WorkspaceDeploy.status.in_(("pending", "deploying")),
+            not_deleted(WorkspaceDeploy),
+        ).limit(1)
+    )
+    if active.scalar_one_or_none():
+        raise _error(400, 40054, "errors.template.has_active_deploy", "该模板有正在进行的部署，请等待完成后再删除")
+
     t.soft_delete()
     await db.commit()
     return _ok(message="已删除")

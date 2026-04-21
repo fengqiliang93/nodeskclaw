@@ -460,6 +460,11 @@ const enUS = {
     selectAll: "Select all",
     deselectAll: "Deselect all",
     saveTemplateWithCount: "Save template ({n})",
+    existingTemplateHint: "This workspace already has an associated template \"{name}\"",
+    overwriteExisting: "Overwrite existing template \"{name}\"",
+    createNew: "Create new template",
+    overwriteSave: "Overwrite & save",
+    templateOverwritten: "Template has been updated",
   },
   deployFromTemplate: {
     title: "Create office from template",
@@ -759,6 +764,14 @@ const enUS = {
     nameRequired: "Please enter cyber office name",
     createFailed: "Failed to create cyber office",
     submit: "Create Cyber Office",
+  },
+  deleteTemplate: {
+    title: "Delete Template",
+    confirmMessage: "Are you sure you want to delete template \"{name}\"? This action cannot be undone.",
+    inputLabel: "Type the template name to confirm",
+    confirmButton: "Confirm Delete",
+    success: "Template deleted",
+    failed: "Failed to delete template",
   },
   workspaceList: {
     title: "My Cyber Offices",
@@ -1795,6 +1808,10 @@ const enUS = {
       access_denied: "You do not have access to this template",
       deploy_invalid: "Invalid deploy request; ensure the cluster matches the template compute platform",
       cannot_delete_preset: "Preset templates cannot be deleted",
+      cannot_update_preset: "Preset templates cannot be updated",
+      has_active_deploy: "This template has active deployments, please wait before modifying",
+      name_duplicate: "Template name already exists, please use a different name",
+      name_empty: "Template name cannot be empty",
     },
     http: {
       status_400: "Bad request",

@@ -152,11 +152,15 @@ async def create_workspace(db: AsyncSession, org_id: str, user_id: str, data: Wo
 
     if data.template_id:
         await _apply_template_to_workspace(db, ws.id, data.template_id, user_id)
+        ws.source_template_id = data.template_id
+        await db.commit()
+        await db.refresh(ws)
 
     return WorkspaceInfo(
         id=ws.id, org_id=ws.org_id, name=ws.name, description=ws.description,
         color=ws.color, icon=ws.icon, created_by=ws.created_by,
         cluster_id=ws.cluster_id,
+        source_template_id=ws.source_template_id,
         agent_count=0, agents=[], created_at=ws.created_at, updated_at=ws.updated_at,
     )
 
@@ -402,6 +406,7 @@ async def get_workspace(db: AsyncSession, workspace_id: str) -> WorkspaceInfo | 
         id=ws.id, org_id=ws.org_id, name=ws.name, description=ws.description,
         color=ws.color, icon=ws.icon, created_by=ws.created_by,
         cluster_id=ws.cluster_id,
+        source_template_id=ws.source_template_id,
         agent_count=len(agents),
         agents=[_agent_brief(inst, wa) for inst, wa in agents],
         created_at=ws.created_at, updated_at=ws.updated_at,
