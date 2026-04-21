@@ -1241,6 +1241,8 @@ const enUS = {
     llmKeysOrgTokenLimitHint: "Leave empty for unlimited",
     llmKeysSysTokenLimit: "System Token Limit (optional)",
     llmKeysSysTokenLimitHint: "Leave empty for unlimited",
+    llmKeysTokenLimit: "Token Limit (optional)",
+    llmKeysTokenLimitHint: "Leave empty for unlimited",
     llmKeysColProvider: "Provider",
     llmKeysColLabel: "Label",
     llmKeysColKey: "Key",
@@ -1538,6 +1540,7 @@ const enUS = {
     loading: "Loading file...",
     close: "Close",
     workspaceRoot: "Workspace",
+    downloadFailed: "Failed to download file",
   },
   agentDetailDialog: {
     openInNewPage: "Open in new page",

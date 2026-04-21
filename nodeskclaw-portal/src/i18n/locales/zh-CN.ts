@@ -1241,6 +1241,8 @@ const zhCN = {
     llmKeysOrgTokenLimitHint: "留空表示不限",
     llmKeysSysTokenLimit: "系统额度上限（可选）",
     llmKeysSysTokenLimitHint: "留空表示不限",
+    llmKeysTokenLimit: "额度上限（可选）",
+    llmKeysTokenLimitHint: "留空表示不限",
     llmKeysColProvider: "Provider",
     llmKeysColLabel: "标签",
     llmKeysColKey: "Key",
@@ -1538,6 +1540,7 @@ const zhCN = {
     loading: "正在读取文件...",
     close: "关闭",
     workspaceRoot: "工作空间",
+    downloadFailed: "文件下载失败",
   },
   agentDetailDialog: {
     openInNewPage: "在新页面打开",
