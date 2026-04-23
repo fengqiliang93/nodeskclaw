@@ -20,7 +20,12 @@ def build_portal_envelope(
     content: str,
     mentions: list[str] | None = None,
     attachments: list[dict] | None = None,
+    conversation_id: str | None = None,
 ) -> MessageEnvelope:
+    extensions: dict = {}
+    if conversation_id:
+        extensions["conversation_id"] = conversation_id
+
     return MessageEnvelope(
         source=f"portal/user/{user_id}",
         type="deskclaw.msg.v1.chat",
@@ -35,6 +40,7 @@ def build_portal_envelope(
             content=content,
             mentions=mentions or [],
             attachments=attachments or [],
+            extensions=extensions,
             priority=Priority.NORMAL,
         ),
     )

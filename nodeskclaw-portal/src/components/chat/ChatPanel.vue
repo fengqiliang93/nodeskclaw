@@ -24,8 +24,10 @@ import { formatTime as formatLocaleTime } from '@/utils/localeFormat'
 const props = withDefaults(defineProps<{
   workspaceId: string
   canSend?: boolean
+  conversationId?: string
 }>(), {
   canSend: true,
+  conversationId: undefined,
 })
 
 const { t, te, locale } = useI18n()
@@ -35,7 +37,12 @@ const toast = useToast()
 
 const messagesEl = ref<HTMLElement | null>(null)
 
-const messages = computed(() => store.chatMessages)
+const messages = computed(() => {
+  if (props.conversationId) {
+    return store.chatMessages.filter(m => m.conversation_id === props.conversationId || !m.conversation_id)
+  }
+  return store.chatMessages
+})
 const chatSearch = ref('')
 const searchFrom = ref('')
 const searchTo = ref('')
@@ -407,6 +414,7 @@ async function sendMessage() {
     mentions.length > 0 ? mentions : undefined,
     fileIds,
     attachments,
+    props.conversationId,
   )
   scrollToBottom()
 }
@@ -760,8 +768,13 @@ function scrollToBottom() {
 }
 
 async function loadDefaultChatHistory() {
-  const raw = await store.fetchChatHistory(props.workspaceId)
-  store.chatMessages = raw
+  if (props.conversationId) {
+    const raw = await store.fetchConversationMessages(props.workspaceId, props.conversationId)
+    store.chatMessages = raw
+  } else {
+    const raw = await store.fetchChatHistory(props.workspaceId)
+    store.chatMessages = raw
+  }
 }
 
 function toIsoDateTime(value: string): string | undefined {
@@ -816,6 +829,14 @@ watch(displayedMessages, scrollToBottom, { deep: true })
 
 watch(
   () => props.workspaceId,
+  async () => {
+    clearSearchFilters()
+    await loadDefaultChatHistory()
+  },
+)
+
+watch(
+  () => props.conversationId,
   async () => {
     clearSearchFilters()
     await loadDefaultChatHistory()

@@ -254,11 +254,23 @@ export interface GroupChatMessage {
   intent?: string
   priority?: string
   envelope_id?: string
+  conversation_id?: string
   error?: {
     code: string
     detail?: string
     raw?: string
   }
+}
+
+export interface Conversation {
+  id: string
+  workspace_id: string
+  name: string
+  is_blackboard_group: boolean
+  member_node_ids: string[]
+  last_message_at: string | null
+  last_message_preview: string | null
+  created_at: string | null
 }
 
 export interface ChatHistoryQuery {
@@ -695,6 +707,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const typingAgents = ref<Map<string, string>>(new Map())
   const unreadCount = ref(0)
   const chatVisible = ref(false)
+  const conversations = ref<Conversation[]>([])
+  const activeConversationId = ref<string>('')
 
   function setChatVisible(visible: boolean) {
     chatVisible.value = visible
@@ -722,6 +736,41 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const res = await api.get(`/workspaces/${workspaceId}/blackboard/unread-count`)
       unreadPostCount.value = res.data.data?.count ?? 0
     } catch { /* ignore */ }
+  }
+
+  async function fetchConversations(workspaceId: string) {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/conversations`)
+      conversations.value = (res.data.data || []) as Conversation[]
+      if (conversations.value.length > 0 && !activeConversationId.value) {
+        activeConversationId.value = conversations.value[0].id
+      }
+    } catch (e) {
+      console.error('fetchConversations error:', e)
+    }
+  }
+
+  async function fetchConversationMessages(workspaceId: string, conversationId: string, limit = 50): Promise<GroupChatMessage[]> {
+    try {
+      const res = await api.get(`/workspaces/${workspaceId}/conversations/${conversationId}/messages`, {
+        params: { limit },
+      })
+      const raw = res.data.data || []
+      return raw.map((m: Record<string, unknown>) => ({
+        id: m.id as string,
+        sender_type: m.sender_type as 'user' | 'agent' | 'system',
+        sender_id: m.sender_id as string,
+        sender_name: m.sender_name as string,
+        content: m.content as string,
+        message_type: m.message_type as string,
+        created_at: m.created_at as string,
+        conversation_id: m.conversation_id as string | undefined,
+        attachments: (m.attachments as FileAttachment[]) || undefined,
+      }))
+    } catch (e) {
+      console.error('fetchConversationMessages error:', e)
+      throw e
+    }
   }
 
   async function fetchChatHistory(workspaceId: string, query?: ChatHistoryQuery) {
@@ -754,6 +803,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     mentions?: string[],
     fileIds?: string[],
     attachments?: FileAttachment[],
+    conversationId?: string,
   ) {
     if (chatLoading.value) return
     chatLoading.value = true
@@ -768,6 +818,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       message_type: 'chat',
       created_at: new Date().toISOString(),
       attachments: attachments || undefined,
+      conversation_id: conversationId || activeConversationId.value || undefined,
     }
     chatMessages.value.push(userMsg)
 
@@ -775,6 +826,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const body: Record<string, unknown> = { message }
       if (mentions && mentions.length > 0) body.mentions = mentions
       if (fileIds && fileIds.length > 0) body.file_ids = fileIds
+      const convId = conversationId || activeConversationId.value
+      if (convId) body.conversation_id = convId
       await api.post(`/workspaces/${workspaceId}/chat`, body)
     } catch (e) {
       console.error('sendWorkspaceMessage error:', e)
@@ -840,6 +893,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         trace_id: data.trace_id as string | undefined,
         causation_id: data.causation_id as string | undefined,
         envelope_id: data.envelope_id as string | undefined,
+        conversation_id: data.conversation_id as string | undefined,
       })
       _incrementUnread()
     }
@@ -895,6 +949,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         message_type: 'chat',
         created_at: new Date().toISOString(),
         error: errorObj,
+        conversation_id: data.conversation_id as string | undefined,
       })
     }
   }
@@ -939,6 +994,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       intent,
       priority,
       envelope_id: data.envelope_id as string | undefined,
+      conversation_id: data.conversation_id as string | undefined,
     })
     _incrementUnread()
   }
@@ -1503,6 +1559,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     topology.value = null
     members.value = []
     chatMessages.value = []
+    conversations.value = []
+    activeConversationId.value = ''
     corridorHexes.value = []
     connections.value = []
     heatmap.value = []
@@ -1587,6 +1645,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchAgentPerformance,
     fetchGlobalAgentPerformance,
     fetchMembers,
+    conversations,
+    activeConversationId,
+    fetchConversations,
+    fetchConversationMessages,
     fetchChatHistory,
     sendWorkspaceMessage,
     sendSystemMessage,

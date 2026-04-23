@@ -539,6 +539,8 @@ class TunnelAdapter:
 
         from app.api.workspaces import broadcast_event
 
+        orig_conv_id = data.extensions.get("conversation_id")
+
         if no_reply:
             logger.info(
                 "Mention skip for %s: targets=%s, mentioned=%s",
@@ -615,20 +617,26 @@ class TunnelAdapter:
                                 latency_ms=int((time.monotonic() - start) * 1000),
                                 extra={"no_reply": True},
                             )
-                        broadcast_event(workspace_id, "agent:chunk", {
+                        chunk_evt: dict = {
                             "instance_id": target_node_id,
                             "agent_name": agent_name,
                             "content": buffer,
                             "trace_id": envelope.traceid,
-                        })
+                        }
+                        if orig_conv_id:
+                            chunk_evt["conversation_id"] = orig_conv_id
+                        broadcast_event(workspace_id, "agent:chunk", chunk_evt)
                         flushed = True
                 else:
-                    broadcast_event(workspace_id, "agent:chunk", {
+                    chunk_evt2: dict = {
                         "instance_id": target_node_id,
                         "agent_name": agent_name,
                         "content": content,
                         "trace_id": envelope.traceid,
-                    })
+                    }
+                    if orig_conv_id:
+                        chunk_evt2["conversation_id"] = orig_conv_id
+                    broadcast_event(workspace_id, "agent:chunk", chunk_evt2)
         except Exception as e:
             error_msg = str(e)
             logger.error("Agent %s streaming failed: %s", agent_name, e)
@@ -641,6 +649,8 @@ class TunnelAdapter:
             }
             if error_raw:
                 evt["error_raw"] = error_raw
+            if orig_conv_id:
+                evt["conversation_id"] = orig_conv_id
             broadcast_event(workspace_id, "agent:error", evt)
             return DeliveryResult(
                 success=False, target_node_id=target_node_id,
@@ -650,19 +660,23 @@ class TunnelAdapter:
 
         if not flushed and buffer:
             if msg_service.is_no_reply(buffer.strip()):
-                broadcast_event(workspace_id, "agent:done", {
-                    "instance_id": target_node_id, "agent_name": agent_name,
-                })
+                done_evt_nr: dict = {"instance_id": target_node_id, "agent_name": agent_name}
+                if orig_conv_id:
+                    done_evt_nr["conversation_id"] = orig_conv_id
+                broadcast_event(workspace_id, "agent:done", done_evt_nr)
                 return DeliveryResult(
                     success=True, target_node_id=target_node_id,
                     transport=self.transport_id,
                     latency_ms=int((time.monotonic() - start) * 1000),
                     extra={"no_reply": True},
                 )
-            broadcast_event(workspace_id, "agent:chunk", {
+            tail_chunk_evt: dict = {
                 "instance_id": target_node_id, "agent_name": agent_name,
                 "content": buffer, "trace_id": envelope.traceid,
-            })
+            }
+            if orig_conv_id:
+                tail_chunk_evt["conversation_id"] = orig_conv_id
+            broadcast_event(workspace_id, "agent:chunk", tail_chunk_evt)
 
         delegation = _parse_delegation(full_response)
         if delegation:
@@ -700,17 +714,37 @@ class TunnelAdapter:
                             content=full_response,
                             message_type="collaboration",
                             depth=depth,
+                            conversation_id=orig_conv_id,
                         )
                 if depth < collab_limit:
-                    broadcast_event(workspace_id, "agent:collaboration", {
+                    base_collab_evt: dict = {
                         "instance_id": target_node_id,
                         "agent_name": agent_name,
                         "content": full_response,
                         "envelope_id": saved_msg.id,
                         "trace_id": envelope.traceid,
-                    })
+                    }
+                    if orig_conv_id:
+                        base_collab_evt["conversation_id"] = orig_conv_id
+                    broadcast_event(workspace_id, "agent:collaboration", base_collab_evt)
+
                     for mention in mentions:
                         if mention["type"] == "agent":
+                            from app.services import conversation_service
+                            from app.services.collaboration_service import find_agent_by_name_or_id
+                            async with async_session_factory() as resolve_db:
+                                target_inst = await find_agent_by_name_or_id(
+                                    resolve_db, workspace_id, mention["name"],
+                                )
+                                mention_target_id = target_inst.id if target_inst else ""
+                                collab_conv_id = await conversation_service.resolve_conversation_for_message(
+                                    workspace_id, target_node_id, mention_target_id,
+                                    resolve_db, inherited_conversation_id=orig_conv_id,
+                                )
+                                collab_members = await conversation_service.get_conversation_members(
+                                    collab_conv_id, resolve_db,
+                                ) if collab_conv_id else []
+
                             from app.services.runtime.messaging.ingestion.agent import (
                                 build_agent_collaboration_envelope,
                             )
@@ -721,6 +755,8 @@ class TunnelAdapter:
                                 target=f"agent:{mention['name']}",
                                 content=full_response,
                                 depth=depth + 1,
+                                conversation_id=collab_conv_id,
+                                group_member_ids=collab_members,
                             )
                             from app.services.runtime.messaging.bus import message_bus
                             async with async_session_factory() as route_db:
@@ -744,9 +780,12 @@ class TunnelAdapter:
                                         "Human mention target not found: %s in workspace %s",
                                         mention["name"], workspace_id,
                                     )
-                    broadcast_event(workspace_id, "agent:done", {
+                    done_evt_collab: dict = {
                         "instance_id": target_node_id, "agent_name": agent_name,
-                    })
+                    }
+                    if orig_conv_id:
+                        done_evt_collab["conversation_id"] = orig_conv_id
+                    broadcast_event(workspace_id, "agent:done", done_evt_collab)
                     return DeliveryResult(
                         success=True, target_node_id=target_node_id,
                         transport=self.transport_id,
@@ -759,12 +798,15 @@ class TunnelAdapter:
                     )
 
         if full_response and not msg_service.is_no_reply(full_response.strip()):
-            broadcast_event(workspace_id, "agent:done", {
+            final_done_evt: dict = {
                 "instance_id": target_node_id,
                 "agent_name": agent_name,
                 "full_content": full_response,
                 "trace_id": envelope.traceid,
-            })
+            }
+            if orig_conv_id:
+                final_done_evt["conversation_id"] = orig_conv_id
+            broadcast_event(workspace_id, "agent:done", final_done_evt)
             from app.core.deps import async_session_factory
             async with async_session_factory() as save_db:
                 await msg_service.record_message(
@@ -774,16 +816,23 @@ class TunnelAdapter:
                     sender_id=target_node_id,
                     sender_name=agent_name,
                     content=full_response,
+                    conversation_id=orig_conv_id,
                 )
         elif not full_response:
-            broadcast_event(workspace_id, "agent:error", {
+            empty_err_evt: dict = {
                 "instance_id": target_node_id, "agent_name": agent_name,
                 "error": "empty_response",
-            })
+            }
+            if orig_conv_id:
+                empty_err_evt["conversation_id"] = orig_conv_id
+            broadcast_event(workspace_id, "agent:error", empty_err_evt)
         else:
-            broadcast_event(workspace_id, "agent:done", {
+            final_done_nr: dict = {
                 "instance_id": target_node_id, "agent_name": agent_name,
-            })
+            }
+            if orig_conv_id:
+                final_done_nr["conversation_id"] = orig_conv_id
+            broadcast_event(workspace_id, "agent:done", final_done_nr)
 
         return DeliveryResult(
             success=True, target_node_id=target_node_id,

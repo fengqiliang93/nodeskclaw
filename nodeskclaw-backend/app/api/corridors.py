@@ -154,6 +154,9 @@ async def create_corridor_hex(
 
     await corridor_router.auto_connect_hex(workspace_id, body.hex_q, body.hex_r, user.id if user else None, db)
 
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+
     await db.commit()
     await db.refresh(ch)
     actor_type, actor_id = _actor(org_ctx)
@@ -320,6 +323,9 @@ async def delete_corridor_hex(
     if card:
         card.soft_delete()
 
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+
     await db.commit()
     actor_type, actor_id = _actor(org_ctx)
     broadcast_event(workspace_id, "corridor:hex_removed", {"hex_id": deleted_id})
@@ -368,6 +374,10 @@ async def create_connection(
         created_by=user.id if user else None,
     )
     db.add(conn)
+
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+
     await db.commit()
     await db.refresh(conn)
     actor_type, actor_id = _actor(org_ctx)
@@ -434,6 +444,10 @@ async def delete_connection(
     if not conn:
         raise _corridor_http_error(404, 40481, "errors.corridor.connection_not_found", "连接不存在")
     conn.soft_delete()
+
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+
     await db.commit()
     actor_type, actor_id = _actor(org_ctx)
     broadcast_event(workspace_id, "connection:removed", {"conn_id": conn.id})

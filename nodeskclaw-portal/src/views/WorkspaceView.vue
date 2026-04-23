@@ -10,12 +10,12 @@ import Workspace3D from '@/components/hex3d/Workspace3D.vue'
 import Workspace2D from '@/components/hex2d/Workspace2D.vue'
 import ModeToggle from '@/components/shared/ModeToggle.vue'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
+import ConversationList from '@/components/chat/ConversationList.vue'
 import LocaleSelect from '@/components/shared/LocaleSelect.vue'
 import BlackboardOverlay from '@/components/blackboard/BlackboardOverlay.vue'
 import HexActionDrawer from '@/components/workspace/HexActionDrawer.vue'
 import AgentCollaborationPanel from '@/components/workspace/AgentCollaborationPanel.vue'
 import AgentDetailDialog from '@/components/workspace/AgentDetailDialog.vue'
-import CollaborationTimeline from '@/components/workspace/CollaborationTimeline.vue'
 import AddAgentDialog from '@/components/workspace/AddAgentDialog.vue'
 import WorkspaceSettings from '@/views/WorkspaceSettings.vue'
 import { useToast } from '@/composables/useToast'
@@ -61,8 +61,6 @@ const { activeMode, isTransitioning, transitionTo2D, transitionTo3D } = useViewT
 
 const CHAT_OPEN_KEY = 'workspace-chat-open'
 const chatOpen = ref(localStorage.getItem(CHAT_OPEN_KEY) === 'true')
-const chatSidebarTab = ref<'blackboard' | 'collab-flow'>('blackboard')
-const collabTimelineRef = ref<InstanceType<typeof CollaborationTimeline> | null>(null)
 const collabPanelOpen = ref(false)
 const collabPanelAgent = ref<{ instanceId: string; name: string } | null>(null)
 const collabPanelRef = ref<InstanceType<typeof AgentCollaborationPanel> | null>(null)
@@ -229,6 +227,7 @@ async function bootstrapWorkspaceCritical(wsId: string): Promise<number | null> 
 async function bootstrapWorkspaceDeferred(wsId: string, generation: number) {
   await Promise.allSettled([
     store.fetchMembers(wsId),
+    store.fetchConversations(wsId),
     loadPerfSummary(wsId),
   ])
   if (generation !== workspaceBootstrapGeneration) return
@@ -341,9 +340,6 @@ function onSSEEvent(event: string, data: Record<string, unknown>) {
     }
     if (collabPanelOpen.value && collabPanelRef.value) {
       collabPanelRef.value.addLiveMessage(data)
-    }
-    if (chatSidebarTab.value === 'collab-flow' && collabTimelineRef.value) {
-      collabTimelineRef.value.addLiveMessage(data)
     }
   }
 }
@@ -1161,25 +1157,9 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
           <div class="flex flex-col flex-1 min-w-0 min-h-0">
             <div class="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+              <span class="text-xs font-medium text-foreground">{{ t('workspaceView.conversationList') }}</span>
               <div class="flex items-center gap-1">
                 <button
-                  class="px-2.5 py-1 text-xs rounded-md transition-colors"
-                  :class="chatSidebarTab === 'blackboard' ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'"
-                  @click="chatSidebarTab = 'blackboard'"
-                >
-                  {{ t('workspaceView.centralBlackboardChat') }}
-                </button>
-                <button
-                  class="px-2.5 py-1 text-xs rounded-md transition-colors"
-                  :class="chatSidebarTab === 'collab-flow' ? 'bg-violet-500/15 text-violet-400 font-medium' : 'text-muted-foreground hover:text-foreground'"
-                  @click="chatSidebarTab = 'collab-flow'"
-                >
-                  {{ t('workspaceView.collabFlow') }}
-                </button>
-              </div>
-              <div class="flex items-center gap-1">
-                <button
-                  v-if="chatSidebarTab === 'blackboard'"
                   class="p-1 rounded hover:bg-muted transition-colors"
                   :title="focusMode ? t('workspaceView.exitFocus') : t('workspaceView.enterFocus')"
                   @click="toggleFocusMode"
@@ -1195,19 +1175,18 @@ function handleKeydown(e: KeyboardEvent) {
                 </button>
               </div>
             </div>
-            <ChatPanel
-              v-if="chatSidebarTab === 'blackboard'"
+            <ConversationList
               :workspace-id="workspaceId"
+              :conversations="store.conversations"
+              :active-id="store.activeConversationId"
+              class="shrink-0"
+              @select="store.activeConversationId = $event"
+            />
+            <ChatPanel
+              :workspace-id="workspaceId"
+              :conversation-id="store.activeConversationId || undefined"
               :can-send="store.hasPermission('send_chat')"
               class="flex-1 min-h-0"
-            />
-            <CollaborationTimeline
-              v-else
-              ref="collabTimelineRef"
-              :workspace-id="workspaceId"
-              :agents="agents"
-              class="flex-1 min-h-0"
-              @replay-flow="onReplayFlow"
             />
           </div>
         </div>

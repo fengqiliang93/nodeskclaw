@@ -44,6 +44,7 @@ async def record_message(
     target_instance_id: str | None = None,
     depth: int = 0,
     attachments: list[dict] | None = None,
+    conversation_id: str | None = None,
 ) -> WorkspaceMessage:
     msg = WorkspaceMessage(
         workspace_id=workspace_id,
@@ -55,8 +56,21 @@ async def record_message(
         target_instance_id=target_instance_id,
         depth=depth,
         attachments=attachments,
+        conversation_id=conversation_id,
     )
     db.add(msg)
+
+    if conversation_id:
+        from app.models.conversation import Conversation
+
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == conversation_id).limit(1)
+        )
+        conv = result.scalar_one_or_none()
+        if conv:
+            conv.last_message_at = func.now()
+            conv.last_message_preview = content[:100] if content else None
+
     await db.commit()
     await db.refresh(msg)
     return msg
@@ -66,15 +80,19 @@ async def get_recent_messages(
     db: AsyncSession,
     workspace_id: str,
     limit: int = 50,
+    conversation_id: str | None = None,
 ) -> list[WorkspaceMessage]:
-    result = await db.execute(
+    stmt = (
         select(WorkspaceMessage)
         .where(
             WorkspaceMessage.workspace_id == workspace_id,
             WorkspaceMessage.deleted_at.is_(None),
         )
-        .order_by(WorkspaceMessage.created_at.desc())
-        .limit(limit)
+    )
+    if conversation_id:
+        stmt = stmt.where(WorkspaceMessage.conversation_id == conversation_id)
+    result = await db.execute(
+        stmt.order_by(WorkspaceMessage.created_at.desc()).limit(limit)
     )
     messages = list(result.scalars().all())
     messages.reverse()

@@ -170,6 +170,9 @@ async def add_agent(
         agent = await workspace_service.add_agent(db, workspace_id, data, user.id)
     except ValueError as e:
         raise _error(400, 40031, "errors.workspace.add_agent_invalid", str(e))
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+    await db.commit()
     await hooks.emit("operation_audit", action="workspace.agent_added", target_type="workspace", target_id=workspace_id, actor_id=user.id, details={"instance_id": data.instance_id})
     return _ok(agent.model_dump(mode="json"))
 
@@ -264,6 +267,9 @@ async def remove_agent(
     ok = await workspace_service.remove_agent(db, workspace_id, instance_id)
     if not ok:
         raise _error(404, 40432, "errors.workspace.agent_not_in_workspace", "AI 员工不在该办公室中")
+    from app.services import conversation_service
+    await conversation_service.sync_conversations_from_topology(workspace_id, db)
+    await db.commit()
     await hooks.emit("operation_audit", action="workspace.agent_removed", target_type="workspace", target_id=workspace_id, actor_id=user.id, details={"instance_id": instance_id})
     return _ok(message="已移除")
 
@@ -1382,6 +1388,13 @@ async def workspace_chat(
                 for f in attachment_files
             ]
 
+    from app.services import conversation_service
+
+    conv_id = data.conversation_id
+    if not conv_id:
+        bb_conv = await conversation_service.get_blackboard_conversation(workspace_id, db)
+        conv_id = bb_conv.id if bb_conv else None
+
     await msg_service.record_message(
         db,
         workspace_id=workspace_id,
@@ -1390,6 +1403,7 @@ async def workspace_chat(
         sender_name=user.name,
         content=data.message,
         attachments=attachments_meta,
+        conversation_id=conv_id,
     )
 
     attachments_with_urls: list[dict] = []
@@ -1419,6 +1433,7 @@ async def workspace_chat(
         content=data.message,
         mentions=data.mentions,
         attachments=attachments_with_urls or None,
+        conversation_id=conv_id,
     )
 
     async def _publish_via_bus():

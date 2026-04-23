@@ -36,6 +36,7 @@ async def handle_collaboration_event(instance_id: str, payload: dict) -> None:
         target=payload.get("target", ""),
         text=payload.get("text", ""),
         depth=payload.get("depth", 0),
+        conversation_id=payload.get("conversation_id"),
     )
 
 
@@ -46,6 +47,7 @@ async def handle_collaboration_message(
     target: str,
     text: str,
     depth: int = 0,
+    conversation_id: str | None = None,
 ) -> None:
     """Process an inbound collaboration message from a channel plugin.
 
@@ -84,6 +86,8 @@ async def handle_collaboration_message(
 
         source_name = source_inst.agent_display_name or source_inst.name
 
+        from app.services import conversation_service
+
         resolved_target_id: str | None = None
         if target.startswith("agent:"):
             target_inst = await _find_agent_by_name_or_id(db, workspace_id, target[6:])
@@ -111,6 +115,10 @@ async def handle_collaboration_message(
             human_name = target[6:]
             hh = await _find_human_by_display_name(db, workspace_id, human_name)
             if hh:
+                resolved_conv_id = await conversation_service.resolve_conversation_for_message(
+                    workspace_id, source_instance_id, "",
+                    db, inherited_conversation_id=conversation_id,
+                )
                 await msg_service.record_message(
                     db,
                     workspace_id=workspace_id,
@@ -120,6 +128,7 @@ async def handle_collaboration_message(
                     content=text,
                     message_type="collaboration",
                     depth=depth,
+                    conversation_id=resolved_conv_id,
                 )
                 from app.api.workspaces import broadcast_event
                 broadcast_event(workspace_id, "agent:collaboration", {
@@ -127,6 +136,7 @@ async def handle_collaboration_message(
                     "agent_name": source_name,
                     "target": target,
                     "content": text,
+                    "conversation_id": resolved_conv_id,
                 })
                 await _route_to_human(
                     db, workspace_id, source_instance_id, source_name, hh, text,
@@ -135,6 +145,15 @@ async def handle_collaboration_message(
                 return
             else:
                 logger.warning("Human target not found: %s in workspace %s", human_name, workspace_id)
+
+        resolved_conv_id = await conversation_service.resolve_conversation_for_message(
+            workspace_id, source_instance_id, resolved_target_id or "",
+            db, inherited_conversation_id=conversation_id,
+        )
+
+        group_member_ids = await conversation_service.get_conversation_members(
+            resolved_conv_id, db,
+        ) if resolved_conv_id else []
 
         await msg_service.record_message(
             db,
@@ -146,6 +165,7 @@ async def handle_collaboration_message(
             message_type="collaboration",
             target_instance_id=resolved_target_id,
             depth=depth,
+            conversation_id=resolved_conv_id,
         )
 
         from app.api.workspaces import broadcast_event
@@ -154,6 +174,7 @@ async def handle_collaboration_message(
             "agent_name": source_name,
             "target": target,
             "content": text,
+            "conversation_id": resolved_conv_id,
         })
 
         from app.services.runtime.messaging.bus import message_bus
@@ -166,6 +187,8 @@ async def handle_collaboration_message(
             target=target,
             content=text,
             depth=depth,
+            conversation_id=resolved_conv_id,
+            group_member_ids=group_member_ids,
         )
 
         result = await message_bus.publish(envelope, db=db)
