@@ -19,6 +19,7 @@ import {
   Mail,
   Clock,
   Plus,
+  Send,
 } from 'lucide-vue-next'
 import api from '@/services/api'
 import { resolveApiErrorMessage } from '@/i18n/error'
@@ -29,13 +30,14 @@ import CustomSelect from '@/components/shared/CustomSelect.vue'
 
 const orgStore = useOrgStore()
 const authStore = useAuthStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const toast = useToast()
 const { confirm } = useConfirm()
 
 const loading = ref(true)
 const searchQuery = ref('')
 const actionLoading = ref<string | null>(null)
+const resendLoading = ref<string | null>(null)
 
 // invite dialog
 const showInviteDialog = ref(false)
@@ -170,6 +172,7 @@ async function handleInvite() {
     const res = await api.post(`/orgs/${orgStore.currentOrgId}/members/invite`, {
       emails: inviteEmails.value,
       role: inviteRole.value,
+      lang: locale.value,
     })
     inviteResults.value = res.data.data ?? []
     showInviteResults.value = true
@@ -213,6 +216,22 @@ async function cancelInvitation(id: string) {
     toast.error(resolveApiErrorMessage(e, t('orgMembers.cancelInviteFailed')))
   } finally {
     actionLoading.value = null
+  }
+}
+
+async function resendInvitation(id: string) {
+  if (!orgStore.currentOrgId) return
+  resendLoading.value = id
+  try {
+    await api.post(`/orgs/${orgStore.currentOrgId}/invitations/${id}/resend`, {
+      lang: locale.value,
+    })
+    toast.success(t('orgMembers.resendSuccess'))
+    await fetchPendingInvitations()
+  } catch (e) {
+    toast.error(resolveApiErrorMessage(e, t('orgMembers.resendFailed')))
+  } finally {
+    resendLoading.value = null
   }
 }
 
@@ -424,6 +443,15 @@ async function copyPassword() {
               </div>
             </div>
             <div class="flex items-center gap-2">
+              <button
+                class="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                :title="t('orgMembers.resendInvite')"
+                :disabled="resendLoading === inv.id"
+                @click="resendInvitation(inv.id)"
+              >
+                <Loader2 v-if="resendLoading === inv.id" class="w-4 h-4 animate-spin" />
+                <Send v-else class="w-4 h-4" />
+              </button>
               <button
                 class="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                 :title="t('orgMembers.copyInviteLink')"

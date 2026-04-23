@@ -1047,6 +1047,9 @@ const zhCN = {
     pendingInvitations: "待接受邀请 ({count})",
     pending: "待接受",
     cancelInviteFailed: "取消邀请失败",
+    resendInvite: "重新发送邀请",
+    resendSuccess: "邀请邮件已重新发送",
+    resendFailed: "重新发送失败",
   },
   acceptInvite: {
     title: "加入组织",

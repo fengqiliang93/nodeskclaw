@@ -1047,6 +1047,9 @@ const enUS = {
     pendingInvitations: "Pending Invitations ({count})",
     pending: "Pending",
     cancelInviteFailed: "Failed to cancel invitation",
+    resendInvite: "Resend Invitation",
+    resendSuccess: "Invitation email resent",
+    resendFailed: "Failed to resend invitation",
   },
   acceptInvite: {
     title: "Join Organization",
