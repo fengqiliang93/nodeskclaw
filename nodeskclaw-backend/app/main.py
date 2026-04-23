@@ -155,6 +155,10 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("NoDeskClaw %s starting (Python %s)", settings.APP_VERSION, sys.version.split()[0])
 
+    if not settings.LLM_PROXY_URL:
+        logger.fatal("LLM_PROXY_URL 未配置，服务无法启动。LLM Proxy 为必需组件。")
+        sys.exit(1)
+
     # ── EE Model 注册（在 Alembic 迁移之前导入，使其加入 Base.metadata）──
     from app.core.feature_gate import feature_gate as _fg
     if _fg.is_ee:

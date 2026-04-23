@@ -95,9 +95,7 @@ def _build_providers_config(
         cfg_base_url = getattr(cfg, "base_url", None)
         cfg_api_type = getattr(cfg, "api_type", None)
         if is_codex_provider(provider):
-            if not proxy_url:
-                logger.error("LLM_PROXY_URL 未配置，Codex 模式无法生成 proxy URL")
-                continue
+            assert proxy_url, "LLM_PROXY_URL must be set (checked at startup)"
             entry = {
                 "baseUrl": f"{proxy_url}/{provider}/v1",
                 "apiKey": wp_api_key,
@@ -112,25 +110,13 @@ def _build_providers_config(
                 "apiKey": uk.api_key,
             }
         else:
-            ok = org_keys.get(provider)
-            if proxy_url:
-                api_type = cfg_api_type or PROVIDER_API_TYPE.get(provider)
-                skip_v1 = api_type in ("anthropic-messages", "google-generative-ai")
-                entry = {
-                    "baseUrl": f"{proxy_url}/{provider}" if skip_v1 else f"{proxy_url}/{provider}/v1",
-                    "apiKey": wp_api_key,
-                }
-            else:
-                if not ok:
-                    raise AppException(
-                        code=50001,
-                        message=f"未找到团队 Provider 配置: {provider}",
-                        status_code=500,
-                    )
-                entry = {
-                    "baseUrl": cfg_base_url or ok.base_url or PROVIDER_BASE_URLS.get(provider, ""),
-                    "apiKey": ok.api_key,
-                }
+            assert proxy_url, "LLM_PROXY_URL must be set (checked at startup)"
+            api_type = cfg_api_type or PROVIDER_API_TYPE.get(provider)
+            skip_v1 = api_type in ("anthropic-messages", "google-generative-ai")
+            entry = {
+                "baseUrl": f"{proxy_url}/{provider}" if skip_v1 else f"{proxy_url}/{provider}/v1",
+                "apiKey": wp_api_key,
+            }
 
         uk = user_keys.get(provider)
         ok = org_keys.get(provider)
