@@ -406,7 +406,7 @@ cmd_deploy() {
 generate_changelog() {
   local version="$1"
   local tmpfile; tmpfile="$(mktemp)"
-  local last_tag; last_tag="$(git -C "$PROJECT_ROOT" describe --tags --abbrev=0 2>/dev/null || echo '')"
+  local last_tag; last_tag="$(git -C "$PROJECT_ROOT" describe --tags --abbrev=0 --exclude="$version" 2>/dev/null || echo '')"
 
   local range="HEAD"
   [[ -n "$last_tag" ]] && range="${last_tag}..HEAD"
