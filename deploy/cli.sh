@@ -475,7 +475,7 @@ cmd_release() {
       [[ "$tag_local" == true ]] && where+="本地"
       [[ "$tag_local" == true && "$tag_remote" == true ]] && where+=" + "
       [[ "$tag_remote" == true ]] && where+="远程"
-      warn "  - git tag $VERSION（${where}）"
+      warn "  - git tag ${VERSION}（${where}）"
       overwrite_tag=true
     fi
     [[ "$release_exists" == true ]] && warn "  - GitHub Release $VERSION" && overwrite_release=true
