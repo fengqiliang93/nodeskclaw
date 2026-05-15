@@ -60,5 +60,6 @@ class AdvancedConfig(BaseModel):
     sidecars: list[SidecarConfig] = []
     init_containers: list[InitContainerConfig] = []
     network: NetworkConfig = NetworkConfig()
+    node_selector: dict[str, str] = {}
     custom_labels: dict[str, str] = {}
     custom_annotations: dict[str, str] = {}

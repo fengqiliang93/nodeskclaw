@@ -143,13 +143,13 @@ if [ "${SKIP_VERIFY}" = false ] && [ "${WITH_SECURITY}" = false ]; then
   log_info "验证镜像（Apple Silicon 上较慢，可用 --skip-verify 跳过）..."
   case "${ENGINE}" in
     openclaw)
-      echo "  Node.js: $(docker run --rm --platform linux/amd64 "${REGISTRY}:${IMAGE_TAG}" node --version)"
-      echo "  OpenClaw: $(docker run --rm --platform linux/amd64 "${REGISTRY}:${IMAGE_TAG}" openclaw --version 2>/dev/null || echo '(需启动后验证)')"
-      echo "  版本标记: $(docker run --rm --platform linux/amd64 "${REGISTRY}:${IMAGE_TAG}" cat /root/.openclaw-version)"
+      echo "  Node.js: $(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${REGISTRY}:${IMAGE_TAG}" -c 'node --version')"
+      echo "  OpenClaw: $(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${REGISTRY}:${IMAGE_TAG}" -c 'openclaw --version' 2>/dev/null || echo '(需启动后验证)')"
+      echo "  版本标记: $(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${REGISTRY}:${IMAGE_TAG}" -c 'cat /root/.openclaw-version')"
       ;;
     nanobot)
-      echo "  Python: $(docker run --rm --platform linux/amd64 "${REGISTRY}:${IMAGE_TAG}" python --version)"
-      echo "  Nanobot: $(docker run --rm --platform linux/amd64 "${REGISTRY}:${IMAGE_TAG}" pip show nanobot-ai 2>/dev/null | grep Version || echo '(需启动后验证)')"
+      echo "  Python: $(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${REGISTRY}:${IMAGE_TAG}" -c 'python --version')"
+      echo "  Nanobot: $(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${REGISTRY}:${IMAGE_TAG}" -c 'pip show nanobot-ai 2>/dev/null | grep Version' || echo '(需启动后验证)')"
       ;;
   esac
 fi

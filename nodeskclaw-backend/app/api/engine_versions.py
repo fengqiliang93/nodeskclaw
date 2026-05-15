@@ -25,6 +25,7 @@ async def list_versions(
     _user: User = Depends(get_current_user),
 ):
     versions = await engine_version_service.list_published(runtime, db)
+    await db.commit()
     return ApiResponse(data=[EngineVersionInfo.model_validate(v) for v in versions])
 
 
@@ -35,6 +36,7 @@ async def get_default_version(
     _user: User = Depends(get_current_user),
 ):
     ev = await engine_version_service.get_default(runtime, db)
+    await db.commit()
     data = EngineVersionInfo.model_validate(ev) if ev else None
     return ApiResponse(data=data)
 

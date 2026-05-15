@@ -18,15 +18,41 @@
     "controlUi": {
       "enabled": true,
       "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": true
+      "dangerouslyDisableDeviceAuth": true,
+      "allowedOrigins": ["*"]
     }
   },
 
   "tools": {
+    "allow": ["*"],
     "exec": {
       "security": "full",
       "ask": "off"
+    },
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "searxng",
+        "maxResults": 5,
+        "timeoutSeconds": 30
+      }
     }
+  },
+
+  "plugins": {
+    "entries": {
+      "searxng": {
+        "config": {
+          "webSearch": {
+            "baseUrl": "http://searxng-web.nodeskclaw-staging.svc.cluster.local:8080"
+          }
+        }
+      }
+    }
+  },
+
+  "browser": {
+    "noSandbox": true
   },
 
   "logging": {

@@ -620,7 +620,7 @@ cmd_init() {
   ok "Namespace $NAMESPACE 就绪"
 
   local clean_env; clean_env=$(mktemp)
-  trap 'rm -f "$clean_env" "${clean_env}.tmp"' EXIT
+  trap 'rm -f "${clean_env:-}" "${clean_env:-}.tmp"' EXIT
 
   while IFS= read -r line; do
     stripped="${line%%#*}"

@@ -1464,10 +1464,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  async function createHumanHex(workspaceId: string, userId: string, hexQ: number, hexR: number, displayColor?: string, displayName?: string) {
+  async function createHumanHex(
+    workspaceId: string,
+    userId: string,
+    hexQ: number,
+    hexR: number,
+    displayColor?: string,
+    displayName?: string,
+    channelType?: string,
+    channelConfig?: Record<string, unknown>,
+  ) {
     const payload: Record<string, unknown> = { user_id: userId, hex_q: hexQ, hex_r: hexR }
     if (displayColor) payload.display_color = displayColor
     if (displayName) payload.display_name = displayName
+    if (channelType) payload.channel_type = channelType
+    if (channelConfig) payload.channel_config = channelConfig
     await api.post(`/workspaces/${workspaceId}/human-hexes`, payload)
     await fetchTopology(workspaceId)
   }

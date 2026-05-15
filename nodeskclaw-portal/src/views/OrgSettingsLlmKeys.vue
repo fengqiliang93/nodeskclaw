@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrgStore } from '@/stores/org'
 import { Settings, Loader2, KeyRound, Check, X, Save, Plus, Trash2, ChevronDown, Zap, CheckCircle, XCircle } from 'lucide-vue-next'
@@ -37,6 +37,32 @@ interface ModelProvider {
   created_by: string
 }
 
+interface ProviderAutosyncInfo {
+  mode?: string
+  task_id?: string | null
+  scheduled_instances?: number
+  provider?: string | null
+}
+
+interface ProviderAutosyncTaskStatus {
+  task_id: string
+  org_id: string
+  provider: string
+  status: 'scheduled' | 'running' | 'completed' | 'failed'
+  scheduled_instances: number
+  success: number
+  failed: number
+  pending: number
+  started_at?: string | null
+  completed_at?: string | null
+  results: Array<{
+    instance_id: string
+    instance_slug: string
+    status: 'success' | 'failed' | 'error'
+    error?: string | null
+  }>
+}
+
 interface WpModelInfo {
   id: string
   name: string
@@ -50,6 +76,9 @@ const WP_PROVIDER_LIST = [...WP_PROVIDERS]
 
 const providers = ref<ModelProvider[]>([])
 const loading = ref(true)
+const autosyncTask = ref<ProviderAutosyncTaskStatus | null>(null)
+const autosyncPolling = ref(false)
+let autosyncPollTimer: number | null = null
 
 const showDialog = ref(false)
 const dialogProvider = ref('')
@@ -113,6 +142,79 @@ async function fetchProviders() {
   }
 }
 
+function clearAutosyncPoll() {
+  if (autosyncPollTimer != null) {
+    window.clearTimeout(autosyncPollTimer)
+    autosyncPollTimer = null
+  }
+  autosyncPolling.value = false
+}
+
+function scheduleAutosyncPoll(taskId: string, delayMs = 2000) {
+  clearAutosyncPoll()
+  autosyncPolling.value = true
+  autosyncPollTimer = window.setTimeout(() => {
+    void pollAutosyncTask(taskId)
+  }, delayMs)
+}
+
+async function pollAutosyncTask(taskId: string) {
+  if (!orgId.value) {
+    clearAutosyncPoll()
+    return
+  }
+  try {
+    const res = await api.get(`/orgs/${orgId.value}/model-providers/autosync-tasks/${taskId}`)
+    const task = res.data.data as ProviderAutosyncTaskStatus
+    autosyncTask.value = task
+
+    if (task.status === 'completed') {
+      clearAutosyncPoll()
+      toast.success(t('orgSettings.providerAutosyncCompleted', {
+        success: task.success,
+        total: task.scheduled_instances,
+      }))
+      return
+    }
+
+    if (task.status === 'failed') {
+      clearAutosyncPoll()
+      const failedMsg = task.failed > 0
+        ? t('orgSettings.providerAutosyncFailedCount', { failed: task.failed, total: task.scheduled_instances })
+        : t('orgSettings.providerAutosyncFailed')
+      toast.error(failedMsg)
+      return
+    }
+
+    scheduleAutosyncPoll(taskId)
+  } catch (e: any) {
+    clearAutosyncPoll()
+    toast.error(resolveApiErrorMessage(e) || t('orgSettings.providerAutosyncQueryFailed'))
+  }
+}
+
+function startAutosyncTracking(info?: ProviderAutosyncInfo | null) {
+  const taskId = info?.task_id
+  if (!taskId) return
+
+  autosyncTask.value = {
+    task_id: taskId,
+    org_id: orgId.value || '',
+    provider: info?.provider || '',
+    status: 'scheduled',
+    scheduled_instances: info?.scheduled_instances || 0,
+    success: 0,
+    failed: 0,
+    pending: info?.scheduled_instances || 0,
+    results: [],
+  }
+
+  toast.success(t('orgSettings.providerAutosyncStarted', {
+    count: info?.scheduled_instances || 0,
+  }))
+  scheduleAutosyncPoll(taskId, 800)
+}
+
 const wpModels = ref<Record<string, WpModelInfo[]>>({})
 const wpSelectedModels = ref<Record<string, Set<string>>>({})
 const wpSaving = ref<Record<string, boolean>>({})
@@ -164,10 +266,11 @@ async function saveAllowedModels(provider: string) {
   try {
     const selected = wpSelectedModels.value[provider]
     const allowed = selected?.size ? [...selected] : null
-    await api.patch(`/orgs/${orgId.value}/model-providers/${configured.id}`, {
+    const res = await api.patch(`/orgs/${orgId.value}/model-providers/${configured.id}`, {
       allowed_models: allowed,
     })
     toast.success(t('orgSettings.wpModelsSaved'))
+    startAutosyncTracking(res.data?.data?.autosync)
     await fetchProviders()
     initWpSelections()
   } catch (e: any) {
@@ -234,6 +337,7 @@ async function handleSave() {
   if (!orgId.value) return
   saving.value = true
   try {
+    let savedResp: any
     if (isEditing.value && editingId.value) {
       const payload: Record<string, any> = { is_active: form.value.is_active }
       if (form.value.api_key) payload.api_key = form.value.api_key
@@ -245,7 +349,7 @@ async function handleSave() {
         payload.api_type = form.value.api_type || null
         payload.label = form.value.label || null
       }
-      await api.patch(`/orgs/${orgId.value}/model-providers/${editingId.value}`, payload)
+      savedResp = await api.patch(`/orgs/${orgId.value}/model-providers/${editingId.value}`, payload)
       toast.success(t('orgSettings.llmKeysUpdated'))
     } else {
       const body: Record<string, any> = {
@@ -260,9 +364,10 @@ async function handleSave() {
         body.api_type = form.value.api_type || undefined
         body.label = form.value.label || undefined
       }
-      await api.post(`/orgs/${orgId.value}/model-providers`, body)
+      savedResp = await api.post(`/orgs/${orgId.value}/model-providers`, body)
       toast.success(t('orgSettings.llmKeysCreated'))
     }
+    startAutosyncTracking(savedResp?.data?.data?.autosync)
     showDialog.value = false
     await fetchProviders()
   } catch (e: any) {
@@ -314,6 +419,20 @@ const canSave = computed(() => {
   if (isCustomProvider(dialogProvider.value) && !form.value.base_url) return false
   return true
 })
+
+const autosyncFailedResults = computed(() => {
+  const task = autosyncTask.value
+  if (!task?.results?.length) return []
+  return task.results.filter(item => item.status !== 'success')
+})
+
+function autosyncInstanceDisplayName(item: ProviderAutosyncTaskStatus['results'][number]): string {
+  return item.instance_slug || item.instance_id || t('orgSettings.providerAutosyncUnknownInstance')
+}
+
+function autosyncErrorDisplay(item: ProviderAutosyncTaskStatus['results'][number]): string {
+  return item.error || t('orgSettings.providerAutosyncUnknownError')
+}
 
 const testing = ref(false)
 const testResult = ref<{ ok: boolean; message: string; tested_model?: string | null; latency_ms?: number | null; error_detail?: string | null } | null>(null)
@@ -374,6 +493,10 @@ onMounted(async () => {
     initWpSelections()
     await Promise.all(wpConfiguredProviders.value.map(p => fetchWpModels(p)))
   }
+})
+
+onBeforeUnmount(() => {
+  clearAutosyncPoll()
 })
 </script>
 
@@ -461,6 +584,50 @@ onMounted(async () => {
         <p class="text-sm text-muted-foreground mt-1">
           {{ isEE ? t('orgSettings.llmKeysCeDescription') : t('orgSettings.llmKeysDescription') }}
         </p>
+      </div>
+
+      <div
+        v-if="autosyncTask"
+        class="rounded-lg border px-4 py-3 text-sm"
+        :class="autosyncTask.status === 'completed'
+          ? 'border-green-500/30 bg-green-500/5 text-green-600 dark:text-green-400'
+          : autosyncTask.status === 'failed'
+            ? 'border-destructive/30 bg-destructive/5 text-destructive'
+            : 'border-blue-500/30 bg-blue-500/5 text-blue-600 dark:text-blue-400'"
+      >
+        <div class="font-medium">
+          <template v-if="autosyncTask.status === 'completed'">
+            {{ t('orgSettings.providerAutosyncCompleted', { success: autosyncTask.success, total: autosyncTask.scheduled_instances }) }}
+          </template>
+          <template v-else-if="autosyncTask.status === 'failed'">
+            {{ t('orgSettings.providerAutosyncFailedCount', { failed: autosyncTask.failed, total: autosyncTask.scheduled_instances }) }}
+          </template>
+          <template v-else>
+            {{ t('orgSettings.providerAutosyncRunning', { success: autosyncTask.success, total: autosyncTask.scheduled_instances, pending: autosyncTask.pending }) }}
+          </template>
+        </div>
+        <div class="mt-1 text-xs opacity-80">
+          task_id: {{ autosyncTask.task_id }}
+        </div>
+        <div v-if="autosyncFailedResults.length" class="mt-3 border-t border-current/15 pt-3">
+          <div class="text-xs font-medium opacity-90 mb-1.5">
+            {{ t('orgSettings.providerAutosyncFailedDetailsTitle', { failed: autosyncFailedResults.length }) }}
+          </div>
+          <ul class="space-y-1.5 text-xs">
+            <li
+              v-for="item in autosyncFailedResults"
+              :key="`${item.instance_id}:${item.status}`"
+              class="rounded border border-current/15 bg-background/60 px-2.5 py-1.5"
+            >
+              <div class="font-medium opacity-90">
+                {{ autosyncInstanceDisplayName(item) }}
+              </div>
+              <div class="opacity-80 break-words">
+                {{ autosyncErrorDisplay(item) }}
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <div v-if="loading" class="flex items-center justify-center py-12">

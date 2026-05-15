@@ -498,6 +498,14 @@ async def lifespan(app: FastAPI):
     from app.startup.proxy_reconcile import reconcile_proxy_ingresses
     await reconcile_proxy_ingresses(async_session_factory)
 
+    # ── 修复已有飞书实例的节点选择器（幂等）──
+    from app.startup.feishu_reconcile import reconcile_feishu_instances
+    await reconcile_feishu_instances(async_session_factory)
+
+    # ── 修复 OpenClaw 历史配置默认值漂移（幂等）──
+    from app.startup.openclaw_config_reconcile import reconcile_openclaw_runtime_defaults
+    await reconcile_openclaw_runtime_defaults(async_session_factory)
+
     # ── 恢复卡在 deploying 状态的实例 ─────────────────
     # 后端重启（如 --reload）会杀死 asyncio.create_task 部署管道，
     # 实例可能永远卡在 deploying。启动时从 K8s 同步真实状态。
@@ -564,7 +572,10 @@ async def lifespan(app: FastAPI):
     schedule_runner.start()
 
     # ── 启动飞书 WebSocket 长链接 ──
-    from app.services.channel_adapters.feishu_ws_client import FeishuWSClient
+    from app.services.channel_adapters.feishu_ws_client import (
+        FeishuWSClient,
+        resolve_feishu_ws_client_config,
+    )
     feishu_ws_clients: list[FeishuWSClient] = []
 
     async with async_session_factory() as db:
@@ -578,11 +589,11 @@ async def lifespan(app: FastAPI):
         )
         seen_apps: dict[str, FeishuWSClient] = {}
         for hh in hh_rows.scalars().all():
-            cfg = hh.channel_config or {}
-            if cfg.get("mode") != "websocket":
+            cfg = resolve_feishu_ws_client_config(hh.channel_config or {})
+            if not cfg:
                 continue
-            app_id = cfg.get("app_id", "")
-            app_secret = cfg.get("app_secret", "")
+            app_id = cfg["app_id"]
+            app_secret = cfg["app_secret"]
             if not app_id or not app_secret or app_id in seen_apps:
                 continue
             client = FeishuWSClient(

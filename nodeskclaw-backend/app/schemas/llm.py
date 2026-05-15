@@ -42,6 +42,34 @@ class OrgModelProviderUpdate(BaseModel):
     skip_ssl_verify: bool | None = None
 
 
+class ProviderAutosyncInfo(BaseModel):
+    mode: str = "async"
+    task_id: str | None = None
+    scheduled_instances: int = 0
+    provider: str | None = None
+
+
+class ProviderAutosyncInstanceResult(BaseModel):
+    instance_id: str
+    instance_slug: str
+    status: str
+    error: str | None = None
+
+
+class ProviderAutosyncTaskStatus(BaseModel):
+    task_id: str
+    org_id: str
+    provider: str
+    status: str
+    scheduled_instances: int
+    success: int = 0
+    failed: int = 0
+    pending: int = 0
+    started_at: str | None = None
+    completed_at: str | None = None
+    results: list[ProviderAutosyncInstanceResult] = []
+
+
 class OrgModelProviderInfo(BaseModel):
     id: str
     org_id: str
@@ -55,6 +83,7 @@ class OrgModelProviderInfo(BaseModel):
     is_active: bool
     skip_ssl_verify: bool = False
     allowed_models: list[str] | None = None
+    autosync: ProviderAutosyncInfo | None = None
     usage_total_tokens: int = 0
     created_by: str
 

@@ -52,6 +52,7 @@ interface ProviderConfig {
   personalKeyMasked: string
   hasExistingPersonalKey: boolean
   baseUrl: string
+  orgBaseUrl: string
   apiType: string
   isCustom: boolean
   showBaseUrl: boolean
@@ -152,10 +153,11 @@ async function loadAll() {
         personalKeyNew: '',
         personalKeyMasked: pk?.api_key_masked ?? c.personal_key_masked ?? '',
         hasExistingPersonalKey: !!pk,
-        baseUrl: c.base_url ?? pk?.base_url ?? '',
+        baseUrl: c.base_url ?? pk?.base_url ?? orgDetail?.base_url ?? '',
         apiType: c.api_type ?? pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
         isCustom,
-        showBaseUrl: isCustom || !!(c.base_url || pk?.base_url),
+        showBaseUrl: isCustom || !!(c.base_url || pk?.base_url || orgDetail?.base_url),
+        orgBaseUrl: orgDetail?.base_url ?? '',
         selectedModel: (c.selected_models ?? [])[0] ?? defaultModelForProvider(c.provider),
         skipSslVerify: pk?.skip_ssl_verify ?? orgDetail?.skip_ssl_verify ?? false,
       })
@@ -190,10 +192,11 @@ function addProvider(provider: string) {
     personalKeyNew: '',
     personalKeyMasked: pk?.api_key_masked ?? '',
     hasExistingPersonalKey: !!pk,
-    baseUrl: pk?.base_url ?? '',
-    apiType: pk?.api_type ?? (isCustom ? 'openai-completions' : ''),
+    baseUrl: pk?.base_url ?? orgDetail?.base_url ?? '',
+    orgBaseUrl: orgDetail?.base_url ?? '',
+    apiType: pk?.api_type ?? orgDetail?.api_type ?? (isCustom ? 'openai-completions' : ''),
     isCustom,
-    showBaseUrl: isCustom || !!pk?.base_url,
+    showBaseUrl: isCustom || !!(pk?.base_url || orgDetail?.base_url),
     selectedModel: defaultModelForProvider(provider),
     skipSslVerify: pk?.skip_ssl_verify ?? orgDetail?.skip_ssl_verify ?? false,
   })
@@ -219,6 +222,7 @@ function addCustomProvider() {
     personalKeyMasked: '',
     hasExistingPersonalKey: false,
     baseUrl: '',
+    orgBaseUrl: '',
     apiType: 'openai-completions',
     isCustom: true,
     showBaseUrl: true,
@@ -238,6 +242,7 @@ function addOrgCustomProvider(orgProvider: any) {
     personalKeyMasked: '',
     hasExistingPersonalKey: false,
     baseUrl: orgProvider.base_url || '',
+    orgBaseUrl: orgProvider.base_url || '',
     apiType: orgProvider.api_type || 'openai-completions',
     isCustom: true,
     showBaseUrl: true,
@@ -322,7 +327,7 @@ function markDirty() {
 function validateConfigs(): string | null {
   for (const cfg of providerConfigs.value) {
     const label = PROVIDER_LABELS[cfg.provider] || cfg.provider
-    if (cfg.isCustom && !cfg.baseUrl) {
+    if (cfg.isCustom && cfg.keySource !== 'org' && !cfg.baseUrl) {
       return `${label}: Base URL ${t('common.noData')}`
     }
     if (cfg.keySource === 'personal' && !isCodexProvider(cfg.provider)) {
@@ -345,6 +350,7 @@ const canSave = computed(() => {
 // ── Save ──
 
 async function handleSave() {
+  let successMessage = ''
   const validationError = validateConfigs()
   if (validationError) {
     error.value = validationError
@@ -395,7 +401,7 @@ async function handleSave() {
 
     const isPending = writeRes.data.data?.pending === true
     if (isPending) {
-      successMsg.value = t('llm.savePendingRestart')
+      successMessage = t('llm.savePendingRestart')
     }
 
     // 3. Restart runtime (force-reconfig if pending)
@@ -403,13 +409,13 @@ async function handleSave() {
     const res = await api.post(`/instances/${instanceId.value}/restart-runtime`, null, { timeout: 120000 })
     const result = res.data.data
     if (result?.status === 'ok') {
-      successMsg.value = isPending
+      successMessage = isPending
         ? t('llm.savePendingRestart')
         : '配置已保存，DeskClaw 已重启'
     } else if (result?.status === 'timeout') {
-      successMsg.value = '配置已保存，但 DeskClaw 重启超时，请检查AI 员工状态'
+      successMessage = '配置已保存，但 DeskClaw 重启超时，请检查AI 员工状态'
     } else {
-      successMsg.value = '配置已保存'
+      successMessage = '配置已保存'
       if (result?.message) {
         error.value = result.message
       }
@@ -418,6 +424,8 @@ async function handleSave() {
     dirty.value = false
     const pkRes = await api.get('/users/me/llm-keys')
     personalKeys.value = pkRes.data.data ?? []
+    await loadAll()
+    successMsg.value = successMessage
   } catch (e: any) {
     error.value = e?.response?.data?.message || '保存失败'
   } finally {

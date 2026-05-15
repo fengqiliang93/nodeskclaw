@@ -1,15 +1,22 @@
 """Channel config service: discover, read/write channel configs (runtime-aware)."""
 
+import asyncio
+import copy
 import json
 import logging
 import textwrap
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import AppException, BadRequestError
+from app.models.cluster import Cluster
 from app.models.instance import Instance
+from app.services.feishu_config import normalize_openclaw_feishu_config
 from app.services.nfs_mount import remote_fs
+from app.services.openclaw_persistence import write_persistent_config_snapshot
 from app.services.runtime.config_adapter import get_config_adapter
 from app.services.unified_channel_schema import (
     UNIFIED_CHANNEL_REGISTRY,
@@ -19,6 +26,12 @@ from app.services.unified_channel_schema import (
 logger = logging.getLogger(__name__)
 
 SYSTEM_CHANNEL_IDS = {"nodeskclaw", "learning"}
+
+OPENCLAW_FEISHU_PLATFORM_DEFAULTS: dict[str, object] = {
+    "connectionMode": "websocket",
+    "streaming": True,
+    "blockStreaming": False,
+}
 
 
 CHANNEL_LABELS: dict[str, str] = {
@@ -245,26 +258,41 @@ async def _discover_openclaw_channels(
     instance: Instance, db: AsyncSession,
 ) -> list[dict]:
     """OpenClaw-specific: Node.js exec scan of plugin directories."""
-    async with remote_fs(instance, db) as fs:
-        try:
-            if instance.compute_provider == "docker":
-                from app.services.nfs_mount import DockerFS
-                assert isinstance(fs, DockerFS)
-                raw = await fs.exec_command(["node", "-e", _DISCOVER_SCRIPT])
-            else:
-                raw = await fs._k8s.exec_in_pod(
-                    fs._ns, fs._pod,
-                    ["node", "-e", _DISCOVER_SCRIPT],
-                    container=fs._container,
-                )
-        except Exception as e:
-            logger.error("Channel discovery exec failed: %s", e)
-            raise AppException(
-                code=50200,
-                message=f"Channel 发现失败: {e}",
-                status_code=502,
-                message_key="errors.channel.discovery_failed",
-            )
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        async with remote_fs(instance, db) as fs:
+            try:
+                if instance.compute_provider == "docker":
+                    from app.services.nfs_mount import DockerFS
+                    assert isinstance(fs, DockerFS)
+                    raw = await fs.exec_command(["node", "-e", _DISCOVER_SCRIPT])
+                else:
+                    raw = await fs._k8s.exec_in_pod(
+                        fs._ns, fs._pod,
+                        ["node", "-e", _DISCOVER_SCRIPT],
+                        container=fs._container,
+                    )
+                break
+            except Exception as e:
+                last_error = e
+                transient = "Invalid response status" in str(e)
+                if transient and attempt < 3:
+                    logger.warning(
+                        "Channel discovery exec 重试 %s/3: instance=%s error=%s",
+                        attempt, instance.name, e,
+                    )
+                    await asyncio.sleep(2)
+                    continue
+                logger.error("Channel discovery exec failed: %s", e)
+                raise AppException(
+                    code=50200,
+                    message=f"Channel 发现失败: {e}",
+                    status_code=502,
+                    message_key="errors.channel.discovery_failed",
+                ) from e
+    else:
+        assert last_error is not None
+        raise last_error
 
     if not raw:
         return []
@@ -297,14 +325,301 @@ async def _discover_openclaw_channels(
 # ── Config Read / Write ───────────────────────────────────
 
 def _mask_sensitive(config: dict) -> dict:
-    """Mask sensitive fields in a channel config dict for frontend display."""
-    masked = {}
-    for k, v in config.items():
-        if k in SENSITIVE_KEYS and isinstance(v, str) and len(v) > 4:
-            masked[k] = v[:4] + "***" + v[-2:]
+    """Mask sensitive fields in channel config dict recursively for frontend display."""
+
+    def _mask_value(value):
+        if isinstance(value, dict):
+            out = {}
+            for key, item in value.items():
+                if key in SENSITIVE_KEYS and isinstance(item, str) and len(item) > 4:
+                    out[key] = item[:4] + "***" + item[-2:]
+                else:
+                    out[key] = _mask_value(item)
+            return out
+        if isinstance(value, list):
+            return [_mask_value(item) for item in value]
+        return value
+
+    return _mask_value(config)
+
+
+def _deep_merge_dict(base: dict, patch: dict) -> dict:
+    """Deep-merge dicts with patch precedence."""
+    merged = copy.deepcopy(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
         else:
-            masked[k] = v
-    return masked
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def _sync_openclaw_feishu_default_account(
+    old_native: dict,
+    new_native: dict,
+) -> dict:
+    """Keep OpenClaw Feishu multi-account config consistent when platform edits top-level fields."""
+    merged = _deep_merge_dict(old_native, new_native)
+
+    accounts = merged.get("accounts")
+    if not isinstance(accounts, dict):
+        accounts = {}
+
+    default_account = merged.get("defaultAccount")
+    if not accounts:
+        default_account = "default"
+    elif not isinstance(default_account, str) or not default_account:
+        default_account = sorted(accounts.keys())[0]
+    if not default_account:
+        default_account = "default"
+
+    account_cfg = accounts.get(default_account)
+    if not isinstance(account_cfg, dict):
+        account_cfg = {}
+
+    # Keep effective runtime credentials aligned with what platform just wrote.
+    mirror_keys = {
+        "appId",
+        "appSecret",
+        "encryptKey",
+        "verificationToken",
+        "domain",
+        "connectionMode",
+        "webhookPath",
+        "allowFrom",
+        "groupAllowFrom",
+        "groupSenderAllowFrom",
+        "groupPolicy",
+        "dmPolicy",
+        "requireMention",
+        "topicSessionMode",
+        "streaming",
+        "blockStreaming",
+    }
+    for key in mirror_keys:
+        if key in new_native:
+            account_cfg[key] = copy.deepcopy(new_native[key])
+
+    if "allowFrom" not in account_cfg:
+        account_cfg["allowFrom"] = copy.deepcopy(
+            merged.get("allowFrom", [])
+        )
+    if "groupAllowFrom" not in account_cfg:
+        account_cfg["groupAllowFrom"] = copy.deepcopy(
+            merged.get("groupAllowFrom", [])
+        )
+
+    accounts[default_account] = account_cfg
+    merged["accounts"] = accounts
+    merged["defaultAccount"] = default_account
+    return merged
+
+
+def _apply_openclaw_feishu_platform_defaults(native_cfg: dict) -> dict:
+    """Ensure OpenClaw receives explicit platform defaults for omitted Feishu policy fields."""
+    out = copy.deepcopy(native_cfg)
+    for key, value in OPENCLAW_FEISHU_PLATFORM_DEFAULTS.items():
+        out.setdefault(key, value)
+    out["streaming"] = True
+    out["blockStreaming"] = False
+    return out
+
+
+def _parse_node_selector(raw: str) -> dict[str, str]:
+    value = (raw or "").strip()
+    if not value:
+        return {}
+    if value.startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise BadRequestError(
+                message=f"FEISHU_NODE_SELECTOR JSON 解析失败: {exc}",
+                message_key="errors.channel.invalid_feishu_node_selector",
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise BadRequestError(
+                message="FEISHU_NODE_SELECTOR 必须是 JSON 对象",
+                message_key="errors.channel.invalid_feishu_node_selector",
+            )
+        return {str(k): str(v) for k, v in parsed.items() if str(k).strip()}
+
+    selector: dict[str, str] = {}
+    for item in value.split(","):
+        part = item.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise BadRequestError(
+                message=f"FEISHU_NODE_SELECTOR 格式非法: {part}",
+                message_key="errors.channel.invalid_feishu_node_selector",
+            )
+        key, val = part.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise BadRequestError(
+                message="FEISHU_NODE_SELECTOR 存在空 key",
+                message_key="errors.channel.invalid_feishu_node_selector",
+            )
+        selector[key] = val.strip()
+    return selector
+
+
+def has_openclaw_feishu_channel(config: dict) -> bool:
+    channels = config.get("channels")
+    if not isinstance(channels, dict):
+        return False
+    feishu = channels.get("feishu")
+    return isinstance(feishu, dict) and bool(feishu)
+
+
+def _selector_matches_labels(selector: dict[str, str], labels: dict[str, str]) -> bool:
+    return all(labels.get(key) == value for key, value in selector.items())
+
+
+def _extract_pv_node_name(pv) -> str | None:
+    affinity = getattr(getattr(pv, "spec", None), "node_affinity", None)
+    required = getattr(affinity, "required", None)
+    terms = getattr(required, "node_selector_terms", None) or []
+    for term in terms:
+        expressions = getattr(term, "match_expressions", None) or []
+        for expression in expressions:
+            if getattr(expression, "key", "") != "kubernetes.io/hostname":
+                continue
+            values = getattr(expression, "values", None) or []
+            if values:
+                return str(values[0])
+    return None
+
+
+async def _has_incompatible_local_pvc(
+    cluster_id: str,
+    instance: Instance,
+    selector: dict[str, str],
+    k8s,
+    node_labels: dict[tuple[str, str], dict[str, str]] | None = None,
+) -> bool:
+    claim_name = f"{instance.slug or instance.name}-root-data"
+    try:
+        pvc = await k8s.core.read_namespaced_persistent_volume_claim(claim_name, instance.namespace)
+    except Exception:
+        return False
+
+    volume_name = getattr(getattr(pvc, "spec", None), "volume_name", None)
+    if not volume_name:
+        return False
+
+    pv = await k8s.core.read_persistent_volume(volume_name)
+    node_name = _extract_pv_node_name(pv)
+    if not node_name:
+        return False
+
+    cache_key = (cluster_id, node_name)
+    labels = node_labels.get(cache_key) if node_labels is not None else None
+    if labels is None:
+        node = await k8s.core.read_node(node_name)
+        labels = dict(getattr(getattr(node, "metadata", None), "labels", None) or {})
+        if node_labels is not None:
+            node_labels[cache_key] = labels
+    return not _selector_matches_labels(selector, labels)
+
+
+async def _clear_incompatible_node_selector(
+    instance: Instance,
+    db: AsyncSession,
+    selector: dict[str, str],
+    k8s,
+) -> None:
+    advanced = json.loads(instance.advanced_config) if instance.advanced_config else {}
+    current = advanced.get("node_selector")
+    if not isinstance(current, dict):
+        current = {}
+    next_selector = {
+        key: value for key, value in current.items()
+        if selector.get(key) != value
+    }
+    if next_selector:
+        advanced["node_selector"] = next_selector
+    else:
+        advanced.pop("node_selector", None)
+    instance.advanced_config = json.dumps(advanced, ensure_ascii=False) if advanced else None
+    await db.commit()
+    await db.refresh(instance)
+
+    deploy_name = instance.slug or instance.name
+    await k8s.apps.patch_namespaced_deployment(
+        deploy_name,
+        instance.namespace,
+        {"spec": {"template": {"spec": {"nodeSelector": next_selector}}}},
+    )
+    logger.info(
+        "实例 %s 的本地盘节点与目标 Feishu selector 冲突，已清理 selector",
+        instance.name,
+    )
+
+
+async def _apply_feishu_node_selector(instance: Instance, db: AsyncSession) -> None:
+    raw_selector = settings.FEISHU_NODE_SELECTOR
+    selector = _parse_node_selector(raw_selector)
+    if not selector:
+        return
+
+    advanced = json.loads(instance.advanced_config) if instance.advanced_config else {}
+    current = advanced.get("node_selector")
+    if not isinstance(current, dict):
+        current = {}
+
+    if instance.compute_provider == "k8s":
+        cluster = (await db.execute(
+            select(Cluster).where(
+                Cluster.id == instance.cluster_id,
+                Cluster.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if cluster is not None:
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
+            if await _has_incompatible_local_pvc(
+                instance.cluster_id,
+                instance,
+                selector,
+                k8s,
+            ):
+                await _clear_incompatible_node_selector(instance, db, selector, k8s)
+                return
+
+    merged_selector = {**current, **selector}
+    if merged_selector != current:
+        advanced["node_selector"] = merged_selector
+        instance.advanced_config = json.dumps(advanced, ensure_ascii=False)
+        await db.commit()
+        await db.refresh(instance)
+
+    if instance.compute_provider != "k8s":
+        return
+
+    cluster = (await db.execute(
+        select(Cluster).where(
+            Cluster.id == instance.cluster_id,
+            Cluster.deleted_at.is_(None),
+        )
+    )).scalar_one_or_none()
+    if cluster is None:
+        return
+
+    from app.services.runtime.registries.compute_registry import require_k8s_client
+    k8s = await require_k8s_client(cluster)
+    deploy_name = instance.slug or instance.name
+    await k8s.apps.patch_namespaced_deployment(
+        deploy_name,
+        instance.namespace,
+        {"spec": {"template": {"spec": {"nodeSelector": merged_selector}}}},
+    )
+    logger.info(
+        "已应用 Feishu 节点选择器: instance=%s selector=%s",
+        instance.name,
+        merged_selector,
+    )
 
 
 async def read_channel_configs(
@@ -373,12 +688,11 @@ async def write_channel_configs(
             if not isinstance(new_cfg, dict):
                 continue
             old_native = existing_channels.get(cid)
-            if not isinstance(old_native, dict):
-                continue
-            old_canonical = adapter.translate_from_runtime(old_native, cid)
-            for k, v in new_cfg.items():
-                if isinstance(v, str) and "***" in v and k in old_canonical:
-                    new_cfg[k] = old_canonical[k]
+            if isinstance(old_native, dict):
+                old_canonical = adapter.translate_from_runtime(old_native, cid)
+                for k, v in new_cfg.items():
+                    if isinstance(v, str) and "***" in v and k in old_canonical:
+                        new_cfg[k] = old_canonical[k]
 
         system_configs = {
             cid: cfg for cid, cfg in existing_channels.items()
@@ -388,15 +702,31 @@ async def write_channel_configs(
         native_channels = {}
         for cid, cfg in channel_configs.items():
             if isinstance(cfg, dict):
-                native_channels[cid] = adapter.translate_to_runtime(cfg, cid)
+                translated = adapter.translate_to_runtime(cfg, cid)
+                if runtime == "openclaw" and cid == "feishu" and isinstance(translated, dict):
+                    translated = _apply_openclaw_feishu_platform_defaults(translated)
+                old_native = existing_channels.get(cid)
+                if isinstance(old_native, dict) and isinstance(translated, dict):
+                    if runtime == "openclaw" and cid == "feishu":
+                        native_channels[cid] = _sync_openclaw_feishu_default_account(
+                            old_native,
+                            translated,
+                        )
+                    else:
+                        native_channels[cid] = _deep_merge_dict(old_native, translated)
+                else:
+                    native_channels[cid] = translated
             else:
                 native_channels[cid] = cfg
 
         merged = {**system_configs, **native_channels}
         config = adapter.merge_channels(config, merged)
+        if runtime == "openclaw":
+            config = normalize_openclaw_feishu_config(config)
 
         try:
             await adapter.write_config(fs, config)
+            await write_persistent_config_snapshot(fs, config)
         except AppException:
             raise
         except Exception as e:
@@ -410,7 +740,14 @@ async def write_channel_configs(
     logger.info("已写入 Channel 配置: instance=%s runtime=%s channels=%s",
                 instance.name, runtime, list(channel_configs.keys()))
 
+    if runtime == "openclaw" and "feishu" in channel_configs:
+        await _apply_feishu_node_selector(instance, db)
+
     result = await adapter.restart(instance, db)
+    if runtime == "openclaw":
+        from app.services.llm_config_service import ensure_openclaw_gateway_config
+
+        await ensure_openclaw_gateway_config(instance, db)
     return result
 
 
@@ -463,18 +800,7 @@ async def deploy_repo_channel(
             )
 
         config = await adapter.read_config(fs) or {}
-        plugins = config.setdefault("plugins", {})
-        load = plugins.setdefault("load", {})
-        paths: list = load.setdefault("paths", [])
-        old_relative = f".openclaw/extensions/{dir_name}"
-        if old_relative in paths:
-            paths.remove(old_relative)
-        plugin_path = f"/root/.openclaw/extensions/{dir_name}"
-        if plugin_path not in paths:
-            paths.append(plugin_path)
-
-        entries = plugins.setdefault("entries", {})
-        entries[channel_id] = {"enabled": True}
+        config.pop("plugins", None)
         await adapter.write_config(fs, config)
 
     logger.info("已部署仓库 Channel 插件: instance=%s channel=%s",
@@ -547,18 +873,7 @@ async def upload_channel_plugin(
             await fs.write_text(f"{target_base}/{rel_path}", content)
 
         config = await adapter.read_config(fs) or {}
-        plugins = config.setdefault("plugins", {})
-        load = plugins.setdefault("load", {})
-        paths: list = load.setdefault("paths", [])
-        old_relative = f".openclaw/extensions/{plugin_id}"
-        if old_relative in paths:
-            paths.remove(old_relative)
-        plugin_path = f"/root/.openclaw/extensions/{plugin_id}"
-        if plugin_path not in paths:
-            paths.append(plugin_path)
-
-        entries = plugins.setdefault("entries", {})
-        entries[plugin_id] = {"enabled": True}
+        config.pop("plugins", None)
         await adapter.write_config(fs, config)
 
     logger.info("已部署上传 Channel 插件: instance=%s plugin=%s",

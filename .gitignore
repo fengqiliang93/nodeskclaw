@@ -63,6 +63,12 @@ pnpm-debug.log*
 # ========================
 .claude/
 !.claude/CLAUDE.md
+.playwright-mcp/
+**/.omc/
+deploy/searxng/.env
+feishu_bots.csv
+feishu_bots_latest.csv
+person_named_instances.csv
 
 # ========================
 # 编辑器 & 系统

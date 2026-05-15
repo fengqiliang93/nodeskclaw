@@ -62,6 +62,52 @@ _CHANNEL_PLUGIN_PATHS: dict[str, str] = {
     "learning": "/root/.openclaw/extensions/openclaw-channel-learning",
 }
 
+NODESKCLAW_TOOL_NAMES = (
+    "nodeskclaw_blackboard",
+    "nodeskclaw_topology",
+    "nodeskclaw_performance",
+    "nodeskclaw_proposals",
+    "nodeskclaw_gene_discovery",
+    "nodeskclaw_file_download",
+    "nodeskclaw_chat_history",
+    "nodeskclaw_shared_files",
+)
+
+DEFAULT_SEARXNG_BASE_URL = "http://searxng-web.nodeskclaw-staging.svc.cluster.local:8080"
+
+
+def ensure_tools_allow_full_default(config: dict) -> dict:
+    """Default OpenClaw tool permission to full when config is legacy/minimal.
+
+    We only upgrade known legacy states to avoid overriding deliberate custom
+    restrictions:
+    - tools.allow missing / empty
+    - tools.allow == ["exec"] (legacy minimal profile)
+    - tools.allow contains only NoDeskClaw optional tools (pre-full migration)
+    """
+    tools = config.setdefault("tools", {})
+    allow = tools.get("allow")
+    if not isinstance(allow, list):
+        tools["allow"] = ["*"]
+        return config
+
+    normalized = [str(item).strip() for item in allow if str(item).strip()]
+    if "*" in normalized:
+        tools["allow"] = ["*"]
+        return config
+
+    allow_set = set(normalized)
+    if (
+        not allow_set
+        or allow_set == {"exec"}
+        or allow_set.issubset(set(NODESKCLAW_TOOL_NAMES))
+    ):
+        tools["allow"] = ["*"]
+        return config
+
+    tools["allow"] = normalized
+    return config
+
 
 def ensure_channel_plugin_integrity(config: dict) -> dict:
     """If a channel plugin section exists in *channels*, guarantee the
@@ -94,6 +140,27 @@ def ensure_channel_plugin_integrity(config: dict) -> dict:
     return config
 
 
+def ensure_nodeskclaw_tool_allow(config: dict) -> dict:
+    """When the NoDeskClaw channel is enabled, keep its optional tools enabled too."""
+    channels = config.get("channels")
+    if not isinstance(channels, dict) or "nodeskclaw" not in channels:
+        return config
+
+    tools = config.setdefault("tools", {})
+    allow = tools.get("allow")
+    if not isinstance(allow, list):
+        allow = []
+
+    existing = {str(item) for item in allow}
+    for tool_name in NODESKCLAW_TOOL_NAMES:
+        if tool_name not in existing:
+            allow.append(tool_name)
+            existing.add(tool_name)
+
+    tools["allow"] = allow
+    return config
+
+
 def ensure_exec_security(config: dict) -> dict:
     """Enforce headless exec policy: security=full + ask=off.
 
@@ -105,4 +172,34 @@ def ensure_exec_security(config: dict) -> dict:
     exec_cfg = tools.setdefault("exec", {})
     exec_cfg["security"] = "full"
     exec_cfg["ask"] = "off"
+    return config
+
+
+def ensure_browser_no_sandbox(config: dict) -> dict:
+    """Enforce browser.noSandbox=true for root/container runtimes."""
+    browser = config.setdefault("browser", {})
+    browser["noSandbox"] = True
+    return config
+
+
+def ensure_searxng_web_search(config: dict, base_url: str | None = None) -> dict:
+    """Enforce OpenClaw web_search to use the self-hosted SearXNG provider."""
+    resolved_base_url = (base_url or DEFAULT_SEARXNG_BASE_URL).strip()
+    if not resolved_base_url:
+        return config
+
+    plugins = config.setdefault("plugins", {})
+    entries = plugins.setdefault("entries", {})
+    searxng = entries.setdefault("searxng", {})
+    searxng_cfg = searxng.setdefault("config", {})
+    web_search_cfg = searxng_cfg.setdefault("webSearch", {})
+    web_search_cfg["baseUrl"] = resolved_base_url
+
+    tools = config.setdefault("tools", {})
+    web_cfg = tools.setdefault("web", {})
+    search_cfg = web_cfg.setdefault("search", {})
+    search_cfg["enabled"] = True
+    search_cfg["provider"] = "searxng"
+    search_cfg.setdefault("maxResults", 5)
+    search_cfg.setdefault("timeoutSeconds", 30)
     return config

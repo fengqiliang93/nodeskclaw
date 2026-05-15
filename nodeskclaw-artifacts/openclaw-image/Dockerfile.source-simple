@@ -1,0 +1,92 @@
+# syntax=docker/dockerfile:1.7
+#
+# OpenClaw 源码构建简化版
+# 1. 先用 npm 安装官方发布版（确保可运行）
+# 2. 复制源码覆盖（支持自定义修改）
+#
+ARG NODE_VERSION=22
+
+FROM node:${NODE_VERSION}-bookworm-slim
+
+ARG IMAGE_VERSION="dev"
+ARG OPENCLAW_SOURCE_PATH="./openclaw"
+ARG NPM_REGISTRY=""
+
+LABEL org.opencontainers.image.title="OpenClaw DeskClaw Edition (Source Build)" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.description="OpenClaw AI Agent Platform - Source Build for DeskClaw"
+
+WORKDIR /root
+
+# 系统环境配置
+ENV TZ=Asia/Shanghai \
+    DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    OPENCLAW_HOME="/root/.openclaw" \
+    OPENCLAW_INSTALL_DIR="/opt/openclaw"
+
+# 配置时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# 安装系统依赖
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      git openssh-client ca-certificates \
+      curl wget \
+      python3 python3-pip \
+      jq procps && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages requests
+
+# 步骤 1: 先安装官方发布版 OpenClaw（确保可运行）
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && \
+    npm install -g openclaw@latest && \
+    openclaw --version 2>&1 | head -1
+
+# 步骤 2: 复制源码覆盖（支持自定义修改）
+COPY ${OPENCLAW_SOURCE_PATH} ${OPENCLAW_INSTALL_DIR}/src/
+
+# 步骤 3: 创建源码启动的 wrapper（保留官方安装的 bin）
+RUN echo '#!/bin/sh' > /usr/local/bin/openclaw-src && \
+    echo "cd ${OPENCLAW_INSTALL_DIR}/src && exec node bin/openclaw.js \"\$@\"" >> /usr/local/bin/openclaw-src && \
+    chmod +x /usr/local/bin/openclaw-src
+
+# 创建 OpenClaw 目录结构
+RUN mkdir -p ${OPENCLAW_HOME}/agents/main/sessions \
+             ${OPENCLAW_HOME}/config \
+             ${OPENCLAW_HOME}/credentials \
+             ${OPENCLAW_HOME}/extensions \
+             ${OPENCLAW_HOME}/workspace \
+             ${OPENCLAW_HOME}/memory \
+             ${OPENCLAW_HOME}/data \
+             ${OPENCLAW_HOME}/temp \
+             ${OPENCLAW_HOME}/canvas \
+             ${OPENCLAW_HOME}/devices \
+             ${OPENCLAW_HOME}/identity \
+             ${OPENCLAW_HOME}/cron \
+             ${OPENCLAW_HOME}/skills
+
+# 复制配置模板和脚本
+COPY openclaw-image/openclaw.json.template ${OPENCLAW_HOME}/openclaw.json.template
+COPY openclaw-image/repair-sessions-index.js /repair-sessions-index.js
+COPY openclaw-image/repair-user-data.js /repair-user-data.js
+COPY openclaw-image/docker-entrypoint.sh /docker-entrypoint.sh
+COPY openclaw-image/init-container.sh /init-container.sh
+RUN chmod +x /docker-entrypoint.sh /init-container.sh
+
+# 版本标记
+RUN echo "${IMAGE_VERSION}" > /root/.openclaw-version
+
+# 运行配置
+WORKDIR /root
+EXPOSE 18789 9721
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import asyncio
 import hashlib
 import json
@@ -15,7 +16,12 @@ from urllib.parse import urlparse as _urlparse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_nodeskclaw_webhook_base_url, settings
+from app.core.config import (
+    get_agent_api_base_url,
+    get_nodeskclaw_webhook_base_url,
+    get_tunnel_base_url,
+    settings,
+)
 from app.core.exceptions import AppException, BadRequestError
 from app.models.base import not_deleted
 from app.models.cluster import Cluster
@@ -24,11 +30,23 @@ from app.models.instance_provider_config import InstanceProviderConfig
 from app.models.org_llm_key import OrgModelProvider
 from app.models.user_llm_key import UserLlmKey
 from app.schemas.llm import OpenClawConfigResponse, OpenClawProviderEntry
+from app.services.feishu_config import normalize_openclaw_feishu_config
 from app.services.codex_provider import is_codex_provider, mask_personal_key, normalize_selected_models
 from app.services.k8s.client_manager import k8s_manager
 from app.services.k8s.k8s_client import K8sClient
 from app.services.nfs_mount import NFSMountError, RemoteFS, remote_fs
-from app.utils.jsonc import ensure_exec_security, strip_jsonc
+from app.services.openclaw_persistence import write_persistent_config_snapshot
+from app.utils.jsonc import (
+    DEFAULT_SEARXNG_BASE_URL,
+    NODESKCLAW_TOOL_NAMES,
+    ensure_browser_no_sandbox,
+    ensure_channel_plugin_integrity,
+    ensure_exec_security,
+    ensure_nodeskclaw_tool_allow,
+    ensure_searxng_web_search,
+    ensure_tools_allow_full_default,
+    strip_jsonc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +71,11 @@ PROVIDER_API_TYPE: dict[str, str] = {
     "minimax-anthropic": "anthropic-messages",
 }
 
+OPENCLAW_API_TYPE_ALIASES: dict[str, str] = {
+    "openai": "openai-completions",
+}
+
 TRUSTED_PROXY_CIDRS = ["10.0.0.0/8", "100.64.0.0/10", "192.168.0.0/16"]
-NODESKCLAW_TOOL_NAMES = (
-    "nodeskclaw_blackboard",
-    "nodeskclaw_topology",
-    "nodeskclaw_performance",
-    "nodeskclaw_proposals",
-    "nodeskclaw_gene_discovery",
-    "nodeskclaw_file_download",
-    "nodeskclaw_chat_history",
-    "nodeskclaw_shared_files",
-)
 
 
 def _k8s_name(instance: Instance) -> str:
@@ -94,6 +106,9 @@ def _build_providers_config(
         provider = cfg.provider
         cfg_base_url = getattr(cfg, "base_url", None)
         cfg_api_type = getattr(cfg, "api_type", None)
+        resolved_api_type = _normalize_openclaw_api_type(
+            cfg_api_type or PROVIDER_API_TYPE.get(provider)
+        )
         if is_codex_provider(provider):
             assert proxy_url, "LLM_PROXY_URL must be set (checked at startup)"
             entry = {
@@ -105,13 +120,26 @@ def _build_providers_config(
             if not uk:
                 logger.warning("个人 Key 缺失，跳过 provider=%s", provider)
                 continue
-            entry: dict = {
-                "baseUrl": cfg_base_url or uk.base_url or PROVIDER_BASE_URLS.get(provider, ""),
-                "apiKey": uk.api_key,
-            }
+
+            # 个人 Key 也统一走 LLM Proxy，避免实例 Pod 直连外部/内网模型网关导致网络不可达。
+            # 仅在 proxy_url 缺失时回退到历史直连行为，以兼容旧环境。
+            if proxy_url:
+                api_type = _normalize_openclaw_api_type(
+                    cfg_api_type or uk.api_type or PROVIDER_API_TYPE.get(provider)
+                )
+                skip_v1 = api_type in ("anthropic-messages", "google-generative-ai")
+                entry = {
+                    "baseUrl": f"{proxy_url}/{provider}" if skip_v1 else f"{proxy_url}/{provider}/v1",
+                    "apiKey": wp_api_key,
+                }
+            else:
+                entry = {
+                    "baseUrl": cfg_base_url or uk.base_url or PROVIDER_BASE_URLS.get(provider, ""),
+                    "apiKey": uk.api_key,
+                }
         else:
             assert proxy_url, "LLM_PROXY_URL must be set (checked at startup)"
-            api_type = cfg_api_type or PROVIDER_API_TYPE.get(provider)
+            api_type = resolved_api_type
             skip_v1 = api_type in ("anthropic-messages", "google-generative-ai")
             entry = {
                 "baseUrl": f"{proxy_url}/{provider}" if skip_v1 else f"{proxy_url}/{provider}/v1",
@@ -120,15 +148,32 @@ def _build_providers_config(
 
         uk = user_keys.get(provider)
         ok = org_keys.get(provider)
-        api_type = cfg_api_type or PROVIDER_API_TYPE.get(provider) or (uk.api_type if uk else None) or (ok.api_type if ok else None)
+        api_type = _normalize_openclaw_api_type(
+            cfg_api_type
+            or PROVIDER_API_TYPE.get(provider)
+            or (uk.api_type if uk else None)
+            or (ok.api_type if ok else None)
+        )
         if api_type:
             entry["api"] = api_type
 
-        selected_models = normalize_selected_models(provider, cfg.selected_models)
-        entry["models"] = _to_openclaw_models(selected_models) if selected_models else []
+        selected_models = normalize_selected_models(provider, cfg.selected_models) or []
+        allowed_models = []
+        if cfg.key_source == "org" and ok:
+            allowed_models = _normalize_allowed_models(ok.allowed_models)
+
+        merged_models = _merge_models(selected_models, allowed_models)
+        entry["models"] = _to_openclaw_models(merged_models) if merged_models else []
 
         providers[provider] = entry
     return providers
+
+
+def _normalize_openclaw_api_type(api_type: str | None) -> str | None:
+    if not api_type:
+        return None
+    normalized = OPENCLAW_API_TYPE_ALIASES.get(api_type, api_type)
+    return normalized.strip() or None
 
 
 def _docker_rewrite_urls(providers: dict) -> dict:
@@ -158,6 +203,62 @@ def _to_openclaw_models(selected: list[dict]) -> list[dict]:
     return result
 
 
+def _normalize_allowed_models(allowed_models: list | None) -> list[dict]:
+    """Normalize org allowed_models to selected_models-like dict list."""
+    if not allowed_models:
+        return []
+
+    normalized: list[dict] = []
+    for item in allowed_models:
+        if isinstance(item, str):
+            model_id = item.strip()
+            if model_id:
+                normalized.append({"id": model_id, "name": model_id})
+            continue
+
+        if not isinstance(item, dict):
+            continue
+
+        model_id = str(item.get("id") or item.get("name") or "").strip()
+        if not model_id:
+            continue
+
+        model: dict = {
+            "id": model_id,
+            "name": str(item.get("name") or model_id),
+        }
+        context_window = item.get("context_window")
+        if context_window is None:
+            context_window = item.get("contextWindow")
+        if context_window:
+            model["context_window"] = context_window
+
+        max_tokens = item.get("max_tokens")
+        if max_tokens is None:
+            max_tokens = item.get("maxTokens")
+        if max_tokens:
+            model["max_tokens"] = max_tokens
+
+        normalized.append(model)
+
+    return normalized
+
+
+def _merge_models(selected_models: list[dict], allowed_models: list[dict]) -> list[dict]:
+    """Merge model lists by id, keeping selected model metadata first."""
+    merged: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for model in selected_models + allowed_models:
+        model_id = str(model.get("id") or "").strip()
+        if not model_id or model_id in seen_ids:
+            continue
+        merged.append(model)
+        seen_ids.add(model_id)
+
+    return merged
+
+
 async def _get_running_pod(k8s: K8sClient, instance: Instance) -> str | None:
     """Find a running Pod for the instance (only used by restart_runtime for kill)."""
     label_selector = f"app.kubernetes.io/name={_k8s_name(instance)}"
@@ -185,7 +286,8 @@ def _ensure_gateway_config(config: dict, instance: Instance) -> None:
     - gateway.auth.rateLimit: brute-force auth mitigation for non-loopback binds
     - gateway.trustedProxies: Ingress Controller IPs for header forwarding
     - gateway.controlUi.dangerouslyDisableDeviceAuth: skip device identity pairing
-    - gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback: version-aware preserve
+    - gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback: allow Host-header origin fallback
+    - gateway.controlUi.allowedOrigins: include "*" for LAN/non-loopback access
     """
     if "gateway" not in config:
         config["gateway"] = {}
@@ -203,11 +305,47 @@ def _ensure_gateway_config(config: dict, instance: Instance) -> None:
     if "trustedProxies" not in gw:
         gw["trustedProxies"] = list(TRUSTED_PROXY_CIDRS)
 
+    http_cfg = gw.setdefault("http", {})
+    endpoints = http_cfg.setdefault("endpoints", {})
+    endpoints["chatCompletions"] = {"enabled": True}
+
     control_ui = gw.setdefault("controlUi", {})
     control_ui["dangerouslyDisableDeviceAuth"] = True
-    if "dangerouslyAllowHostHeaderOriginFallback" in control_ui:
-        control_ui["dangerouslyAllowHostHeaderOriginFallback"] = True
+    control_ui["dangerouslyAllowHostHeaderOriginFallback"] = True
 
+    allowed_origins = control_ui.get("allowedOrigins")
+    if not isinstance(allowed_origins, list):
+        allowed_origins = []
+        control_ui["allowedOrigins"] = allowed_origins
+    if "*" not in allowed_origins:
+        allowed_origins.insert(0, "*")
+
+
+def _ensure_nodeskclaw_channel_config(config: dict, instance: Instance) -> None:
+    """Ensure nodeskclaw channel config is in openclaw.json for tunnel health check.
+
+    The tunnel client reads from `channels.nodeskclaw.accounts.default` to establish
+    the WebSocket connection to DeskClaw backend, which is used for health checking.
+    """
+    from app.core.config import settings
+
+    channels = config.setdefault("channels", {})
+    nodeskclaw = channels.setdefault("nodeskclaw", {})
+    accounts = nodeskclaw.setdefault("accounts", {})
+    default = accounts.setdefault("default", {})
+
+    api_url = get_agent_api_base_url().rstrip("/")
+    if instance.compute_provider == "docker":
+        api_url = _docker_rewrite_url(api_url)
+    # Use slug for instanceId to match what container's NODESKCLAW_INSTANCE_ID env var sends
+    # The tunnel adapter supports both id and slug lookup
+    default["instanceId"] = str(instance.slug or instance.id)
+    default["apiToken"] = instance.proxy_token or ""
+    default["apiUrl"] = api_url
+    # workspaceId is required for `configured` check in channel plugin
+    default["workspaceId"] = "default"
+
+    nodeskclaw["enabled"] = True
 
 def _set_default_agent_model(config: dict, providers: dict) -> None:
     """Set agents.defaults.model.primary from the first configured provider/model.
@@ -264,11 +402,22 @@ async def _read_config_file(fs: RemoteFS) -> dict | None:
 
 async def _write_config_file(fs: RemoteFS, data: dict) -> None:
     """Write openclaw.json to Pod via exec."""
+    data = normalize_openclaw_feishu_config(data)
+    gateway = data.setdefault("gateway", {})
+    http_cfg = gateway.setdefault("http", {})
+    endpoints = http_cfg.setdefault("endpoints", {})
+    endpoints["chatCompletions"] = {"enabled": True}
+    ensure_tools_allow_full_default(data)
+    ensure_nodeskclaw_tool_allow(data)
     ensure_exec_security(data)
+    ensure_browser_no_sandbox(data)
+    ensure_searxng_web_search(data, DEFAULT_SEARXNG_BASE_URL)
+    ensure_channel_plugin_integrity(data)
     await fs.write_text(
         str(OPENCLAW_CONFIG_REL),
         json.dumps(data, indent=2, ensure_ascii=False),
     )
+    await write_persistent_config_snapshot(fs, data)
 
 
 async def read_openclaw_providers(
@@ -389,7 +538,7 @@ async def read_instance_llm_configs(
     )
     user_keys = {k.provider: k for k in user_keys_result.scalars().all()}
 
-    all_providers = set(ipc_map.keys()) if ipc_map else org_providers
+    all_providers = set(ipc_map.keys()) | org_providers
 
     entries: list[dict] = []
     for provider in sorted(all_providers):
@@ -527,6 +676,7 @@ async def write_instance_llm_configs(
             existing_json["models"]["providers"] = providers
 
             _ensure_gateway_config(existing_json, instance)
+            _ensure_nodeskclaw_channel_config(existing_json, instance)
             if "codex" in providers:
                 existing_json["gateway"].setdefault("mode", "local")
             _set_default_agent_model(existing_json, providers)
@@ -578,7 +728,7 @@ async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None
     org_providers = set(org_keys.keys())
 
     configs: list = list(ipc_list)
-    for provider in (org_providers - ipc_providers) if not ipc_list else []:
+    for provider in (org_providers - ipc_providers):
         configs.append(SimpleNamespace(
             provider=provider,
             key_source="org",
@@ -643,6 +793,7 @@ async def sync_openclaw_llm_config(instance: Instance, db: AsyncSession) -> None
         existing_json["models"]["providers"] = providers
 
         _ensure_gateway_config(existing_json, instance)
+        _ensure_nodeskclaw_channel_config(existing_json, instance)
         if "codex" in providers:
             existing_json["gateway"].setdefault("mode", "local")
         _set_default_agent_model(existing_json, providers)
@@ -660,20 +811,35 @@ async def ensure_openclaw_gateway_config(instance: Instance, db: AsyncSession) -
     Called after deployment succeeds to fix the case where the entrypoint
     skips config generation because the file already exists.
     """
-    try:
-        async with remote_fs(instance, db) as fs:
-            try:
-                existing = await _read_config_file(fs)
-            except ValueError as e:
-                logger.warning("ensure_gateway_config: 解析失败 %s", e)
-                return
-            if existing is None:
-                existing = {}
-            _ensure_gateway_config(existing, instance)
-            await _write_config_file(fs, existing)
-        logger.info("已注入 gateway 配置: instance=%s", instance.name)
-    except Exception as e:
-        logger.warning("注入 gateway 配置失败（非致命）: %s", e)
+    for attempt in range(1, 4):
+        try:
+            plugin_source = _get_plugin_source_dir()
+            async with remote_fs(instance, db) as fs:
+                await _deploy_plugin_files(fs, plugin_source)
+
+                try:
+                    existing = await _read_config_file(fs)
+                except ValueError as e:
+                    logger.warning("ensure_gateway_config: 解析失败 %s", e)
+                    return
+                if existing is None:
+                    existing = {}
+                _ensure_gateway_config(existing, instance)
+                _ensure_nodeskclaw_channel_config(existing, instance)
+                await _write_config_file(fs, existing)
+            logger.info("已注入 gateway 配置和 channel plugin: instance=%s", instance.name)
+            return
+        except Exception as e:
+            transient = "Invalid response status" in str(e)
+            if transient and attempt < 3:
+                logger.warning(
+                    "ensure_openclaw_gateway_config 重试 %s/3: instance=%s error=%s",
+                    attempt, instance.name, e,
+                )
+                await asyncio.sleep(2)
+                continue
+            logger.warning("注入 gateway 配置失败（非致命）: %s", e)
+            return
 
 
 CHANNEL_PLUGIN_DIR = "openclaw-channel-nodeskclaw"
@@ -741,7 +907,7 @@ def _docker_rewrite_url(url: str) -> str:
 
 def _make_account_entry(instance: Instance, workspace_id: str) -> dict:
     """Build a single nodeskclaw account entry for a workspace."""
-    api_url = settings.AGENT_API_BASE_URL
+    api_url = get_agent_api_base_url()
     if instance.compute_provider == "docker":
         api_url = _docker_rewrite_url(api_url)
     elif instance.compute_provider == "k8s":
@@ -773,8 +939,8 @@ def _inject_channel_config(
     if "channels" not in config:
         config["channels"] = {}
     ch = config["channels"].setdefault("nodeskclaw", {})
-    if settings.TUNNEL_BASE_URL:
-        tunnel_url = settings.TUNNEL_BASE_URL
+    tunnel_url = get_tunnel_base_url()
+    if tunnel_url:
         if instance.compute_provider == "docker":
             tunnel_url = _docker_rewrite_url(tunnel_url)
         ch["tunnelUrl"] = tunnel_url
@@ -783,29 +949,10 @@ def _inject_channel_config(
     accounts[workspace_id] = entry
     accounts["default"] = entry
 
-    plugins = config.setdefault("plugins", {})
-    load = plugins.setdefault("load", {})
-    paths = load.setdefault("paths", [])
-    old_relative = f".openclaw/extensions/{CHANNEL_PLUGIN_DIR}"
-    if old_relative in paths:
-        paths.remove(old_relative)
-    plugin_path = f"/root/.openclaw/extensions/{CHANNEL_PLUGIN_DIR}"
-    if plugin_path not in paths:
-        paths.append(plugin_path)
-
-    entries = plugins.setdefault("entries", {})
-    entries["nodeskclaw"] = {"enabled": True}
-
     gw = config.setdefault("gateway", {})
     http_cfg = gw.setdefault("http", {})
     endpoints = http_cfg.setdefault("endpoints", {})
     endpoints["chatCompletions"] = {"enabled": True}
-
-    tools_cfg = config.setdefault("tools", {})
-    allow = tools_cfg.setdefault("allow", [])
-    for tool_name in NODESKCLAW_TOOL_NAMES:
-        if tool_name not in allow:
-            allow.append(tool_name)
 
     skills = config.setdefault("skills", {})
     s_load = skills.setdefault("load", {})
@@ -866,12 +1013,6 @@ async def add_workspace_channel_account(
         entry = _make_account_entry(instance, workspace_id)
         accounts[workspace_id] = entry
         accounts["default"] = entry
-
-        tools_cfg = existing.setdefault("tools", {})
-        allow = tools_cfg.setdefault("allow", [])
-        for tool_name in NODESKCLAW_TOOL_NAMES:
-            if tool_name not in allow:
-                allow.append(tool_name)
 
         _ensure_gateway_config(existing, instance)
         await _write_config_file(fs, existing)
@@ -1008,18 +1149,6 @@ def _inject_learning_channel_config(
         }
     }
 
-    plugins = config.setdefault("plugins", {})
-    load = plugins.setdefault("load", {})
-    paths = load.setdefault("paths", [])
-    old_relative = f".openclaw/extensions/{LEARNING_PLUGIN_DIR}"
-    if old_relative in paths:
-        paths.remove(old_relative)
-    plugin_path = f"/root/.openclaw/extensions/{LEARNING_PLUGIN_DIR}"
-    if plugin_path not in paths:
-        paths.append(plugin_path)
-
-    entries = plugins.setdefault("entries", {})
-    entries["learning"] = {"enabled": True}
 
 
 async def deploy_learning_channel_plugin(
@@ -1085,18 +1214,7 @@ async def _deploy_dingtalk_plugin_files(fs: RemoteFS, plugin_source: Path) -> No
 
 
 def _inject_dingtalk_plugin_path(config: dict) -> None:
-    plugins = config.setdefault("plugins", {})
-    load = plugins.setdefault("load", {})
-    paths = load.setdefault("paths", [])
-    old_relative = f".openclaw/extensions/{DINGTALK_PLUGIN_DIR}"
-    if old_relative in paths:
-        paths.remove(old_relative)
-    plugin_path = f"/root/.openclaw/extensions/{DINGTALK_PLUGIN_DIR}"
-    if plugin_path not in paths:
-        paths.append(plugin_path)
-
-    entries = plugins.setdefault("entries", {})
-    entries["dingtalk"] = {"enabled": True}
+    config.pop("plugins", None)
 
 
 async def deploy_dingtalk_channel_plugin(
@@ -1290,8 +1408,18 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
     4. Clear llm_config_pending flag
     """
     if instance.runtime == "openclaw":
+        preserved_channels: dict | None = None
         try:
             async with remote_fs(instance, db) as fs:
+                try:
+                    current_config = await _read_config_file(fs)
+                except Exception:
+                    current_config = None
+                if isinstance(current_config, dict):
+                    channels = current_config.get("channels")
+                    if isinstance(channels, dict) and channels:
+                        preserved_channels = copy.deepcopy(channels)
+
                 updated = await _sync_stale_plugins(fs, instance)
                 if updated:
                     logger.info(
@@ -1340,6 +1468,27 @@ async def restart_runtime(instance: Instance, db: AsyncSession) -> dict:
 
     result = await _poll_pod_ready(k8s, instance.namespace, deploy_name)
     if result:
+        if instance.runtime == "openclaw":
+            try:
+                await _restore_openclaw_runtime_assets(instance, db)
+            except Exception as e:
+                logger.warning(
+                    "restart_runtime: 恢复 LLM 配置失败（不阻断重启）: instance=%s error=%s",
+                    instance.name, e,
+                )
+            if preserved_channels:
+                try:
+                    async with remote_fs(instance, db) as fs:
+                        current_config = await _read_config_file(fs) or {}
+                        if not isinstance(current_config, dict):
+                            current_config = {}
+                        current_config["channels"] = preserved_channels
+                        await _write_config_file(fs, current_config)
+                except Exception as e:
+                    logger.warning(
+                        "restart_runtime: 恢复 channels 失败（不阻断重启）: instance=%s error=%s",
+                        instance.name, e,
+                    )
         logger.info("实例 %s Runtime 重启完成 (via %s)", instance.name, restarted_via)
         return {"status": "ok", "message": "重启完成"}
 
@@ -1359,6 +1508,28 @@ async def _poll_pod_ready(
             ):
                 return True
     return False
+
+
+async def _restore_openclaw_runtime_assets(
+    instance: Instance, db: AsyncSession, retries: int = 4,
+) -> None:
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            await ensure_openclaw_gateway_config(instance, db)
+            await sync_openclaw_llm_config(instance, db)
+            return
+        except Exception as e:
+            last_error = e
+            if attempt >= retries:
+                break
+            logger.warning(
+                "restore_openclaw_runtime_assets 重试 %s/%s: instance=%s error=%s",
+                attempt, retries, instance.name, e,
+            )
+            await asyncio.sleep(3)
+    assert last_error is not None
+    raise last_error
 
 
 async def _restart_with_force_reconfig(
@@ -1402,6 +1573,14 @@ async def _restart_with_force_reconfig(
     if not await _poll_pod_ready(k8s, ns, deploy_name):
         logger.error("force-reconfig Phase 3 超时: 第二次 restart 后 Pod 未就绪")
         return {"status": "timeout", "message": "配置恢复超时（Phase 3: 重启未完成），请检查实例状态"}
+
+    try:
+        await _restore_openclaw_runtime_assets(instance, db)
+    except Exception as e:
+        logger.warning(
+            "force-reconfig: 重启后恢复插件/LLM 配置失败（不阻断）: instance=%s error=%s",
+            instance.name, e,
+        )
 
     # Phase 4: clear pending flag
     instance.llm_config_pending = False
@@ -1454,7 +1633,7 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
     )
     instances = list(inst_result.scalars().all())
 
-    new_api_url = settings.AGENT_API_BASE_URL
+    new_api_url = get_agent_api_base_url()
     repaired = []
     skipped = []
     failed = []
@@ -1510,13 +1689,6 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
                 for key, acct in list(accounts.items()):
                     if isinstance(acct, dict) and acct.get("apiUrl") != new_api_url:
                         acct["apiUrl"] = new_api_url
-                        changed = True
-
-                tools_cfg = config.setdefault("tools", {})
-                allow = tools_cfg.setdefault("allow", [])
-                for tool_name in NODESKCLAW_TOOL_NAMES:
-                    if tool_name not in allow:
-                        allow.append(tool_name)
                         changed = True
 
                 if changed:

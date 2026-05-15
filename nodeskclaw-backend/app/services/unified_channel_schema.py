@@ -69,9 +69,9 @@ UNIFIED_CHANNEL_REGISTRY: dict[str, ChannelDefinition] = {
             ),
             FieldDef(
                 key="dmPolicy", label="DM Policy（私聊策略）", type="select",
-                required=False, default="open",
+                required=False, default="pairing",
                 options=(
-                    {"value": "open", "label": "open（所有人可用）"},
+                    {"value": "open", "label": "open（开放）"},
                     {"value": "pairing", "label": "pairing（需配对）"},
                     {"value": "allowlist", "label": "allowlist（白名单）"},
                 ),
@@ -79,18 +79,22 @@ UNIFIED_CHANNEL_REGISTRY: dict[str, ChannelDefinition] = {
             ),
             FieldDef(
                 key="groupPolicy", label="Group Policy（群聊策略）", type="select",
-                required=False, default="open",
+                required=False, default="allowlist",
                 options=(
                     {"value": "open", "label": "open（开放）"},
-                    {"value": "mention", "label": "mention（需@提及）"},
                     {"value": "allowlist", "label": "allowlist（白名单）"},
                     {"value": "disabled", "label": "disabled（禁用群聊）"},
                 ),
                 runtime_key={"openclaw": "groupPolicy", "nanobot": "groupPolicy"},
             ),
             FieldDef(
+                key="groupAllowFrom", label="Group Allow From（允许群组）", type="string_list",
+                required=False,
+                runtime_key={"openclaw": "groupAllowFrom"},
+            ),
+            FieldDef(
                 key="requireMention", label="Require Mention（需@提及）", type="boolean",
-                required=False, default=False,
+                required=False, default=True,
                 runtime_key={"openclaw": "requireMention"},
             ),
             FieldDef(
@@ -101,6 +105,16 @@ UNIFIED_CHANNEL_REGISTRY: dict[str, ChannelDefinition] = {
                     {"value": "enabled", "label": "enabled"},
                 ),
                 runtime_key={"openclaw": "topicSessionMode"},
+            ),
+            FieldDef(
+                key="streaming", label="Streaming（流式回复）", type="boolean",
+                required=False, default=True,
+                runtime_key={"openclaw": "streaming"},
+            ),
+            FieldDef(
+                key="blockStreaming", label="Block Streaming（分段流式）", type="boolean",
+                required=False, default=False,
+                runtime_key={"openclaw": "blockStreaming"},
             ),
             FieldDef(
                 key="encryptKey", label="Encrypt Key（事件加密密钥）", type="password",

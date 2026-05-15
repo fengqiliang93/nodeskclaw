@@ -107,3 +107,4 @@ class InstanceDetail(InstanceInfo):
     pods: list[PodInfo] = []
     service_info: ServiceInfo | None = None
     events: list[K8sEvent] = []
+    nodeport_url: str | None = None

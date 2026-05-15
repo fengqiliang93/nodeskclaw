@@ -1,5 +1,6 @@
 """Corridor API — CorridorHex CRUD, Connection CRUD, Human Hex, Topology query."""
 
+import copy
 import logging
 import uuid
 
@@ -55,6 +56,39 @@ def _corridor_http_error(status_code: int, error_code: int, message_key: str, me
 
 def _org_id(org) -> str:
     return org.id if hasattr(org, "id") else org.get("org_id", "")
+
+
+def _normalize_human_hex_channel_binding(
+    channel_type: str | None,
+    channel_config: dict | None,
+) -> tuple[str | None, dict | None]:
+    if channel_config is None:
+        return channel_type, channel_config
+
+    normalized = copy.deepcopy(channel_config)
+    if "chatId" in normalized and "chat_id" not in normalized:
+        chat_id = normalized.pop("chatId")
+        if chat_id is not None:
+            normalized["chat_id"] = chat_id
+
+    feishu_keys = {
+        "chat_id",
+        "appId",
+        "appSecret",
+        "connectionMode",
+        "allowFrom",
+        "dmPolicy",
+        "groupPolicy",
+        "verificationToken",
+        "encryptKey",
+        "domain",
+        "requireMention",
+        "topicSessionMode",
+    }
+    if channel_type is None and any(key in normalized for key in feishu_keys):
+        channel_type = "feishu"
+
+    return channel_type, normalized
 
 
 def _actor(org_ctx) -> tuple[str, str]:
@@ -481,6 +515,10 @@ async def create_human_hex(
     if await _is_hex_occupied(workspace_id, body.hex_q, body.hex_r, db):
         raise _corridor_http_error(400, 40070, "errors.corridor.hex_position_occupied", "当前位置已被占用")
     actor_type, actor_id = _actor(org_ctx)
+    channel_type, channel_config = _normalize_human_hex_channel_binding(
+        body.channel_type,
+        body.channel_config,
+    )
     hh = HumanHex(
         id=str(uuid.uuid4()),
         workspace_id=workspace_id,
@@ -489,8 +527,8 @@ async def create_human_hex(
         hex_r=body.hex_r,
         display_name=body.display_name,
         display_color=body.display_color,
-        channel_type=body.channel_type,
-        channel_config=body.channel_config,
+        channel_type=channel_type,
+        channel_config=channel_config,
         created_by=actor_id,
     )
     db.add(hh)
@@ -506,8 +544,8 @@ async def create_human_hex(
         metadata={
             "user_id": body.user_id,
             "display_color": body.display_color,
-            "channel_type": body.channel_type,
-            "channel_config": body.channel_config,
+            "channel_type": channel_type,
+            "channel_config": channel_config,
         },
     )
 
@@ -564,6 +602,10 @@ async def update_human_hex(
         hh.channel_type = body.channel_type
     if body.channel_config is not None:
         hh.channel_config = body.channel_config
+    hh.channel_type, hh.channel_config = _normalize_human_hex_channel_binding(
+        hh.channel_type,
+        hh.channel_config,
+    )
 
     card = await node_card_service.get_node_card(db, node_id=hh.id, workspace_id=workspace_id)
     if card:
@@ -578,12 +620,10 @@ async def update_human_hex(
         if body.display_color is not None:
             meta["display_color"] = hh.display_color
             meta_changed = True
-        if body.channel_type is not None:
+        if body.channel_type is not None or body.channel_config is not None:
             meta["channel_type"] = hh.channel_type
             meta_changed = True
-        if body.channel_config is not None:
             meta["channel_config"] = hh.channel_config
-            meta_changed = True
         if meta_changed:
             card_updates["metadata"] = meta
         if card_updates:

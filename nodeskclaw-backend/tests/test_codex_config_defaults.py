@@ -28,6 +28,27 @@ def test_build_providers_config_sets_codex_models(monkeypatch):
     assert providers["codex"]["models"] == [{"id": "gpt-5.4", "name": "gpt-5.4"}]
 
 
+def test_build_providers_config_personal_uses_proxy_when_available(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_PROXY_INTERNAL_URL", "http://llm-proxy:18080")
+    monkeypatch.setattr(settings, "LLM_PROXY_URL", "http://llm-proxy:18080")
+
+    providers = _build_providers_config(
+        [SimpleNamespace(provider="newapi", key_source="personal", selected_models=[{"id": "deepseek-v3.2"}])],
+        "instance-wp-token",
+        {
+            "newapi": SimpleNamespace(
+                api_key="real-personal-key",
+                base_url="http://<LAN_IP>:3000/v1",
+                api_type="openai-completions",
+            )
+        },
+    )
+
+    assert providers["newapi"]["baseUrl"] == "http://llm-proxy:18080/newapi/v1"
+    assert providers["newapi"]["apiKey"] == "instance-wp-token"
+    assert providers["newapi"]["api"] == "openai-completions"
+
+
 def test_ensure_gateway_config_sets_local_mode():
     config = {}
 
@@ -40,6 +61,8 @@ def test_ensure_gateway_config_sets_local_mode():
         "lockoutMs": 300000,
     }
     assert config["gateway"]["controlUi"]["dangerouslyDisableDeviceAuth"] is True
+    assert config["gateway"]["controlUi"]["dangerouslyAllowHostHeaderOriginFallback"] is True
+    assert "*" in config["gateway"]["controlUi"]["allowedOrigins"]
 
 
 def test_docker_rewrite_urls_uses_external_proxy_url(monkeypatch):

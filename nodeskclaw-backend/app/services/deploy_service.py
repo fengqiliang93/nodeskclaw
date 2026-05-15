@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import hashlib
 import logging
 import re as _re
 import json as _json
@@ -18,7 +19,7 @@ from urllib.parse import urlparse as _urlparse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import get_agent_api_base_url, settings
 from app.core.exceptions import BadRequestError, NotFoundError
 
 from app.models.cluster import Cluster
@@ -36,6 +37,7 @@ from app.services.k8s.resource_builder import (
     build_ingress,
     build_labels,
     build_network_policy,
+    build_nodeport_service,
     build_pvc,
     build_resource_quota,
     build_service,
@@ -52,7 +54,7 @@ def _collect_platform_host_endpoints() -> list[tuple[str, int]]:
     """
     _default_ports = {"http": 80, "https": 443}
     endpoints: list[tuple[str, int]] = []
-    urls = [settings.AGENT_API_BASE_URL, settings.LLM_PROXY_INTERNAL_URL, settings.LLM_PROXY_URL]
+    urls = [get_agent_api_base_url(), settings.LLM_PROXY_INTERNAL_URL, settings.LLM_PROXY_URL]
     for url in urls:
         if not url:
             continue
@@ -78,6 +80,10 @@ def _compute_llm_providers(
         for c in llm_configs:
             providers.add(c.provider)
     return sorted(providers) if providers else None
+
+
+def _resolve_effective_image_registry(ctx: "_DeployContext", configured_registry: str | None) -> str:
+    return ctx.image_registry_override or configured_registry or ctx.runtime or "openclaw"
 
 # 正在运行的部署任务引用（deploy_id -> asyncio.Task）
 _running_tasks: dict[str, asyncio.Task] = {}
@@ -130,6 +136,15 @@ def _truncate_slug_preserve_suffix(slug: str, max_len: int) -> str:
     truncated = truncated.rstrip("-")
 
     return truncated + suffix
+
+
+def build_auto_slug(name: str, *, fallback_prefix: str = "instance") -> str:
+    slug = _re.sub(r"[^a-z0-9-]", "-", name.lower()).strip("-")
+    slug = _re.sub(r"-{2,}", "-", slug)
+    if slug:
+        return slug
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+    return f"{fallback_prefix}-{digest}"
 
 
 def _schedule_pv_cleanup(k8s: K8sClient, namespace: str) -> None:
@@ -363,6 +378,7 @@ class _DeployContext:
     name: str
     namespace: str
     image_version: str
+    image_registry_override: str | None
     replicas: int
     cpu_request: str
     cpu_limit: str
@@ -411,8 +427,7 @@ async def deploy_instance(
     # slug: 前端显式传入，或从 name 自动生成（兼容管理端不传 slug 的情况）
     slug = req.slug
     if not slug:
-        slug = _re.sub(r"[^a-z0-9-]", "-", req.name.lower()).strip("-")
-        slug = _re.sub(r"-{2,}", "-", slug) or "instance"
+        slug = build_auto_slug(req.name)
     if slug and slug[0].isdigit():
         slug = f"i-{slug}"
 
@@ -455,7 +470,7 @@ async def deploy_instance(
         namespace = f"docker-{slug}"
 
     if not is_docker:
-        _parsed = _urlparse(settings.AGENT_API_BASE_URL or "")
+        _parsed = _urlparse(get_agent_api_base_url() or "")
         if _parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
             raise BadRequestError(
                 message="AGENT_API_BASE_URL 当前为 localhost，K8s 集群中的 AI 员工无法通过此地址连接后端。"
@@ -489,11 +504,13 @@ async def deploy_instance(
         gateway_token = _secrets.token_hex(24)
     env_vars["GATEWAY_TOKEN"] = gateway_token
     env_vars["OPENCLAW_GATEWAY_TOKEN"] = gateway_token
-    env_vars["NODESKCLAW_TOKEN"] = gateway_token
+    # 说明：当前部署不启用 nodeskclaw 隧道通道，避免在未部署 tunnel-bridge 时
+    # 实例持续尝试连接导致健康状态长期为 unreachable。
 
-    env_vars.setdefault("NODESKCLAW_API_URL", settings.AGENT_API_BASE_URL)
-    if settings.TUNNEL_BASE_URL:
-        env_vars.setdefault("NODESKCLAW_TUNNEL_URL", settings.TUNNEL_BASE_URL)
+    # 确保 openclaw 从正确路径读取配置（OPENCLAW_HOME=/root/.openclaw 会导致
+    # openclaw 在 HOME 后追加 .openclaw，变成 /root/.openclaw/.openclaw。
+    # 通过显式设置 OPENCLAW_STATE_DIR 覆盖此行为。）
+    env_vars.setdefault("OPENCLAW_STATE_DIR", "/root/.openclaw")
 
     if docker_host_port is not None:
         env_vars["DOCKER_HOST_PORT"] = str(docker_host_port)
@@ -529,7 +546,6 @@ async def deploy_instance(
     await db.commit()
     await db.refresh(instance)
 
-    env_vars["NODESKCLAW_INSTANCE_ID"] = str(instance.id)
     instance.env_vars = _json.dumps(env_vars)
     await db.commit()
 
@@ -594,6 +610,7 @@ async def deploy_instance(
         name=slug,
         namespace=namespace,
         image_version=req.image_version,
+        image_registry_override=req.image_registry_override,
         replicas=req.replicas,
         cpu_request=req.cpu_request,
         cpu_limit=req.cpu_limit,
@@ -669,7 +686,10 @@ async def _execute_via_compute_provider(ctx: _DeployContext) -> None:
     if "DOCKER_IMAGE" not in env_vars:
         async with async_session_factory() as db:
             from app.services.registry_service import resolve_image_registry
-            image_registry = await resolve_image_registry(db, ctx.runtime) or ctx.runtime or "openclaw"
+            image_registry = _resolve_effective_image_registry(
+                ctx,
+                await resolve_image_registry(db, ctx.runtime),
+            )
             env_vars["DOCKER_IMAGE"] = f"{image_registry}:{ctx.image_version}"
 
     rt_spec = RUNTIME_REGISTRY.get(ctx.runtime)
@@ -877,6 +897,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
     """实际的部署管道逻辑（拆出来方便 finally 注销任务）。"""
 
     first_event = True
+    adapter = None
 
     def _publish(
         step: int, step_name: str, status: str = "in_progress",
@@ -952,7 +973,10 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             _publish(5, steps[4])
             from app.services.registry_service import resolve_image_registry
             from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY as _RT_REG
-            image_registry = await resolve_image_registry(db, ctx.runtime) or "openclaw"
+            image_registry = _resolve_effective_image_registry(
+                ctx,
+                await resolve_image_registry(db, ctx.runtime),
+            )
             image = f"{image_registry}:{ctx.image_version}"
             _rt_spec = _RT_REG.get(ctx.runtime)
             gw_port = _rt_spec.gateway_port if _rt_spec else 18789
@@ -1005,6 +1029,9 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             _publish(6, steps[5])
             svc = build_service(ctx.name, ctx.namespace, labels, port=gw_port)
             await k8s.create_or_skip(k8s.core.create_namespaced_service, ctx.namespace, svc)
+            # 为所有实例创建 NodePort 直连入口，便于局域网旁路访问
+            nodeport_svc = build_nodeport_service(ctx.name, ctx.namespace, labels, port=gw_port)
+            await k8s.create_or_skip(k8s.core.create_namespaced_service, ctx.namespace, nodeport_svc)
 
             # Step 7: 创建 Ingress（自动子域名路由）
             _publish(7, steps[6])
@@ -1071,6 +1098,12 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                     if inst_egress.get("allow_ports") is not None:
                         allow_ports = inst_egress["allow_ports"]
 
+                ingress_allow_namespaces = []
+                if cluster.ingress_class == "traefik":
+                    ingress_allow_namespaces.append("kube-system")
+                elif cluster.ingress_class == "nginx":
+                    ingress_allow_namespaces.append("ingress-nginx")
+
                 np = build_network_policy(
                     f"{ctx.name}-isolation", ctx.namespace, labels,
                     peer_namespaces,
@@ -1081,6 +1114,7 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
                     ingress_enabled=np_ingress_enabled,
                     egress_enabled=np_egress_enabled,
                     ingress_allow_cidrs=ingress_cidrs,
+                    ingress_allow_namespaces=ingress_allow_namespaces,
                     platform_host_endpoints=_collect_platform_host_endpoints(),
                 )
                 try:
@@ -1308,7 +1342,8 @@ async def _execute_deploy_inner(ctx, async_session_factory, get_config, total, s
             except Exception:
                 logger.warning("清理命名空间 %s 失败", ctx.namespace)
 
-            await adapter.cleanup_proxy(ctx)
+            if adapter is not None:
+                await adapter.cleanup_proxy(ctx)
 
             try:
                 rec_result = await db.execute(
@@ -1379,8 +1414,9 @@ async def rebuild_instance(
         InstanceStatus.rebuilding, InstanceStatus.restoring, InstanceStatus.deleting,
     }
     if instance.status in transitional_statuses:
+        status_value = instance.status.value if hasattr(instance.status, "value") else str(instance.status)
         raise ConflictError(
-            message=f"实例正在 {instance.status.value}，请等待完成后再操作",
+            message=f"实例正在 {status_value}，请等待完成后再操作",
             message_key="errors.instance.in_transitional_state",
         )
 
@@ -1424,6 +1460,7 @@ async def rebuild_instance(
         name=instance.slug or instance.name,
         namespace=instance.namespace,
         image_version=instance.image_version,
+        image_registry_override=None,
         replicas=instance.replicas,
         cpu_request=instance.cpu_request,
         cpu_limit=instance.cpu_limit,
@@ -1504,7 +1541,10 @@ async def execute_rebuild_pipeline(ctx: _DeployContext) -> None:
             # Deployment
             _publish(5, steps[4])
             from app.services.registry_service import resolve_image_registry
-            image_registry = await resolve_image_registry(db, ctx.runtime) or "openclaw"
+            image_registry = _resolve_effective_image_registry(
+                ctx,
+                await resolve_image_registry(db, ctx.runtime),
+            )
             image = f"{image_registry}:{ctx.image_version}"
 
             from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
@@ -1593,6 +1633,12 @@ async def execute_rebuild_pipeline(ctx: _DeployContext) -> None:
                     if inst_egress.get("allow_ports") is not None:
                         allow_ports = inst_egress["allow_ports"]
 
+                ingress_allow_namespaces = []
+                if cluster.ingress_class == "traefik":
+                    ingress_allow_namespaces.append("kube-system")
+                elif cluster.ingress_class == "nginx":
+                    ingress_allow_namespaces.append("ingress-nginx")
+
                 np = build_network_policy(
                     np_name, ctx.namespace, labels,
                     peer_namespaces,
@@ -1603,6 +1649,7 @@ async def execute_rebuild_pipeline(ctx: _DeployContext) -> None:
                     ingress_enabled=np_ingress_on,
                     egress_enabled=np_egress_on,
                     ingress_allow_cidrs=ingress_cidrs,
+                    ingress_allow_namespaces=ingress_allow_namespaces,
                     platform_host_endpoints=_collect_platform_host_endpoints(),
                 )
                 try:

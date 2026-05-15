@@ -1,0 +1,44 @@
+use_default_settings: true
+
+general:
+  instance_name: "SearXNG"
+
+search:
+  formats:
+    - html
+    - json
+
+engines:
+  - name: baidu
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: 360search
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: mwmbl
+    disabled: false
+  - name: sogou
+    disabled: false
+  - name: yandex
+    disabled: false
+  - name: google
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: wikipedia
+    disabled: true
+
+server:
+  base_url: "http://<searxng-host>:18080"
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "CHANGE_ME_SEARXNG_SECRET"
+  limiter: false
+  public_instance: false
+  image_proxy: false
