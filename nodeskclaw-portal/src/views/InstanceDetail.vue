@@ -12,6 +12,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { getStatusDisplay } from '@/utils/instanceStatus'
 import { copyToClipboard } from '@/utils/clipboard'
 import { formatDateTime, formatNumber } from '@/utils/localeFormat'
+import { buildControlUiUrl } from '@/utils/controlUi'
 import { buildEngineInfoMap } from '@/utils/instanceFlow'
 
 const router = useRouter()
@@ -51,6 +52,7 @@ interface InstanceDetail {
   workspaces?: { id: string; name: string }[]
   pods: { name: string; status: string; ready: boolean; restart_count: number }[]
   endpoint_url?: string | null
+  nodeport_url?: string | null
   compute_provider?: string
   runtime?: string
 }
@@ -143,6 +145,9 @@ const maskedGatewayToken = computed(() => {
   if (token.length <= 8) return `${token.slice(0, 2)}****${token.slice(-2)}`
   return `${token.slice(0, 6)}********${token.slice(-4)}`
 })
+
+const endpointHref = computed(() => buildControlUiUrl(instance.value?.endpoint_url, gatewayToken.value))
+const nodeportHref = computed(() => buildControlUiUrl(instance.value?.nodeport_url, gatewayToken.value))
 
 function syncGatewayToken(detail: InstanceDetail | null) {
   gatewayToken.value = detail?.env_vars?.GATEWAY_TOKEN || detail?.env_vars?.OPENCLAW_GATEWAY_TOKEN || ''
@@ -489,11 +494,20 @@ function toggleSkillEditor() {
           <div v-if="instance.endpoint_url" class="col-span-2">
             <span class="text-muted-foreground">{{ t('instanceDetail.endpointUrl') }}</span>
             <a
-              :href="instance.endpoint_url"
+              :href="endpointHref"
               target="_blank"
               rel="noopener"
               class="ml-2 text-primary hover:underline font-mono text-xs"
             >{{ instance.endpoint_url }}</a>
+          </div>
+          <div v-if="instance.nodeport_url" class="col-span-2">
+            <span class="text-muted-foreground">{{ t('instanceDetail.nodepointUrl') }}</span>
+            <a
+              :href="nodeportHref"
+              target="_blank"
+              rel="noopener"
+              class="ml-2 text-primary hover:underline font-mono text-xs"
+            >{{ instance.nodeport_url }}</a>
           </div>
         </div>
       </div>

@@ -1,7 +1,11 @@
 import pytest
 
 from app.api import genes as genes_api
-from app.core.config import get_nodeskclaw_webhook_base_url
+from app.core.config import (
+    get_agent_api_base_url,
+    get_nodeskclaw_webhook_base_url,
+    get_tunnel_base_url,
+)
 from app.core.exceptions import BadRequestError
 from app.schemas.gene import LearningCallbackPayload
 from app.services.gene_service import (
@@ -54,6 +58,27 @@ def test_get_nodeskclaw_webhook_base_url_falls_back_to_agent_api_base():
         AGENT_API_BASE_URL = "http://backend:4510/api/v1/"
 
     assert get_nodeskclaw_webhook_base_url(DummySettings()) == "http://backend:4510"
+
+
+def test_get_agent_api_base_url_falls_back_to_k8s_service(monkeypatch):
+    class DummySettings:
+        AGENT_API_BASE_URL = "http://localhost:4510/api/v1"
+
+    monkeypatch.setenv("NODESKCLAW_BACKEND_SERVICE_HOST", "10.43.71.12")
+    monkeypatch.setenv("NODESKCLAW_BACKEND_SERVICE_PORT", "8000")
+
+    assert get_agent_api_base_url(DummySettings()) == "http://10.43.71.12:8000/api/v1"
+
+
+def test_get_tunnel_base_url_derives_from_resolved_agent_api_base(monkeypatch):
+    class DummySettings:
+        AGENT_API_BASE_URL = "http://localhost:4510/api/v1"
+        TUNNEL_BASE_URL = ""
+
+    monkeypatch.setenv("NODESKCLAW_BACKEND_SERVICE_HOST", "10.43.71.12")
+    monkeypatch.setenv("NODESKCLAW_BACKEND_SERVICE_PORT", "8000")
+
+    assert get_tunnel_base_url(DummySettings()) == "ws://10.43.71.12:8000/api/v1/tunnel/connect"
 
 
 def test_validate_gene_callback_auth_allows_legacy_unsigned_callback(monkeypatch):

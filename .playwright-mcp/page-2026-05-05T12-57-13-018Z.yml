@@ -1,0 +1,98 @@
+- generic [ref=e6]:
+  - banner [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9] [cursor=pointer]:
+        - img "DeskClaw" [ref=e10]
+        - generic [ref=e11]: DeskClaw
+        - generic [ref=e12]: dev
+      - navigation [ref=e13]:
+        - button "Office" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - text: Office
+        - button "AI Employees" [active] [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - text: AI Employees
+        - button "Genes" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+          - text: Genes
+        - button "Settings" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - text: Settings
+    - generic [ref=e36]:
+      - button [ref=e38] [cursor=pointer]:
+        - img [ref=e39]
+      - button [ref=e44] [cursor=pointer]:
+        - img [ref=e45]
+  - main [ref=e48]:
+    - generic [ref=e351]:
+      - generic [ref=e352]:
+        - generic [ref=e353]:
+          - heading "AI Employee Management" [level=1] [ref=e354]
+          - paragraph [ref=e355]: Manage deployed DeskClaw AI employees
+        - generic [ref=e356]:
+          - button "Refresh" [ref=e357] [cursor=pointer]:
+            - img [ref=e358]
+            - text: Refresh
+          - button "Create AI Employee" [ref=e364] [cursor=pointer]:
+            - img [ref=e365]
+            - text: Create AI Employee
+          - button "Create from Template" [ref=e367] [cursor=pointer]:
+            - img [ref=e368]
+            - text: Create from Template
+      - table [ref=e373]:
+        - rowgroup [ref=e374]:
+          - row "Name Status Image Version Created At" [ref=e375]:
+            - columnheader "Name" [ref=e376]
+            - columnheader "Status" [ref=e377]
+            - columnheader "Image Version" [ref=e378]
+            - columnheader "Created At" [ref=e379]
+        - rowgroup [ref=e380]:
+          - row "任磊鑫 Checking v2026.5.2 05/05/2026, 09:50 AM" [ref=e381] [cursor=pointer]:
+            - cell "任磊鑫" [ref=e382]:
+              - generic [ref=e383]: 任磊鑫
+            - cell "Checking" [ref=e384]:
+              - generic [ref=e387]: Checking
+            - cell "v2026.5.2" [ref=e388]
+            - cell "05/05/2026, 09:50 AM" [ref=e389]
+          - row "冯起良 Checking v2026.5.2 05/05/2026, 09:50 AM" [ref=e390] [cursor=pointer]:
+            - cell "冯起良" [ref=e391]:
+              - generic [ref=e392]: 冯起良
+            - cell "Checking" [ref=e393]:
+              - generic [ref=e396]: Checking
+            - cell "v2026.5.2" [ref=e397]
+            - cell "05/05/2026, 09:50 AM" [ref=e398]
+          - row "刘冲 Checking v2026.5.2 05/05/2026, 09:50 AM" [ref=e399] [cursor=pointer]:
+            - cell "刘冲" [ref=e400]:
+              - generic [ref=e401]: 刘冲
+            - cell "Checking" [ref=e402]:
+              - generic [ref=e405]: Checking
+            - cell "v2026.5.2" [ref=e406]
+            - cell "05/05/2026, 09:50 AM" [ref=e407]
+          - row "任青 Checking v2026.5.2 05/05/2026, 09:50 AM" [ref=e408] [cursor=pointer]:
+            - cell "任青" [ref=e409]:
+              - generic [ref=e410]: 任青
+            - cell "Checking" [ref=e411]:
+              - generic [ref=e414]: Checking
+            - cell "v2026.5.2" [ref=e415]
+            - cell "05/05/2026, 09:50 AM" [ref=e416]
+          - row "吕游 Checking v2026.5.2 05/05/2026, 09:50 AM" [ref=e417] [cursor=pointer]:
+            - cell "吕游" [ref=e418]:
+              - generic [ref=e419]: 吕游
+            - cell "Checking" [ref=e420]:
+              - generic [ref=e423]: Checking
+            - cell "v2026.5.2" [ref=e424]
+            - cell "05/05/2026, 09:50 AM" [ref=e425]
+          - row "agent-02 Running v2026.5.2 05/03/2026, 11:03 PM" [ref=e426] [cursor=pointer]:
+            - cell "agent-02" [ref=e427]:
+              - generic [ref=e428]: agent-02
+            - cell "Running" [ref=e429]:
+              - generic [ref=e432]: Running
+            - cell "v2026.5.2" [ref=e433]
+            - cell "05/03/2026, 11:03 PM" [ref=e434]
+          - row "测试员工-自动化 Running v2026.5.2 05/03/2026, 02:54 PM" [ref=e435] [cursor=pointer]:
+            - cell "测试员工-自动化" [ref=e436]:
+              - generic [ref=e437]: 测试员工-自动化
+            - cell "Running" [ref=e438]:
+              - generic [ref=e441]: Running
+            - cell "v2026.5.2" [ref=e442]
+            - cell "05/03/2026, 02:54 PM" [ref=e443]

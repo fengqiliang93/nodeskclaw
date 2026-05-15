@@ -1,0 +1,129 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6] [cursor=pointer]:
+        - img "DeskClaw" [ref=e7]
+        - generic [ref=e8]: DeskClaw
+        - generic [ref=e9]: dev
+      - navigation [ref=e10]:
+        - button "Office" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Office
+        - button "AI Employees" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+          - text: AI Employees
+        - button "Genes" [ref=e26] [cursor=pointer]:
+          - img [ref=e27]
+          - text: Genes
+        - button "Settings" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+          - text: Settings
+    - generic [ref=e33]:
+      - button [ref=e35] [cursor=pointer]:
+        - img [ref=e36]
+      - button [ref=e41] [cursor=pointer]:
+        - img [ref=e42]
+  - main [ref=e45]:
+    - generic [ref=e93]:
+      - generic [ref=e94]:
+        - button [ref=e95] [cursor=pointer]:
+          - img [ref=e96]
+        - generic [ref=e98]:
+          - heading "Create AI Employee" [level=1] [ref=e99]
+          - paragraph [ref=e100]: Deploy your AI employee in a few steps
+      - generic [ref=e101]:
+        - button "1 Basic Info" [ref=e102] [cursor=pointer]:
+          - generic [ref=e103]: "1"
+          - text: Basic Info
+        - button "2 LLM Config" [disabled] [ref=e105]:
+          - generic [ref=e106]: "2"
+          - text: LLM Config
+      - generic [ref=e107]:
+        - generic [ref=e108]:
+          - text: Give your AI employee a name
+          - 'textbox "For example: My AI Assistant" [ref=e109]'
+        - generic [ref=e110]:
+          - generic [ref=e112]: AI Employee Slug
+          - generic [ref=e113]:
+            - 'textbox "For example: my-assistant" [ref=e115]'
+            - generic [ref=e116]: "-d454af"
+          - paragraph [ref=e117]: Generated from the name by default, but you can edit it manually
+        - generic [ref=e118]:
+          - generic [ref=e119]:
+            - img [ref=e120]
+            - generic [ref=e123]: Work Engine
+          - paragraph [ref=e124]: Select the engine that powers your AI employee
+          - generic [ref=e125]:
+            - generic [ref=e126] [cursor=pointer]:
+              - img [ref=e127]
+              - generic [ref=e129]:
+                - generic [ref=e130]: 全能工作引擎
+                - generic [ref=e131]: 默认
+              - generic [ref=e132]: 支持工具调用、基因系统、多技能管理
+              - generic [ref=e133]: Powered by OpenClaw
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - generic [ref=e136]: Image Version
+                  - button "Refresh" [ref=e137]:
+                    - img [ref=e138]
+                    - text: Refresh
+                - button "nodesk-center-cn-beijing.cr.volces.com/public/deskclaw-openclaw:v2026.3.13" [ref=e144]:
+                  - generic [ref=e145]: nodesk-center-cn-beijing.cr.volces.com/public/deskclaw-openclaw:v2026.3.13
+            - generic [ref=e147] [cursor=pointer]:
+              - generic [ref=e148]:
+                - generic [ref=e149]: 轻量工作引擎
+                - generic [ref=e150]: Coming Soon
+              - generic [ref=e151]: 超轻量，快速部署，适合简单对话场景
+              - generic [ref=e152]: Powered by Nanobot
+        - generic [ref=e153]:
+          - text: Select Spec
+          - generic [ref=e154]:
+            - button "轻量 写周报、查资料、日常问答 2 Cores 4 GB" [ref=e155] [cursor=pointer]:
+              - generic [ref=e156]: 轻量
+              - generic [ref=e157]: 写周报、查资料、日常问答
+              - generic [ref=e158]:
+                - generic [ref=e159]: 2 Cores
+                - generic [ref=e160]: 4 GB
+            - button "标准 代码审查、文档生成、会议纪要 4 Cores 8 GB" [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]: 标准
+              - generic [ref=e163]: 代码审查、文档生成、会议纪要
+              - generic [ref=e164]:
+                - generic [ref=e165]: 4 Cores
+                - generic [ref=e166]: 8 GB
+            - button "高性能 浏览器自动化、代码开发、数据分析 8 Cores 16 GB" [ref=e167] [cursor=pointer]:
+              - generic [ref=e168]: 高性能
+              - generic [ref=e169]: 浏览器自动化、代码开发、数据分析
+              - generic [ref=e170]:
+                - generic [ref=e171]: 8 Cores
+                - generic [ref=e172]: 16 GB
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - img [ref=e176]
+              - text: Storage
+            - generic [ref=e180]: "Current: 20Gi"
+          - generic [ref=e182]:
+            - img [ref=e183]
+            - generic [ref=e185]: No StorageClass found in cluster, storage may not mount properly
+          - generic [ref=e186]:
+            - generic [ref=e187]:
+              - img [ref=e188]
+              - generic [ref=e190]: "Volume Access Mode:"
+            - generic [ref=e191]:
+              - button "ReadWriteOnce (RWO) For local storage (local-path)" [ref=e192] [cursor=pointer]:
+                - text: ReadWriteOnce (RWO)
+                - generic [ref=e193]: For local storage (local-path)
+              - button "ReadWriteMany (RWX) For network storage (NAS/NFS)" [ref=e194] [cursor=pointer]:
+                - text: ReadWriteMany (RWX)
+                - generic [ref=e195]: For network storage (NAS/NFS)
+          - generic [ref=e196]:
+            - slider [ref=e197] [cursor=pointer]: "0"
+            - generic [ref=e198]:
+              - generic [ref=e199] [cursor=pointer]: 20Gi
+              - generic [ref=e200] [cursor=pointer]: 60Gi
+              - generic [ref=e201] [cursor=pointer]: 100Gi
+              - generic [ref=e202] [cursor=pointer]: 150Gi
+              - generic [ref=e203] [cursor=pointer]: 200Gi
+        - button "Next" [disabled] [ref=e205]:
+          - text: Next
+          - img [ref=e206]

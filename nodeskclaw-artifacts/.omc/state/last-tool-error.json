@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /home/x-ai/WorkSpace/Code/openclaw && git checkout extensions/nodeskclaw/src/tunnel-client.ts extensions/nodeskclaw/src/channel.ts && echo \\\"已回退源码修改\\\"\",\"description\":\"Revert openclaw so...",
+  "error": "Exit code 1\nerror: pathspec 'extensions/nodeskclaw/src/tunnel-client.ts' did not match any file(s) known to git\nerror: pathspec 'extensions/nodeskclaw/src/channel.ts' did not match any file(s) known to git",
+  "timestamp": "2026-05-06T05:22:37.762Z",
+  "retry_count": 1
+}

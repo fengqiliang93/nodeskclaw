@@ -87,6 +87,11 @@ async def list_instances(
     if not current_user.is_super_admin:
         effective_org_id = current_user.current_org_id
     data = await instance_service.list_instances(db, cluster_id, org_id=effective_org_id)
+    from app.services.config_service import get_config
+    tls_enabled = (await get_config("ingress_tls_enabled", db)) != "false"
+    for item in data:
+        if getattr(item, "endpoint_url", None) is None:
+            item.endpoint_url = instance_service._compute_endpoint_url(item, tls_enabled=tls_enabled)
     return ApiResponse(data=data)
 
 

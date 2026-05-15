@@ -1,0 +1,124 @@
+# =============================================================================
+# OpenClaw 源码构建镜像
+# 用途: 基于本地 OpenClaw 源码仓库构建自定义镜像
+#
+# 构建参数:
+#   OPENCLAW_SOURCE_PATH: OpenClaw 源码相对路径（相对于构建 context）
+#   IMAGE_VERSION: 镜像版本标记
+#
+# 示例:
+#   cd nodeskclaw-artifacts
+#   ./build-source.sh openclaw --source-path ../openclaw --version 2026.3.1-custom
+# =============================================================================
+
+ARG NODE_VERSION=22
+
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
+
+# ---- 构建阶段: 编译 OpenClaw 源码 ----
+ARG OPENCLAW_SOURCE_PATH=./openclaw
+WORKDIR /build
+
+# 安装构建依赖
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip git && \
+    ln -sf /usr/bin/python3 /usr/bin/python
+
+# 拷贝源码并构建
+COPY ${OPENCLAW_SOURCE_PATH} /build/
+
+# 更新 package.json 版本号（确保镜像内版本与标签一致）
+ARG IMAGE_VERSION=dev
+RUN if [ -f package.json ]; then \
+      sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${IMAGE_VERSION#v}\"/" package.json; \
+    fi
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm install && \
+    npm run build 2>&1 | head -100
+
+# 构建 Control UI（Web 控制台前端）
+RUN npm run ui:build 2>&1 || \
+    echo "WARNING: ui:build failed, control-ui will not be available"
+
+# ---- 运行阶段: 最终镜像 ----
+FROM node:${NODE_VERSION}-bookworm-slim
+
+# ---------- 构建参数 ----------
+ARG IMAGE_VERSION=dev
+ARG PIP_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+ARG APT_MIRROR=""
+
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
+
+# ---------- 元数据标签 ----------
+LABEL maintainer="Xy718Labs"
+LABEL org.opencontainers.image.title="OpenClaw (Source Build)"
+LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
+LABEL org.opencontainers.image.description="OpenClaw AI Agent 平台 - 从源码构建"
+
+# ---------- 系统依赖 ----------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git openssh-client ca-certificates \
+        curl wget \
+        python3 python3-pip \
+        jq procps net-tools && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    git config --global url."https://github.com/".insteadOf ssh://git@github.com/ && \
+    git config --global --add url."https://github.com/".insteadOf git@github.com:
+
+# ---------- Python 依赖 ----------
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages requests tos
+
+# ---------- 从 builder 阶段拷贝编译后的 OpenClaw ----------
+COPY --from=builder /build /opt/openclaw
+
+# 全局链接 openclaw 命令（与 npm 安装模式一致）
+# 使用 symlink 直接链接到 openclaw.mjs（该文件已有 #!/usr/bin/env node shebang）
+RUN npm link --prefix /opt/openclaw 2>&1 | tail -5 || true && \
+    rm -f /usr/local/bin/openclaw && \
+    ln -s /opt/openclaw/openclaw.mjs /usr/local/bin/openclaw && \
+    ls -la /usr/local/bin/openclaw
+
+# ---------- 预置用户数据目录结构 ----------
+RUN mkdir -p /root/.openclaw/agents/main/sessions \
+             /root/.openclaw/config \
+             /root/.openclaw/credentials \
+             /root/.openclaw/extensions \
+             /root/.openclaw/workspace \
+             /root/.openclaw/memory \
+             /root/.openclaw/data \
+             /root/.openclaw/temp \
+             /root/.openclaw/canvas \
+             /root/.openclaw/devices \
+             /root/.openclaw/identity \
+             /root/.openclaw/cron \
+             /root/.openclaw/skills
+
+# ---------- 配置模板 + 脚本 ----------
+COPY openclaw-image/openclaw.json.template /root/.openclaw/openclaw.json.template
+COPY openclaw-image/repair-sessions-index.js /repair-sessions-index.js
+COPY openclaw-image/repair-user-data.js /repair-user-data.js
+COPY openclaw-image/docker-entrypoint.sh /docker-entrypoint.sh
+COPY openclaw-image/init-container.sh /init-container.sh
+RUN chmod +x /docker-entrypoint.sh /init-container.sh
+
+# ---------- 版本标记 ----------
+RUN echo "${IMAGE_VERSION}" > /root/.openclaw-version
+
+# ---------- 运行配置 ----------
+WORKDIR /root
+EXPOSE 18789 9721
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

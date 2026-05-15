@@ -528,6 +528,9 @@ async function onHexAction(action: string) {
     case 'rename-human':
       openRenameHumanDialog()
       break
+    case 'feishu-channel':
+      openFeishuChannelDialog()
+      break
     case 'focus-hex': {
       const q = selectedHex.value?.q
       const r = selectedHex.value?.r
@@ -581,6 +584,11 @@ const renameHumanValue = ref('')
 const renameHumanSaving = ref(false)
 const renameHumanHexId = ref('')
 
+const showFeishuChannelDialog = ref(false)
+const feishuChannelHexId = ref('')
+const feishuChatId = ref('')
+const feishuChannelSaving = ref(false)
+
 function openRenameHumanDialog() {
   renameHumanHexId.value = selectedHex.value?.entityId || ''
   const node = enrichedTopologyNodes.value.find((n: any) => n.entity_id === renameHumanHexId.value && n.node_type === 'human')
@@ -599,6 +607,39 @@ async function handleRenameHuman() {
     showRenameHumanDialog.value = false
   } finally {
     renameHumanSaving.value = false
+  }
+}
+
+function openFeishuChannelDialog() {
+  feishuChannelHexId.value = selectedHex.value?.entityId || ''
+  if (!feishuChannelHexId.value) return
+  const node = enrichedTopologyNodes.value.find(
+    (n: any) => n.entity_id === feishuChannelHexId.value && n.node_type === 'human',
+  )
+  if (!node) return
+  const config = (node.extra?.channel_config as Record<string, unknown> | undefined) || {}
+  feishuChatId.value = String((config.chat_id ?? config.chatId) || '')
+  showFeishuChannelDialog.value = true
+  hexDrawerOpen.value = false
+}
+
+async function handleSaveFeishuChannel() {
+  if (!feishuChannelHexId.value) return
+  feishuChannelSaving.value = true
+  try {
+    const channelConfig: Record<string, unknown> = {}
+    const chatId = feishuChatId.value.trim()
+    if (chatId) channelConfig.chatId = chatId
+    await store.updateHumanHexChannel(
+      workspaceId.value,
+      feishuChannelHexId.value,
+      'feishu',
+      channelConfig,
+    )
+    toast.success(t('hexAction.feishuChannelSaved'))
+    showFeishuChannelDialog.value = false
+  } finally {
+    feishuChannelSaving.value = false
   }
 }
 
@@ -1293,6 +1334,42 @@ function handleKeydown(e: KeyboardEvent) {
                 @click="handleRenameHuman"
               >
                 {{ renameHumanSaving ? t('common.saving') : t('common.save') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Feishu Channel Dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showFeishuChannelDialog" class="fixed inset-0 z-50 flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/50" @click="showFeishuChannelDialog = false" />
+          <div class="relative bg-card border border-border rounded-xl p-6 w-full max-w-sm shadow-lg space-y-4">
+            <h3 class="text-sm font-semibold">{{ t('hexAction.feishuChannelTitle') }}</h3>
+            <div class="space-y-2">
+              <label class="block text-xs text-muted-foreground mb-1">{{ t('channel.chatId') }}</label>
+              <input
+                v-model="feishuChatId"
+                type="text"
+                class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                :placeholder="t('hexAction.feishuChatIdPlaceholder')"
+              />
+            </div>
+            <div class="flex justify-end gap-3">
+              <button
+                class="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted transition-colors"
+                @click="showFeishuChannelDialog = false"
+              >
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                class="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                :disabled="feishuChannelSaving"
+                @click="handleSaveFeishuChannel"
+              >
+                {{ feishuChannelSaving ? t('common.saving') : t('common.save') }}
               </button>
             </div>
           </div>

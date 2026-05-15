@@ -17,8 +17,11 @@ from typing import TYPE_CHECKING
 from app.services.runtime.gene_install_adapter import GeneInstallAdapter
 from app.utils.jsonc import (
     deep_merge_config,
+    ensure_browser_no_sandbox,
     ensure_channel_plugin_integrity,
     ensure_exec_security,
+    ensure_nodeskclaw_tool_allow,
+    ensure_tools_allow_full_default,
     parse_config_json,
 )
 
@@ -137,7 +140,10 @@ class OpenClawGeneInstallAdapter(GeneInstallAdapter):
         return parse_config_json(raw)
 
     async def _write_config(self, fs: RemoteFS, config: dict) -> None:
+        ensure_tools_allow_full_default(config)
+        ensure_nodeskclaw_tool_allow(config)
         ensure_exec_security(config)
+        ensure_browser_no_sandbox(config)
         ensure_channel_plugin_integrity(config)
         await fs.write_text(
             self._config_path,

@@ -1,0 +1,13 @@
+- generic [ref=e46]:
+  - generic [ref=e47]:
+    - img [ref=e49]
+    - heading "Change Password" [level=1] [ref=e52]
+    - paragraph [ref=e53]: You must set a new password before continuing
+  - generic [ref=e54]:
+    - generic [ref=e55]:
+      - generic [ref=e56]: New Password
+      - textbox "Enter new password (min 6 characters)" [ref=e57]
+    - generic [ref=e58]:
+      - generic [ref=e59]: Confirm Password
+      - textbox "Re-enter new password" [ref=e60]
+    - button "Set Password" [ref=e61] [cursor=pointer]

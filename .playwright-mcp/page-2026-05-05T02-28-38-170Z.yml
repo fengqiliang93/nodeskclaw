@@ -1,0 +1,39 @@
+- generic [ref=e46]:
+  - banner [ref=e47]:
+    - generic [ref=e48]:
+      - generic [ref=e49] [cursor=pointer]:
+        - img "DeskClaw" [ref=e50]
+        - generic [ref=e51]: DeskClaw
+        - generic [ref=e52]: dev
+      - navigation [ref=e53]:
+        - button "Office" [ref=e54] [cursor=pointer]:
+          - img [ref=e55]
+          - text: Office
+        - button "AI Employees" [ref=e65] [cursor=pointer]:
+          - img [ref=e66]
+          - text: AI Employees
+        - button "Genes" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+          - text: Genes
+        - button "Settings" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - text: Settings
+    - generic [ref=e76]:
+      - button [ref=e78] [cursor=pointer]:
+        - img [ref=e79]
+      - button [ref=e84] [cursor=pointer]:
+        - img [ref=e85]
+  - main [ref=e88]:
+    - generic [ref=e89]:
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - heading "My Cyber Offices" [level=1] [ref=e92]
+          - paragraph [ref=e93]: Manage your AI Employee collaboration spaces
+        - button "New Cyber Office" [ref=e94] [cursor=pointer]:
+          - img [ref=e95]
+          - text: New Cyber Office
+      - generic [ref=e96]:
+        - img [ref=e98]
+        - heading "No cyber offices yet" [level=3] [ref=e101]
+        - paragraph [ref=e102]: Create a cyber office, add Agents, and let them collaborate on tasks.
+        - button "Create your first cyber office" [ref=e103] [cursor=pointer]

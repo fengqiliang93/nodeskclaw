@@ -185,16 +185,20 @@ PVC empty?
    ├── OPENCLAW_FORCE_RECONFIG=true → Regenerate openclaw.json from template
    ├── Config file missing → First boot, generate from template
    └── Config file exists → Skip
-       ↓
+        ↓
 2. Config backfill (backward compatibility with older PVCs)
    └── Check and add missing controlUi fields
-       ↓
-3. Credential injection
+        ↓
+3. Persistent config snapshot restore
+   └── Reapply saved models.providers / user channels after doctor --fix
+       so custom providers and Feishu settings survive restarts
+        ↓
+4. Credential injection
    └── OPENCLAW_CREDENTIALS_JSON → Write to credentials/default.json
-       ↓
-4. Clear jiti compilation cache
-       ↓
-5. exec openclaw gateway (foreground, PID 1 receives SIGTERM)
+        ↓
+5. Clear jiti compilation cache
+        ↓
+6. exec openclaw gateway (foreground, PID 1 receives SIGTERM)
 ```
 
 ### Key Environment Variables

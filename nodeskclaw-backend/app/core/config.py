@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables."""
 
 import logging
+import os
 import re
 import socket
 from pathlib import Path
@@ -12,6 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _logger = logging.getLogger(__name__)
 
 _K8S_NS_FILE = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 
 
 def _detect_platform_namespace() -> str:
@@ -97,6 +99,7 @@ class Settings(BaseSettings):
     # ── 飞书 SSO（Portal 应用，可选） ─────────────────────
     FEISHU_APP_ID_PORTAL: str = ""
     FEISHU_APP_SECRET_PORTAL: str = ""
+    FEISHU_NODE_SELECTOR: str = ""
 
     # ── Portal ────────────────────────────────────────────
     PORTAL_BASE_URL: str = ""  # 用户门户基础 URL，如 https://portal.example.com
@@ -173,12 +176,49 @@ def _strip_api_path(base_url: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
 
 
+def _is_local_base_url(base_url: str) -> bool:
+    parsed = urlsplit((base_url or "").rstrip("/"))
+    return (parsed.hostname or "").lower() in _LOCAL_HOSTS
+
+
+def get_agent_api_base_url(cfg: Settings | None = None) -> str:
+    active_settings = cfg or settings
+    configured = getattr(active_settings, "AGENT_API_BASE_URL", "").rstrip("/")
+    if configured and not _is_local_base_url(configured):
+        return configured
+
+    service_host = os.getenv("NODESKCLAW_BACKEND_SERVICE_HOST", "").strip()
+    service_port = os.getenv("NODESKCLAW_BACKEND_SERVICE_PORT", "").strip() or "8000"
+    if service_host:
+        return f"http://{service_host}:{service_port}/api/v1"
+
+    return configured
+
+
+def get_tunnel_base_url(cfg: Settings | None = None) -> str:
+    active_settings = cfg or settings
+    configured = getattr(active_settings, "TUNNEL_BASE_URL", "").rstrip("/")
+    if configured:
+        return configured
+
+    agent_api_base = get_agent_api_base_url(active_settings)
+    if not agent_api_base:
+        return ""
+
+    parsed = urlsplit(agent_api_base)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    path = parsed.path.rstrip("/")
+    return urlunsplit((scheme, parsed.netloc, f"{path}/tunnel/connect", "", "")).rstrip("/")
+
+
 def get_nodeskclaw_webhook_base_url(cfg: Settings | None = None) -> str:
     active_settings = cfg or settings
     candidates = [
         getattr(active_settings, "NODESKCLAW_WEBHOOK_BASE_URL", ""),
         getattr(active_settings, "NODESKCLAW_HOST", ""),
-        _strip_api_path(getattr(active_settings, "AGENT_API_BASE_URL", "")),
+        _strip_api_path(get_agent_api_base_url(active_settings)),
     ]
     for candidate in candidates:
         normalized = candidate.rstrip("/") if candidate else ""

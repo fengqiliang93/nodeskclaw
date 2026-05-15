@@ -1,6 +1,11 @@
 """LLM Key management endpoints: model providers, user keys, instance configs."""
 
+import asyncio
+from datetime import datetime, timedelta, timezone
+import json
 import logging
+from pathlib import Path
+import uuid
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -29,6 +34,8 @@ from app.schemas.llm import (
     OrgModelProviderCreate,
     OrgModelProviderInfo,
     OrgModelProviderUpdate,
+    ProviderAutosyncInfo,
+    ProviderAutosyncTaskStatus,
     ProviderModelsResponse,
     UserLlmKeyCreate,
     UserLlmKeyInfo,
@@ -44,6 +51,254 @@ from app.services.codex_provider import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_AUTOSYNC_TASK_DIR = Path("/tmp/nodeskclaw-provider-autosync")
+_AUTOSYNC_TASK_TTL = timedelta(hours=24)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _ensure_task_dir() -> None:
+    _AUTOSYNC_TASK_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _task_file(task_id: str) -> Path:
+    return _AUTOSYNC_TASK_DIR / f"{task_id}.json"
+
+
+def _save_task_state(task: dict) -> None:
+    _ensure_task_dir()
+    p = _task_file(task["task_id"])
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(task, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(p)
+
+
+def _load_task_state(task_id: str) -> dict | None:
+    p = _task_file(task_id)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _cleanup_autosync_tasks() -> None:
+    _ensure_task_dir()
+    now = datetime.now(timezone.utc)
+    expired_files = []
+    for fp in _AUTOSYNC_TASK_DIR.glob("*.json"):
+        try:
+            task = json.loads(fp.read_text(encoding="utf-8"))
+        except Exception:
+            expired_files.append(fp)
+            continue
+        completed_at = task.get("completed_at")
+        if not completed_at:
+            continue
+        try:
+            ts = datetime.fromisoformat(completed_at)
+        except Exception:
+            continue
+        if now - ts > _AUTOSYNC_TASK_TTL:
+            expired_files.append(fp)
+    for fp in expired_files:
+        try:
+            fp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _init_autosync_task(task_id: str, org_id: str, provider: str, scheduled_instances: int) -> None:
+    _cleanup_autosync_tasks()
+    task = {
+        "task_id": task_id,
+        "org_id": org_id,
+        "provider": provider,
+        "status": "scheduled",
+        "scheduled_instances": scheduled_instances,
+        "success": 0,
+        "failed": 0,
+        "pending": scheduled_instances,
+        "started_at": None,
+        "completed_at": None,
+        "results": [],
+    }
+    _save_task_state(task)
+
+
+def _mark_autosync_task_running(task_id: str) -> None:
+    task = _load_task_state(task_id)
+    if not task:
+        return
+    task["status"] = "running"
+    task["started_at"] = _now_iso()
+    _save_task_state(task)
+
+
+def _append_autosync_instance_result(
+    task_id: str, *, instance_id: str, instance_slug: str, status: str, error: str | None = None,
+) -> None:
+    task = _load_task_state(task_id)
+    if not task:
+        return
+    task["results"].append({
+        "instance_id": instance_id,
+        "instance_slug": instance_slug,
+        "status": status,
+        "error": error,
+    })
+    if status == "success":
+        task["success"] += 1
+    else:
+        task["failed"] += 1
+    task["pending"] = max(0, task["scheduled_instances"] - task["success"] - task["failed"])
+    _save_task_state(task)
+
+
+def _finish_autosync_task(task_id: str, *, status: str = "completed", error: str | None = None) -> None:
+    task = _load_task_state(task_id)
+    if not task:
+        return
+    task["status"] = status
+    task["completed_at"] = _now_iso()
+    if error:
+        task["results"].append({
+            "instance_id": "",
+            "instance_slug": "",
+            "status": "error",
+            "error": error,
+        })
+    _save_task_state(task)
+
+
+async def _autofill_allowed_models_for_provider(key: OrgModelProvider) -> None:
+    """Best-effort auto-fill for org provider allowed_models.
+
+    For non-builtin providers (e.g. newapi), this avoids empty models list in
+    instance openclaw.json right after provider creation/update.
+    """
+    if is_codex_provider(key.provider):
+        return
+    if key.allowed_models:
+        return
+
+    from app.services.model_catalog_service import fetch_provider_models
+
+    try:
+        models = await fetch_provider_models(
+            key.provider,
+            key.api_key,
+            base_url=key.base_url,
+            api_type=key.api_type,
+            skip_ssl_verify=bool(key.skip_ssl_verify),
+        )
+    except Exception as e:
+        logger.warning(
+            "自动拉取 provider 模型失败（跳过，不阻塞保存）: provider=%s error=%s",
+            key.provider, e,
+        )
+        return
+
+    model_ids = [m.id for m in models if getattr(m, "id", None)]
+    if model_ids:
+        key.allowed_models = model_ids
+
+
+async def _sync_org_provider_to_instances(org_id: str, provider: str, task_id: str) -> None:
+    """Background sync: push org provider changes to all active OpenClaw instances."""
+    from app.core.deps import async_session_factory
+    from app.services.llm_config_service import restart_runtime as restart_instance_runtime
+    from app.services.llm_config_service import sync_openclaw_llm_config
+
+    try:
+        _mark_autosync_task_running(task_id)
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Instance).where(
+                    Instance.org_id == org_id,
+                    Instance.runtime == "openclaw",
+                    not_deleted(Instance),
+                )
+            )
+            instances = list(result.scalars().all())
+
+            if not instances:
+                logger.info(
+                    "provider 自动同步跳过：组织无 openclaw 实例 org=%s provider=%s",
+                    org_id, provider,
+                )
+                _finish_autosync_task(task_id)
+                return
+
+            success = 0
+            failed = 0
+            for instance in instances:
+                try:
+                    await sync_openclaw_llm_config(instance, db)
+                    await restart_instance_runtime(instance, db)
+                    success += 1
+                    _append_autosync_instance_result(
+                        task_id,
+                        instance_id=instance.id,
+                        instance_slug=instance.slug or instance.name,
+                        status="success",
+                    )
+                except Exception as e:
+                    failed += 1
+                    _append_autosync_instance_result(
+                        task_id,
+                        instance_id=instance.id,
+                        instance_slug=instance.slug or instance.name,
+                        status="failed",
+                        error=str(e),
+                    )
+                    logger.warning(
+                        "provider 自动同步失败: org=%s provider=%s instance=%s error=%s",
+                        org_id, provider, instance.id, e,
+                    )
+
+            _finish_autosync_task(task_id)
+            logger.info(
+                "provider 自动同步完成: org=%s provider=%s success=%d failed=%d",
+                org_id, provider, success, failed,
+            )
+    except Exception as e:
+        _finish_autosync_task(task_id, status="failed", error=str(e))
+        logger.exception(
+            "provider 自动同步任务异常: org=%s provider=%s task_id=%s",
+            org_id, provider, task_id,
+        )
+
+
+async def _count_openclaw_instances(org_id: str, db: AsyncSession) -> int:
+    result = await db.execute(
+        select(func.count(Instance.id)).where(
+            Instance.org_id == org_id,
+            Instance.runtime == "openclaw",
+            not_deleted(Instance),
+        )
+    )
+    return int(result.scalar_one() or 0)
+
+
+def _schedule_org_provider_sync(org_id: str, provider: str) -> str | None:
+    """Fire-and-forget sync task after org provider changes."""
+    try:
+        task_id = str(uuid.uuid4())
+        _init_autosync_task(task_id, org_id, provider, 0)
+        task = asyncio.create_task(_sync_org_provider_to_instances(org_id, provider, task_id), name=f"provider-sync:{task_id}")
+        task.add_done_callback(lambda _t: logger.info("provider 自动同步任务结束: task_id=%s", task_id))
+        return task_id
+    except Exception as e:
+        logger.warning(
+            "provider 自动同步任务创建失败: org=%s provider=%s error=%s",
+            org_id, provider, e,
+        )
+        return None
 
 
 def _mask_key(key: str, provider: str = "") -> str:
@@ -152,17 +407,31 @@ async def create_model_provider(
         system_token_limit=body.system_token_limit,
         created_by=user.id,
     )
+    await _autofill_allowed_models_for_provider(key)
     db.add(key)
     await db.commit()
     await db.refresh(key)
     logger.info("创建模型供应商: org=%s provider=%s", org_id, body.provider)
     await hooks.emit("operation_audit", action="model_provider.created", target_type="model_provider", target_id=key.id, actor_id=user.id, org_id=org_id)
+    scheduled_instances = await _count_openclaw_instances(org_id, db)
+    task_id = _schedule_org_provider_sync(org_id, key.provider)
+    if task_id:
+        task = _load_task_state(task_id)
+        if task:
+            task["scheduled_instances"] = scheduled_instances
+            task["pending"] = scheduled_instances
+            _save_task_state(task)
+    autosync = ProviderAutosyncInfo(
+        task_id=task_id,
+        scheduled_instances=scheduled_instances,
+        provider=key.provider,
+    )
     return ApiResponse(data=OrgModelProviderInfo(
         id=key.id, org_id=key.org_id, provider=key.provider, label=key.label,
         api_key_masked=_mask_key(key.api_key, key.provider), base_url=key.base_url,
         api_type=key.api_type, org_token_limit=key.org_token_limit,
         system_token_limit=key.system_token_limit,
-        is_active=key.is_active, created_by=key.created_by,
+        is_active=key.is_active, autosync=autosync, created_by=key.created_by,
     ))
 
 
@@ -187,15 +456,33 @@ async def update_model_provider(
 
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(key, field, val)
+
+    if body.allowed_models is None and key.is_active:
+        await _autofill_allowed_models_for_provider(key)
+
     await db.commit()
     await db.refresh(key)
     await hooks.emit("operation_audit", action="model_provider.updated", target_type="model_provider", target_id=key_id, actor_id=_auth[0].id, org_id=org_id)
+    scheduled_instances = await _count_openclaw_instances(org_id, db)
+    task_id = _schedule_org_provider_sync(org_id, key.provider)
+    if task_id:
+        task = _load_task_state(task_id)
+        if task:
+            task["scheduled_instances"] = scheduled_instances
+            task["pending"] = scheduled_instances
+            _save_task_state(task)
+    autosync = ProviderAutosyncInfo(
+        task_id=task_id,
+        scheduled_instances=scheduled_instances,
+        provider=key.provider,
+    )
     return ApiResponse(data=OrgModelProviderInfo(
         id=key.id, org_id=key.org_id, provider=key.provider, label=key.label,
         api_key_masked=_mask_key(key.api_key, key.provider), base_url=key.base_url,
         api_type=key.api_type, org_token_limit=key.org_token_limit,
         system_token_limit=key.system_token_limit,
-        is_active=key.is_active, allowed_models=key.allowed_models, created_by=key.created_by,
+        is_active=key.is_active, allowed_models=key.allowed_models,
+        autosync=autosync, created_by=key.created_by,
     ))
 
 
@@ -246,6 +533,22 @@ async def list_available_model_providers(
         )
         for k in keys
     ])
+
+
+@router.get(
+    "/orgs/{org_id}/model-providers/autosync-tasks/{task_id}",
+    response_model=ApiResponse[ProviderAutosyncTaskStatus],
+)
+async def get_model_provider_autosync_task(
+    org_id: str,
+    task_id: str,
+    _auth: tuple = Depends(require_org_admin),
+):
+    _cleanup_autosync_tasks()
+    task = _load_task_state(task_id)
+    if not task or task.get("org_id") != org_id:
+        raise NotFoundError("自动同步任务不存在")
+    return ApiResponse(data=ProviderAutosyncTaskStatus(**task))
 
 
 # backward-compat aliases for old routes

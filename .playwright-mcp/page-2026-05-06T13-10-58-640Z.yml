@@ -1,0 +1,133 @@
+- generic [ref=e45]:
+  - banner [ref=e46]:
+    - generic [ref=e47]:
+      - generic [ref=e48] [cursor=pointer]:
+        - img "DeskClaw" [ref=e49]
+        - generic [ref=e50]: DeskClaw
+        - generic [ref=e51]: dev
+      - navigation [ref=e52]:
+        - button "Office" [ref=e53] [cursor=pointer]:
+          - img [ref=e54]
+          - text: Office
+        - button "AI Employees" [ref=e64] [cursor=pointer]:
+          - img [ref=e65]
+          - text: AI Employees
+        - button "Genes" [ref=e68] [cursor=pointer]:
+          - img [ref=e69]
+          - text: Genes
+        - button "Settings" [ref=e71] [cursor=pointer]:
+          - img [ref=e72]
+          - text: Settings
+    - generic [ref=e75]:
+      - button [ref=e77] [cursor=pointer]:
+        - img [ref=e78]
+      - button [ref=e83] [cursor=pointer]:
+        - img [ref=e84]
+  - main [ref=e87]:
+    - generic [ref=e147]:
+      - generic [ref=e148]:
+        - button [ref=e149] [cursor=pointer]:
+          - img [ref=e150]
+        - generic [ref=e152]:
+          - heading "Create AI Employee" [level=1] [ref=e153]
+          - paragraph [ref=e154]: Deploy your AI employee in a few steps
+      - generic [ref=e155]:
+        - button "1 Basic Info" [ref=e156] [cursor=pointer]:
+          - generic [ref=e157]: "1"
+          - text: Basic Info
+        - button "2 LLM Config" [ref=e159] [cursor=pointer]:
+          - generic [ref=e160]: "2"
+          - text: LLM Config
+      - generic [ref=e161]:
+        - generic [ref=e162]:
+          - text: Give your AI employee a name
+          - 'textbox "For example: My AI Assistant" [ref=e163]': 冯启亮
+        - generic [ref=e164]:
+          - generic [ref=e166]: AI Employee Slug
+          - generic [ref=e167]:
+            - 'textbox "For example: my-assistant" [ref=e169]': fengqiliang
+            - generic [ref=e170]:
+              - text: "-rh40yw"
+              - img [ref=e267]
+          - paragraph [ref=e171]: Generated from the name by default, but you can edit it manually
+        - generic [ref=e172]:
+          - generic [ref=e173]:
+            - img [ref=e174]
+            - generic [ref=e177]: Work Engine
+          - paragraph [ref=e178]: Select the engine that powers your AI employee
+          - generic [ref=e179]:
+            - generic [ref=e180] [cursor=pointer]:
+              - img [ref=e181]
+              - generic [ref=e183]:
+                - generic [ref=e184]: 全能工作引擎
+                - generic [ref=e185]: 默认
+              - generic [ref=e186]: 支持工具调用、基因系统、多技能管理
+              - generic [ref=e187]: Powered by OpenClaw
+              - generic [ref=e188]:
+                - generic [ref=e189]:
+                  - generic [ref=e190]: Image Version
+                  - button "Refresh" [ref=e191]:
+                    - img [ref=e192]
+                    - text: Refresh
+                - generic [ref=e197]:
+                  - button "nodesk-center-cn-beijing.cr.volces.com/public/deskclaw-openclaw:v2026.3.13" [active] [ref=e198]:
+                    - generic [ref=e199]: nodesk-center-cn-beijing.cr.volces.com/public/deskclaw-openclaw:v2026.3.13
+                  - button "nodesk-center-cn-beijing.cr.volces.com/public/deskclaw-openclaw:v2026.3.13 (Default)" [ref=e270]
+            - generic [ref=e201] [cursor=pointer]:
+              - generic [ref=e202]:
+                - generic [ref=e203]: 轻量工作引擎
+                - generic [ref=e204]: Coming Soon
+              - generic [ref=e205]: 超轻量，快速部署，适合简单对话场景
+              - generic [ref=e206]: Powered by Nanobot
+        - generic [ref=e207]:
+          - text: Select Spec
+          - generic [ref=e208]:
+            - button "轻量 写周报、查资料、日常问答 2 Cores 4 GB" [ref=e209] [cursor=pointer]:
+              - generic [ref=e210]: 轻量
+              - generic [ref=e211]: 写周报、查资料、日常问答
+              - generic [ref=e212]:
+                - generic [ref=e213]: 2 Cores
+                - generic [ref=e214]: 4 GB
+            - button "标准 代码审查、文档生成、会议纪要 4 Cores 8 GB" [ref=e215] [cursor=pointer]:
+              - generic [ref=e216]: 标准
+              - generic [ref=e217]: 代码审查、文档生成、会议纪要
+              - generic [ref=e218]:
+                - generic [ref=e219]: 4 Cores
+                - generic [ref=e220]: 8 GB
+            - button "高性能 浏览器自动化、代码开发、数据分析 8 Cores 16 GB" [ref=e221] [cursor=pointer]:
+              - generic [ref=e222]: 高性能
+              - generic [ref=e223]: 浏览器自动化、代码开发、数据分析
+              - generic [ref=e224]:
+                - generic [ref=e225]: 8 Cores
+                - generic [ref=e226]: 16 GB
+        - generic [ref=e227]:
+          - generic [ref=e228]:
+            - generic [ref=e229]:
+              - img [ref=e230]
+              - text: Storage
+            - generic [ref=e234]: "Current: 20Gi"
+          - generic [ref=e236]:
+            - img [ref=e237]
+            - generic [ref=e239]: No StorageClass found in cluster, storage may not mount properly
+          - generic [ref=e240]:
+            - generic [ref=e241]:
+              - img [ref=e242]
+              - generic [ref=e244]: "Volume Access Mode:"
+            - generic [ref=e245]:
+              - button "ReadWriteOnce (RWO) For local storage (local-path)" [ref=e246] [cursor=pointer]:
+                - text: ReadWriteOnce (RWO)
+                - generic [ref=e247]: For local storage (local-path)
+              - button "ReadWriteMany (RWX) For network storage (NAS/NFS)" [ref=e248] [cursor=pointer]:
+                - text: ReadWriteMany (RWX)
+                - generic [ref=e249]: For network storage (NAS/NFS)
+          - generic [ref=e250]:
+            - slider [ref=e251] [cursor=pointer]: "0"
+            - generic [ref=e252]:
+              - generic [ref=e253] [cursor=pointer]: 20Gi
+              - generic [ref=e254] [cursor=pointer]: 60Gi
+              - generic [ref=e255] [cursor=pointer]: 100Gi
+              - generic [ref=e256] [cursor=pointer]: 150Gi
+              - generic [ref=e257] [cursor=pointer]: 200Gi
+        - button "Next" [ref=e259] [cursor=pointer]:
+          - text: Next
+          - img [ref=e260]

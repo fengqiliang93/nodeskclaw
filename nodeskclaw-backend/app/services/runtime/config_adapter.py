@@ -7,7 +7,14 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from app.utils.jsonc import ensure_exec_security, strip_jsonc
+from app.utils.jsonc import (
+    ensure_browser_no_sandbox,
+    ensure_channel_plugin_integrity,
+    ensure_exec_security,
+    ensure_nodeskclaw_tool_allow,
+    ensure_tools_allow_full_default,
+    strip_jsonc,
+)
 
 if TYPE_CHECKING:
     from app.models.instance import Instance
@@ -77,7 +84,15 @@ class OpenClawConfigAdapter(RuntimeConfigAdapter):
             raise ValueError(f"openclaw.json 格式无法解析: {e}") from e
 
     async def write_config(self, fs: RemoteFS, data: dict) -> None:
+        gateway = data.setdefault("gateway", {})
+        http_cfg = gateway.setdefault("http", {})
+        endpoints = http_cfg.setdefault("endpoints", {})
+        endpoints["chatCompletions"] = {"enabled": True}
+        ensure_tools_allow_full_default(data)
+        ensure_nodeskclaw_tool_allow(data)
         ensure_exec_security(data)
+        ensure_browser_no_sandbox(data)
+        ensure_channel_plugin_integrity(data)
         await fs.write_text(
             self._CONFIG_REL,
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -89,10 +104,9 @@ class OpenClawConfigAdapter(RuntimeConfigAdapter):
     def merge_channels(self, config: dict, channels: dict) -> dict:
         config["channels"] = channels
 
-        plugins = config.setdefault("plugins", {})
-        entries = plugins.setdefault("entries", {})
-        for cid in channels:
-            entries[cid] = {"enabled": True}
+        # OpenClaw v2026.5.5 对 plugins 配置校验更严格；
+        # Channel 配置不应再通过 plugins.entries 激活，避免重启后 CrashLoop。
+        config.pop("plugins", None)
         return config
 
     async def restart(self, instance: Instance, db: AsyncSession) -> dict:

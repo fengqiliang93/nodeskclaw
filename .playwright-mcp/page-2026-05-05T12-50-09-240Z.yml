@@ -1,0 +1,34 @@
+- generic [ref=e8]:
+  - button [ref=e11] [cursor=pointer]:
+    - img [ref=e12]
+  - generic [ref=e16]:
+    - img "DeskClaw" [ref=e17]
+    - generic [ref=e18]:
+      - generic [ref=e19]: DeskClaw
+      - generic [ref=e20]: Beta
+  - generic [ref=e21]:
+    - heading "Welcome back" [level=2] [ref=e22]
+    - paragraph [ref=e23]: Sign in to manage your AI employees
+  - generic [ref=e24]:
+    - button "Password" [ref=e25] [cursor=pointer]:
+      - img [ref=e26]
+      - text: Password
+    - button "Email code" [ref=e29] [cursor=pointer]:
+      - img [ref=e30]
+      - text: Email code
+  - generic [ref=e34]:
+    - generic [ref=e35]:
+      - text: Account
+      - textbox "Email, phone number, or username" [ref=e36]: admin
+    - generic [ref=e37]:
+      - text: Password
+      - generic [ref=e38]:
+        - textbox "Enter password" [ref=e39]: admin123
+        - button [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+    - button "Sign in" [ref=e44] [cursor=pointer]
+  - paragraph [ref=e48]: 账号或密码错误
+  - paragraph [ref=e46]:
+    - text: DeskClaw © 2026 · by
+    - link "NoDesk AI" [ref=e47] [cursor=pointer]:
+      - /url: https://nodesks.ai/

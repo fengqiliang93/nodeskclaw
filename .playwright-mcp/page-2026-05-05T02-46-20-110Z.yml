@@ -1,0 +1,1 @@
+- generic [ref=e2]: "Control UI assets not found. Build them with `pnpm ui:build` (auto-installs UI deps), or run `pnpm ui:dev` during development."

@@ -287,6 +287,7 @@ def build_deployment(
     # ── Advanced config: extra volumes (multi-type) ──
     custom_labels: dict[str, str] = {}
     custom_annotations: dict[str, str] = {}
+    node_selector: dict[str, str] | None = None
 
     if advanced_config:
         for vol in advanced_config.get("volumes", []):
@@ -298,6 +299,13 @@ def build_deployment(
         # Custom labels / annotations
         custom_labels = advanced_config.get("custom_labels") or {}
         custom_annotations = advanced_config.get("custom_annotations") or {}
+        raw_node_selector = advanced_config.get("node_selector")
+        if isinstance(raw_node_selector, dict):
+            node_selector = {
+                str(k): str(v)
+                for k, v in raw_node_selector.items()
+                if str(k).strip()
+            } or None
 
     # ── Advanced config: init containers ──
     if advanced_config:
@@ -408,6 +416,7 @@ def build_deployment(
                     containers=all_containers,
                     volumes=volumes or None,
                     image_pull_secrets=pull_secrets,
+                    node_selector=node_selector,
                 ),
             ),
         ),
@@ -486,6 +495,7 @@ def build_network_policy(
     ingress_enabled: bool = True,
     egress_enabled: bool = True,
     ingress_allow_cidrs: list[str] | None = None,
+    ingress_allow_namespaces: list[str] | None = None,
     platform_host_endpoints: list[tuple[str, int]] | None = None,
 ) -> dict:
     """Build NetworkPolicy for multi-tenant isolation + egress restriction.
@@ -502,10 +512,18 @@ def build_network_policy(
 
     if ingress_enabled:
         policy_types.append("Ingress")
-        ingress_from: list[dict] = [
-            {"podSelector": {}},
-            {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": platform_namespace}}},
-        ]
+        allowed_namespaces: list[str] = []
+        for ns in [platform_namespace, *(ingress_allow_namespaces or [])]:
+            if ns and ns not in allowed_namespaces:
+                allowed_namespaces.append(ns)
+
+        ingress_from: list[dict] = [{"podSelector": {}}]
+        for allowed_ns in allowed_namespaces:
+            ingress_from.append({
+                "namespaceSelector": {
+                    "matchLabels": {"kubernetes.io/metadata.name": allowed_ns}
+                }
+            })
         for ns in peer_namespaces:
             ingress_from.append({
                 "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}},
@@ -556,6 +574,28 @@ def build_service(
     )
 
 
+def build_nodeport_service(
+    name: str,
+    namespace: str,
+    labels: dict,
+    port: int = 18789,
+    nodeport_service_name: str | None = None,
+) -> V1Service:
+    """构建 NodePort Service，给局域网提供实例直连入口。"""
+    svc_name = nodeport_service_name or f"{name}-lan"
+    return V1Service(
+        metadata=V1ObjectMeta(name=svc_name, namespace=namespace, labels=labels),
+        spec=V1ServiceSpec(
+            selector={"app.kubernetes.io/name": labels["app.kubernetes.io/name"]},
+            ports=[
+                V1ServicePort(port=port, target_port=port, protocol="TCP", name="gateway"),
+                V1ServicePort(port=9721, target_port=9721, protocol="TCP", name="sse"),
+            ],
+            type="NodePort",
+        ),
+    )
+
+
 def build_ingress(
     name: str,
     namespace: str,
@@ -571,6 +611,7 @@ def build_ingress(
     根据 ``ingress_class`` 动态生成 annotations 和 TLS 配置：
 
     - **nginx**: nginx-ingress 专属注解 + K8s Secret TLS
+    - **traefik**: Traefik 路由注解
     - **alb** 等其他类型: 不加控制器专属注解，TLS 由云厂商控制台管理
     """
     svc_name = service_name or name
@@ -588,6 +629,12 @@ def build_ingress(
         if tls_secret_name:
             tls = [V1IngressTLS(hosts=[host], secret_name=tls_secret_name)]
             annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = "true"
+    elif ingress_class == "traefik":
+        annotations = {
+            "traefik.ingress.kubernetes.io/router.entrypoints": "web,websecure",
+        }
+        if tls_secret_name:
+            tls = [V1IngressTLS(hosts=[host], secret_name=tls_secret_name)]
 
     return V1Ingress(
         metadata=V1ObjectMeta(

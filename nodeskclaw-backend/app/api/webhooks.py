@@ -24,6 +24,7 @@ async def feishu_workspace_message(request: Request):
     event = body.get("event", {})
     message = event.get("message", {})
     chat_id = message.get("chat_id", "")
+    chat_type = message.get("chat_type", "")
     sender_open_id = event.get("sender", {}).get("sender_id", {}).get("open_id", "")
 
     content = ""
@@ -39,8 +40,17 @@ async def feishu_workspace_message(request: Request):
     if not content:
         return {"code": 0}
 
-    from app.services.channel_adapters.feishu_ws_client import _handle_message_event
+    from app.services.channel_adapters.feishu_ws_client import (
+        _extract_mention_tokens,
+        _handle_message_event,
+    )
 
-    await _handle_message_event(chat_id, sender_open_id, content)
+    await _handle_message_event(
+        chat_id,
+        sender_open_id,
+        content,
+        chat_type=chat_type,
+        mention_tokens=_extract_mention_tokens(message),
+    )
 
     return {"code": 0}

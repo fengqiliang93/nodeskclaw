@@ -1,0 +1,599 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1778033169548,
+  "projectRoot": "/home/x-ai/WorkSpace/OpenSourceCode/nodeskclaw",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "deploy": {
+      "path": "deploy",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778033169545,
+      "keyFiles": [
+        "README.md",
+        "cli.sh",
+        "lan-access.sh"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 14,
+      "lastAccessed": 1778033169545,
+      "keyFiles": [
+        "Compute-Provider-Deployment-Guide.md",
+        "Compute-Provider部署指南.md",
+        "K3S本地部署记录.md",
+        "LAN-ACCESS-多机部署操作说明.md",
+        "LAN-ACCESS-部署与验收总结.md"
+      ]
+    },
+    "nanobot-security-layer": {
+      "path": "nanobot-security-layer",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "pyproject.toml",
+        "test_security_runtime.py"
+      ]
+    },
+    "nodeskclaw-artifacts": {
+      "path": "nodeskclaw-artifacts",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README-SOURCE-BUILD.md",
+        "README.md",
+        "build-from-git.sh",
+        "build-full.env",
+        "build-full.sh"
+      ]
+    },
+    "nodeskclaw-backend": {
+      "path": "nodeskclaw-backend",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "Dockerfile",
+        "README.md",
+        "alembic.ini",
+        "entrypoint.sh",
+        "pyproject.toml"
+      ]
+    },
+    "nodeskclaw-llm-proxy": {
+      "path": "nodeskclaw-llm-proxy",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "Dockerfile",
+        "README.md",
+        "build-and-push.sh",
+        "pyproject.toml",
+        "uv.lock"
+      ]
+    },
+    "nodeskclaw-portal": {
+      "path": "nodeskclaw-portal",
+      "purpose": null,
+      "fileCount": 12,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "Dockerfile",
+        "README.md",
+        "index.html",
+        "nginx.conf",
+        "package-lock.json"
+      ]
+    },
+    "nodeskclaw-tunnel-bridge": {
+      "path": "nodeskclaw-tunnel-bridge",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "pyproject.toml"
+      ]
+    },
+    "openclaw-channel-dingtalk": {
+      "path": "openclaw-channel-dingtalk",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "index.ts",
+        "openclaw.plugin.json",
+        "package.json"
+      ]
+    },
+    "openclaw-channel-learning": {
+      "path": "openclaw-channel-learning",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "index.ts",
+        "openclaw.plugin.json",
+        "package.json"
+      ]
+    },
+    "openclaw-channel-nodeskclaw": {
+      "path": "openclaw-channel-nodeskclaw",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "index.ts",
+        "openclaw.plugin.json",
+        "package.json"
+      ]
+    },
+    "openclaw-security-layer": {
+      "path": "openclaw-security-layer",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "README.md",
+        "index.ts",
+        "openclaw.plugin.json",
+        "package.json",
+        "test_security_runtime.mts"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 6,
+      "lastAccessed": 1778033169546,
+      "keyFiles": [
+        "check_docs_consistency.py",
+        "nanobot-security-test.Dockerfile",
+        "openclaw-security-test.Dockerfile",
+        "security_mock_server.py",
+        "sse-bridge.py"
+      ]
+    },
+    "stats_output": {
+      "path": "stats_output",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "code_breakdown.png",
+        "code_lines.png",
+        "commit_counts.png",
+        "total_lines.png"
+      ]
+    },
+    "docs/assets": {
+      "path": "docs/assets",
+      "purpose": "Static assets",
+      "fileCount": 1,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "wechat-group-qr.png"
+      ]
+    },
+    "nodeskclaw-llm-proxy/app": {
+      "path": "nodeskclaw-llm-proxy/app",
+      "purpose": "Application code",
+      "fileCount": 7,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "__init__.py",
+        "codex_cli.py",
+        "config.py"
+      ]
+    },
+    "nodeskclaw-portal/node_modules": {
+      "path": "nodeskclaw-portal/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1778033169547,
+      "keyFiles": []
+    },
+    "nodeskclaw-portal/public": {
+      "path": "nodeskclaw-portal/public",
+      "purpose": "Public files",
+      "fileCount": 1,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "logo.png"
+      ]
+    },
+    "nodeskclaw-tunnel-bridge/src": {
+      "path": "nodeskclaw-tunnel-bridge/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1778033169547,
+      "keyFiles": []
+    },
+    "openclaw-channel-dingtalk/src": {
+      "path": "openclaw-channel-dingtalk/src",
+      "purpose": "Source code",
+      "fileCount": 5,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "channel.ts",
+        "runtime.ts",
+        "send.ts"
+      ]
+    },
+    "openclaw-channel-learning/src": {
+      "path": "openclaw-channel-learning/src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "channel.ts",
+        "runtime.ts",
+        "types.ts"
+      ]
+    },
+    "openclaw-channel-nodeskclaw/src": {
+      "path": "openclaw-channel-nodeskclaw/src",
+      "purpose": "Source code",
+      "fileCount": 5,
+      "lastAccessed": 1778033169547,
+      "keyFiles": [
+        "channel.ts",
+        "runtime.ts",
+        "tools.ts"
+      ]
+    },
+    "openclaw-security-layer/src": {
+      "path": "openclaw-security-layer/src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1778033169548,
+      "keyFiles": [
+        "types.ts",
+        "ws-client.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/Dockerfile.full",
+      "accessCount": 32,
+      "lastAccessed": 1778023967011,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/deploy_service.py",
+      "accessCount": 32,
+      "lastAccessed": 1778074083283,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/tunnel/adapter.py",
+      "accessCount": 23,
+      "lastAccessed": 1778054712440,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/docker-entrypoint.sh",
+      "accessCount": 18,
+      "lastAccessed": 1777997596021,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/llm_config_service.py",
+      "accessCount": 11,
+      "lastAccessed": 1778046868911,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/instance_service.py",
+      "accessCount": 9,
+      "lastAccessed": 1778049133083,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/Dockerfile.source",
+      "accessCount": 8,
+      "lastAccessed": 1777984724580,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/README-SOURCE-BUILD.md",
+      "accessCount": 6,
+      "lastAccessed": 1777824969428,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/Dockerfile",
+      "accessCount": 5,
+      "lastAccessed": 1777860774984,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.yml",
+      "accessCount": 5,
+      "lastAccessed": 1778073216556,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/models/instance.py",
+      "accessCount": 5,
+      "lastAccessed": 1778073446217,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/k8s/k8s_client.py",
+      "accessCount": 4,
+      "lastAccessed": 1777988364860,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/openclaw.json.template",
+      "accessCount": 4,
+      "lastAccessed": 1778024732064,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/portal/deploy.py",
+      "accessCount": 4,
+      "lastAccessed": 1778073150820,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/verify.sh",
+      "accessCount": 3,
+      "lastAccessed": 1777781623403,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/models/base.py",
+      "accessCount": 3,
+      "lastAccessed": 1777785250623,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/deploy.py",
+      "accessCount": 3,
+      "lastAccessed": 1777909262529,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/startup/seed.py",
+      "accessCount": 3,
+      "lastAccessed": 1777990241449,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/common.sh",
+      "accessCount": 3,
+      "lastAccessed": 1777999097014,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/openclaw_session.py",
+      "accessCount": 3,
+      "lastAccessed": 1778024873661,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/schemas/deploy.py",
+      "accessCount": 3,
+      "lastAccessed": 1778073164031,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/core/security.py",
+      "accessCount": 3,
+      "lastAccessed": 1778074816887,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/Dockerfile.source-simple",
+      "accessCount": 2,
+      "lastAccessed": 1777535787302,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/openclaw-image/init-container.sh",
+      "accessCount": 2,
+      "lastAccessed": 1777788329727,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/auth_service.py",
+      "accessCount": 2,
+      "lastAccessed": 1777859224461,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/Dockerfile",
+      "accessCount": 2,
+      "lastAccessed": 1777860792672,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/channel_configs.py",
+      "accessCount": 2,
+      "lastAccessed": 1777943209800,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/tunnel/__init__.py",
+      "accessCount": 2,
+      "lastAccessed": 1778034543615,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/tunnel.py",
+      "accessCount": 2,
+      "lastAccessed": 1778047824565,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/core/config.py",
+      "accessCount": 1,
+      "lastAccessed": 1777526221268,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/models/engine_version.py",
+      "accessCount": 1,
+      "lastAccessed": 1777526248562,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/registry_service.py",
+      "accessCount": 1,
+      "lastAccessed": 1777526255245,
+      "type": "file"
+    },
+    {
+      "path": "docs/OPENCLAW-CUSTOM-BUILD.md",
+      "accessCount": 1,
+      "lastAccessed": 1777528451101,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/main.py",
+      "accessCount": 1,
+      "lastAccessed": 1777782982178,
+      "type": "file"
+    },
+    {
+      "path": "openclaw-channel-nodeskclaw/src/tunnel-client.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777788343235,
+      "type": "file"
+    },
+    {
+      "path": "openclaw-channel-nodeskclaw/src/runtime.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777788378024,
+      "type": "file"
+    },
+    {
+      "path": "openclaw-channel-nodeskclaw/src/channel.ts",
+      "accessCount": 1,
+      "lastAccessed": 1777788554542,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-artifacts/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1777824969478,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-portal/Dockerfile",
+      "accessCount": 1,
+      "lastAccessed": 1777829066608,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-portal/nginx.conf",
+      "accessCount": 1,
+      "lastAccessed": 1777830922550,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/instances.py",
+      "accessCount": 1,
+      "lastAccessed": 1777909253076,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/schemas/channel.py",
+      "accessCount": 1,
+      "lastAccessed": 1777943209744,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/channel_config_service.py",
+      "accessCount": 1,
+      "lastAccessed": 1777943233303,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/unified_channel_schema.py",
+      "accessCount": 1,
+      "lastAccessed": 1777943249034,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/services/runtime/config_adapter.py",
+      "accessCount": 1,
+      "lastAccessed": 1777943286920,
+      "type": "file"
+    },
+    {
+      "path": "feishu_bots.csv",
+      "accessCount": 1,
+      "lastAccessed": 1777949717413,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/utils/display_status.py",
+      "accessCount": 1,
+      "lastAccessed": 1777951271061,
+      "type": "file"
+    },
+    {
+      "path": "nodeskclaw-backend/app/api/workspaces.py",
+      "accessCount": 1,
+      "lastAccessed": 1777984872813,
+      "type": "file"
+    },
+    {
+      "path": "openclaw-channel-nodeskclaw/openclaw.plugin.json",
+      "accessCount": 1,
+      "lastAccessed": 1777997580582,
+      "type": "file"
+    },
+    {
+      "path": "openclaw-channel-nodeskclaw/package.json",
+      "accessCount": 1,
+      "lastAccessed": 1777997580632,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

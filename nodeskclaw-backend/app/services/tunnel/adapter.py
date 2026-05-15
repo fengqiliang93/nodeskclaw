@@ -226,13 +226,17 @@ class TunnelAdapter:
             await ws.close(code=4003, reason="missing_credentials")
             return
 
-        if not await self._verify_token(instance_id, token):
+        verified, canonical_id = await self._verify_token(instance_id, token)
+        if not verified:
             await self._send(ws, TunnelMessage(
                 type=TunnelMessageType.AUTH_ERROR,
                 payload={"reason": "invalid_token"},
             ))
             await ws.close(code=4004, reason="invalid_token")
             return
+
+        # Always use canonical UUID as connection key
+        instance_id = canonical_id
 
         old_conn = self._connections.get(instance_id)
         surviving_streams: dict[str, asyncio.Queue[TunnelMessage]] = {}
@@ -974,23 +978,33 @@ class TunnelAdapter:
 
     # ── Internal helpers ─────────────────────────────────────
 
-    async def _verify_token(self, instance_id: str, token: str) -> bool:
+    async def _verify_token(self, instance_id: str, token: str) -> tuple[bool, str | None]:
+        """Verify token and return (success, canonical_uuid).
+
+        instance_id can be either UUID or slug. On success, returns the canonical UUID
+        so that connected_instances always contains UUIDs for consistent lookups.
+        """
         from app.core.deps import async_session_factory
-        from sqlalchemy import select
+        from sqlalchemy import select, or_
 
         from app.models.base import not_deleted
         from app.models.instance import Instance
 
         async with async_session_factory() as db:
             result = await db.execute(
-                select(Instance).where(Instance.id == instance_id, not_deleted(Instance))
+                select(Instance).where(
+                    or_(Instance.id == instance_id, Instance.slug == instance_id),
+                    not_deleted(Instance),
+                )
             )
             inst = result.scalar_one_or_none()
             if inst is None:
-                return False
+                return False, None
             env_vars = json.loads(inst.env_vars or "{}")
             expected_token = env_vars.get("GATEWAY_TOKEN") or env_vars.get("OPENCLAW_GATEWAY_TOKEN", "")
-            return bool(expected_token and token == expected_token)
+            if not expected_token or token != expected_token:
+                return False, None
+            return True, str(inst.id)
 
     async def _send(self, ws: WebSocket, msg: TunnelMessage) -> None:
         if ws.client_state == WebSocketState.CONNECTED:

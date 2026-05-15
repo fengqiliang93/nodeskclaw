@@ -140,6 +140,122 @@ def _compute_endpoint_url(instance: Instance, *, tls_enabled: bool = True) -> st
     return None
 
 
+async def _compute_nodeport_url(
+    instance: Instance,
+    cluster: Cluster,
+    k8s: K8sClient,
+) -> str | None:
+    """计算实例 NodePort 直连 URL。
+
+    从 {instance_slug_or_name}-lan NodePort Service 中获取端口号，
+    拼装 NodePort URL: http://{node_ip}:{nodeport}
+
+    node_ip 优先级：
+    1. 从 ingress_domain 中提取（如 test-inst.10.100.12.211.nip.io）
+    2. 从 cluster provider_config.gateway_ip 中读取
+    3. 从 K8s 节点列表获取第一个有效 IP（外部 IP → 内部 IP）
+    """
+    from app.services.runtime.registries.runtime_registry import RUNTIME_REGISTRY
+    spec = RUNTIME_REGISTRY.get(instance.runtime)
+    if spec and not spec.has_web_ui:
+        logger.debug("实例 %s 没有 Web UI，跳过 NodePort 计算", instance.name)
+        return None
+    if instance.compute_provider == "docker":
+        logger.debug("实例 %s 是 Docker 模式，跳过 NodePort 计算", instance.name)
+        return None
+
+    try:
+        # 获取 NodePort Service - 尝试多种命名模式
+        # 模式1: {name}-lan (agent-02-lan, ce-shi-xxx-lan)
+        # 模式2: openclaw-{name}-lan (openclaw-fengqiliang-lan)
+        k8s_name = _k8s_name(instance)
+        svc_names_to_try = [
+            f"{k8s_name}-lan",
+            f"openclaw-{k8s_name}-lan",
+        ]
+
+        svc = None
+        svc_name_used = None
+        for svc_name in svc_names_to_try:
+            logger.debug("尝试获取 NodePort Service %s/%s", instance.namespace, svc_name)
+            try:
+                svc = await k8s.get_service(instance.namespace, svc_name)
+                if svc:
+                    svc_name_used = svc_name
+                    break
+            except Exception:
+                continue
+
+        if not svc or not svc.spec or not svc.spec.ports:
+            logger.debug("所有 NodePort Service 名称均未找到: %s", svc_names_to_try)
+            return None
+
+        # 获取第一个端口的 NodePort
+        nodeport = svc.spec.ports[0].node_port
+        if not nodeport:
+            logger.debug("Service %s 未获得 NodePort", svc_name_used)
+            return None
+
+        logger.debug("Service %s NodePort: %d", svc_name_used, nodeport)
+
+        # 获取节点 IP
+        node_ip = None
+
+        # 方法1：从 ingress_domain 提取（nip.io 格式）
+        if instance.ingress_domain:
+            logger.debug("尝试从 ingress_domain %s 提取 IP", instance.ingress_domain)
+            # 格式: instance-name.10.100.12.211.nip.io
+            parts = instance.ingress_domain.split('.')
+            if len(parts) >= 5 and parts[-2] == 'nip' and parts[-1] == 'io':
+                # 提取倒数第四个部分前的 IP 地址段
+                ip_parts = []
+                for p in parts:
+                    if p.isdigit():
+                        ip_parts.append(p)
+                    elif ip_parts:
+                        break
+                if len(ip_parts) == 4:
+                    node_ip = '.'.join(ip_parts[-4:])
+                    logger.debug("从 ingress_domain 提取到 IP: %s", node_ip)
+
+        # 方法2：从 cluster config 读取
+        if not node_ip:
+            logger.debug("尝试从 cluster config 读取 gateway_ip")
+            node_ip = cluster.get_provider_value("gateway_ip")
+            if node_ip:
+                logger.debug("从 cluster config 读取到 IP: %s", node_ip)
+
+        # 方法3：从 K8s 节点列表获取
+        if not node_ip:
+            logger.debug("尝试从 K8s 节点列表获取 IP")
+            try:
+                nodes = await k8s.core.list_node()
+                for node in nodes.items:
+                    for addr in node.status.addresses or []:
+                        if addr.type in ["ExternalIP", "ExternalDNS"]:
+                            node_ip = addr.address
+                            logger.debug("从 K8s 节点获取 ExternalIP: %s", node_ip)
+                            break
+                        elif addr.type == "InternalIP" and not node_ip:
+                            node_ip = addr.address
+                            logger.debug("从 K8s 节点获取 InternalIP: %s", node_ip)
+                    if node_ip:
+                        break
+            except Exception as e:
+                logger.debug("从 K8s 节点列表获取 IP 失败: %s", e)
+
+        if not node_ip:
+            logger.debug("无法获取节点 IP，返回 None")
+            return None
+
+        url = f"http://{node_ip}:{nodeport}"
+        logger.info("计算实例 %s NodePort URL: %s", instance.name, url)
+        return url
+    except Exception as e:
+        logger.warning("计算 NodePort URL 失败 (instance=%s): %s", instance.name, e, exc_info=True)
+        return None
+
+
 def _normalize_gateway_env_vars(env_vars: dict[str, str], token: str) -> dict[str, str]:
     """统一实例访问令牌相关环境变量。"""
     normalized = dict(env_vars)
@@ -400,6 +516,19 @@ async def get_instance_detail(instance_id: str, db: AsyncSession, org_id: str | 
         await db.commit()
 
     detail.display_status = compute_display_status(detail.status, detail.health_status)
+
+    # 计算 NodePort URL（K8s 模式下）
+    logger.info("计算 NodePort URL - cluster=%s, is_k8s=%s, credentials=%s",
+                 cluster is not None, cluster.is_k8s if cluster else None,
+                 cluster.credentials_encrypted if cluster else None)
+    if cluster and cluster.is_k8s and cluster.credentials_encrypted:
+        try:
+            from app.services.runtime.registries.compute_registry import require_k8s_client
+            k8s = await require_k8s_client(cluster)
+            detail.nodeport_url = await _compute_nodeport_url(instance, cluster, k8s)
+        except Exception as e:
+            logger.warning("计算 NodePort URL 失败 (instance=%s): %s", instance_id, e, exc_info=True)
+
     return detail
 
 
@@ -674,8 +803,34 @@ async def get_pod_logs(
         raise NotFoundError("集群不存在")
 
     from app.services.runtime.registries.compute_registry import require_k8s_client
+    from kubernetes_asyncio.client.exceptions import ApiException
+
     k8s = await require_k8s_client(cluster)
-    return await k8s.get_pod_logs(instance.namespace, pod_name, container, tail_lines)
+    try:
+        return await k8s.get_pod_logs(instance.namespace, pod_name, container, tail_lines)
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+        pods = await k8s.core.list_namespaced_pod(
+            instance.namespace,
+            label_selector=f"app.kubernetes.io/name={_k8s_name(instance)}",
+        )
+        for pod in pods.items:
+            current_pod_name = pod.metadata.name or ""
+            if pod.status.phase == "Running" and current_pod_name != pod_name:
+                logger.info(
+                    "Pod 日志读取回退到当前运行 Pod: instance=%s old_pod=%s new_pod=%s",
+                    instance.id,
+                    pod_name,
+                    current_pod_name,
+                )
+                return await k8s.get_pod_logs(
+                    instance.namespace,
+                    current_pod_name,
+                    container,
+                    tail_lines,
+                )
+        raise
 
 
 # ────────────────────────────────────────────────────────────

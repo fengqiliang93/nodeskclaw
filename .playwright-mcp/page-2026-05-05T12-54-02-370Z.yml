@@ -1,0 +1,222 @@
+- generic [ref=e3]:
+  - button "Collapse sidebar"
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Expand sidebar" [ref=e6] [cursor=pointer]:
+        - img [ref=e8]
+      - generic [ref=e12]:
+        - link "OpenClaw" [ref=e13] [cursor=pointer]:
+          - /url: /overview
+        - generic [ref=e14]: ›
+        - generic [ref=e15]: Chat
+      - generic [ref=e16]:
+        - button "Open command palette" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: Search
+          - generic [ref=e19]: ⌘K
+        - group "Color mode" [ref=e21]:
+          - 'button "Color mode: System" [pressed] [ref=e22] [cursor=pointer]':
+            - img [ref=e23]
+          - 'button "Color mode: Light" [ref=e25] [cursor=pointer]':
+            - img [ref=e26]
+          - 'button "Color mode: Dark" [ref=e32] [cursor=pointer]':
+            - img [ref=e33]
+  - generic:
+    - complementary:
+      - generic:
+        - generic:
+          - generic:
+            - img "OpenClaw"
+            - generic:
+              - generic: Control
+              - generic: OpenClaw
+        - generic:
+          - navigation:
+            - generic:
+              - button "Chat" [expanded]:
+                - generic: Chat
+                - generic:
+                  - img
+              - generic:
+                - link "Chat":
+                  - /url: /chat
+                  - generic:
+                    - img
+                  - generic: Chat
+            - generic:
+              - button "Control" [expanded]:
+                - generic: Control
+                - generic:
+                  - img
+              - generic:
+                - link "Overview":
+                  - /url: /overview
+                  - generic:
+                    - img
+                  - generic: Overview
+                - link "Channels":
+                  - /url: /channels
+                  - generic:
+                    - img
+                  - generic: Channels
+                - link "Instances":
+                  - /url: /instances
+                  - generic:
+                    - img
+                  - generic: Instances
+                - link "Sessions":
+                  - /url: /sessions
+                  - generic:
+                    - img
+                  - generic: Sessions
+                - link "Usage":
+                  - /url: /usage
+                  - generic:
+                    - img
+                  - generic: Usage
+                - link "Cron Jobs":
+                  - /url: /cron
+                  - generic:
+                    - img
+                  - generic: Cron Jobs
+            - generic:
+              - button "Agent" [expanded]:
+                - generic: Agent
+                - generic:
+                  - img
+              - generic:
+                - link "Agents":
+                  - /url: /agents
+                  - generic:
+                    - img
+                  - generic: Agents
+                - link "Skills":
+                  - /url: /skills
+                  - generic:
+                    - img
+                  - generic: Skills
+                - link "Nodes":
+                  - /url: /nodes
+                  - generic:
+                    - img
+                  - generic: Nodes
+                - link "Dreaming":
+                  - /url: /dreaming
+                  - generic:
+                    - img
+                  - generic: Dreaming
+            - generic:
+              - button "Settings" [expanded]:
+                - generic: Settings
+                - generic:
+                  - img
+              - generic:
+                - link "Config":
+                  - /url: /config
+                  - generic:
+                    - img
+                  - generic: Config
+                - link "Communications":
+                  - /url: /communications
+                  - generic:
+                    - img
+                  - generic: Communications
+                - link "Appearance":
+                  - /url: /appearance
+                  - generic:
+                    - img
+                  - generic: Appearance
+                - link "Automation":
+                  - /url: /automation
+                  - generic:
+                    - img
+                  - generic: Automation
+                - link "Infrastructure":
+                  - /url: /infrastructure
+                  - generic:
+                    - img
+                  - generic: Infrastructure
+                - link "AI & Agents":
+                  - /url: /ai-agents
+                  - generic:
+                    - img
+                  - generic: AI & Agents
+                - link "Debug":
+                  - /url: /debug
+                  - generic:
+                    - img
+                  - generic: Debug
+                - link "Logs":
+                  - /url: /logs
+                  - generic:
+                    - img
+                  - generic: Logs
+        - generic:
+          - generic:
+            - link "Docs":
+              - /url: https://docs.openclaw.ai
+              - generic:
+                - img
+              - generic: Docs
+              - generic:
+                - img
+            - generic "v2026.5.2":
+              - generic: Version
+              - generic: v2026.5.2
+              - 'img "Gateway status: Online"'
+  - main [ref=e35]:
+    - alert [ref=e36]:
+      - strong [ref=e37]: "Update available:"
+      - text: v2026.5.4 (running v2026.5.2).
+      - button "Update now" [ref=e38] [cursor=pointer]
+      - button "Dismiss update banner" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+    - generic [ref=e43]:
+      - generic [ref=e45]:
+        - combobox [ref=e47] [cursor=pointer]:
+          - option "main" [selected]
+        - combobox "Chat model" [disabled] [ref=e49] [cursor=pointer]:
+          - option "Default model" [selected]
+        - combobox "Chat thinking level" [disabled] [ref=e51] [cursor=pointer]:
+          - option "Default (off)" [selected]
+          - option "off"
+          - option "minimal"
+          - option "low"
+          - option "medium"
+          - option "high"
+      - generic [ref=e53]:
+        - button "Refresh chat data" [disabled] [ref=e54]:
+          - img [ref=e55]
+          - text: Refresh chat data
+        - generic [ref=e58]: "|"
+        - button "Toggle assistant thinking/working output" [pressed] [ref=e59] [cursor=pointer]:
+          - img [ref=e60]
+          - text: Toggle assistant thinking/working output
+        - button "Toggle tool calls and tool results" [pressed] [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+          - text: Toggle tool calls and tool results
+        - button "Toggle focus mode (hide sidebar + page header)" [ref=e73] [cursor=pointer]:
+          - img [ref=e74]
+          - text: Toggle focus mode (hide sidebar + page header)
+        - button "Show cron sessions" [pressed] [ref=e80] [cursor=pointer]:
+          - img [ref=e82]
+          - text: Show cron sessions
+    - generic [ref=e85]:
+      - log [ref=e88]:
+        - generic "Loading chat" [ref=e90]
+      - generic [ref=e100]:
+        - generic [ref=e101]:
+          - textbox "Message Assistant (Enter to send)" [ref=e102]
+          - status [ref=e103]
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - button "Attach file" [ref=e106] [cursor=pointer]:
+              - img [ref=e107]
+            - button "Start Talk" [ref=e109] [cursor=pointer]:
+              - img [ref=e110]
+          - generic [ref=e113]:
+            - button "New session" [ref=e114] [cursor=pointer]:
+              - img [ref=e115]
+            - button "Export chat" [disabled] [ref=e116]:
+              - img [ref=e117]
+            - button "Send message" [ref=e120] [cursor=pointer]:
+              - img [ref=e121]

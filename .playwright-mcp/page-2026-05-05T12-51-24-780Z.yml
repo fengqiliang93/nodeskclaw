@@ -1,0 +1,60 @@
+- generic [ref=e49]:
+  - banner [ref=e50]:
+    - generic [ref=e51]:
+      - generic [ref=e52] [cursor=pointer]:
+        - img "DeskClaw" [ref=e53]
+        - generic [ref=e54]: DeskClaw
+        - generic [ref=e55]: dev
+      - navigation [ref=e56]:
+        - button "Office" [ref=e57] [cursor=pointer]:
+          - img [ref=e58]
+          - text: Office
+        - button "AI Employees" [active] [ref=e68] [cursor=pointer]:
+          - img [ref=e69]
+          - text: AI Employees
+        - button "Genes" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - text: Genes
+        - button "Settings" [ref=e75] [cursor=pointer]:
+          - img [ref=e76]
+          - text: Settings
+    - generic [ref=e79]:
+      - button [ref=e81] [cursor=pointer]:
+        - img [ref=e82]
+      - button [ref=e87] [cursor=pointer]:
+        - img [ref=e88]
+  - main [ref=e91]:
+    - generic [ref=e107]:
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - heading "AI Employee Management" [level=1] [ref=e110]
+          - paragraph [ref=e111]: Manage deployed DeskClaw AI employees
+        - generic [ref=e112]:
+          - button "Refresh" [ref=e113] [cursor=pointer]:
+            - img [ref=e114]
+            - text: Refresh
+          - button "Create AI Employee" [ref=e120] [cursor=pointer]:
+            - img [ref=e121]
+            - text: Create AI Employee
+          - button "Create from Template" [ref=e123] [cursor=pointer]:
+            - img [ref=e124]
+            - text: Create from Template
+      - table [ref=e129]:
+        - rowgroup [ref=e130]:
+          - row "Name Status Image Version Created At" [ref=e131]:
+            - columnheader "Name" [ref=e132]
+            - columnheader "Status" [ref=e133]
+            - columnheader "Image Version" [ref=e134]
+            - columnheader "Created At" [ref=e135]
+        - rowgroup [ref=e136]:
+          - row "AI Worker Docker Unreachable v2026.3.13 05/03/2026, 02:02 PM" [ref=e137] [cursor=pointer]:
+            - cell "AI Worker Docker" [ref=e138]:
+              - generic [ref=e139]:
+                - text: AI Worker
+                - generic [ref=e140]:
+                  - img [ref=e141]
+                  - text: Docker
+            - cell "Unreachable" [ref=e145]:
+              - generic [ref=e148]: Unreachable
+            - cell "v2026.3.13" [ref=e149]
+            - cell "05/03/2026, 02:02 PM" [ref=e150]

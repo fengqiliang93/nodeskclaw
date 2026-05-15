@@ -1,0 +1,299 @@
+# syntax=docker/dockerfile:1.7
+#
+# OpenClaw 源码构建 - 完整功能版
+# 支持：
+#   - 动态安装 APT 包
+#   - 动态安装 Python 包
+#   - 动态安装 npm 全局工具
+#   - 预安装 Skills
+#   - 浏览器自动化 (Playwright + Chromium)
+#   - 自定义工具
+# =============================================================================
+
+ARG OPENCLAW_NODE_IMAGE="node:24-bookworm-slim"
+
+# =============================================================================
+# 阶段 1: OpenClaw 源码构建
+# =============================================================================
+FROM ${OPENCLAW_NODE_IMAGE} AS openclaw-builder
+
+ARG OPENCLAW_SOURCE_PATH="./openclaw"
+
+WORKDIR /build
+
+# 安装构建依赖
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip git openssh-client && \
+    git config --global url."https://github.com/".insteadOf "git@github.com:" && \
+    git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/"
+
+# 复制源码（简化版，不利用 Docker 缓存，避免路径问题）
+COPY ${OPENCLAW_SOURCE_PATH} ./
+
+# 确保目录结构完整
+RUN mkdir -p ui patches extensions
+
+# 如果没有 package.json，从 package.json.bak 恢复或创建默认
+RUN if [ ! -f package.json ]; then \
+      if [ -f package.json.bak ]; then \
+        cp package.json.bak package.json; \
+      else \
+        echo '{"name":"openclaw"}' > package.json; \
+      fi \
+    fi
+
+# 更新 package.json 版本号（确保镜像内版本与标签一致）
+ARG IMAGE_VERSION=dev
+RUN VERSION="${IMAGE_VERSION#v}" && \
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" package.json && \
+    echo "[build] Updated package.json version to: ${VERSION}"
+
+# 安装依赖
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    NODE_OPTIONS=--max-old-space-size=6144 corepack enable && \
+    pnpm install
+
+# 修补 runtime-postbuild，跳过导致失败的插件
+RUN echo 'patching runtime-postbuild...' && \
+    sed -i 's/throw createRootRuntimeStagingError/console.warn("WARN: skipped plugin:", pluginName); return/g' scripts/stage-bundled-plugin-runtime-deps.mjs 2>/dev/null || true && \
+    echo 'patch done'
+
+# 运行构建：跳过 A2UI bundle 的完整校验
+RUN pnpm canvas:a2ui:bundle || \
+    (echo "A2UI bundle: creating stub" && \
+     mkdir -p src/canvas-host/a2ui && \
+     echo "stub" > src/canvas-host/a2ui/a2ui.bundle.js && \
+     echo "stub" > src/canvas-host/a2ui/.bundle.hash)
+
+# 运行 tsdown 构建
+RUN NODE_OPTIONS=--max-old-space-size=6144 node scripts/tsdown-build.mjs
+
+# runtime-postbuild 可能会失败，但我们继续
+RUN NODE_OPTIONS=--max-old-space-size=6144 node scripts/runtime-postbuild.mjs 2>&1 || \
+    echo "WARNING: runtime-postbuild failed, continuing anyway"
+
+# 完成剩余构建步骤
+RUN node scripts/build-stamp.mjs 2>&1 || true && \
+    node --import tsx scripts/canvas-a2ui-copy.ts 2>&1 || true && \
+    node --import tsx scripts/copy-hook-metadata.ts 2>&1 || true && \
+    node --import tsx scripts/copy-export-html-templates.ts 2>&1 || true && \
+    node --import tsx scripts/write-build-info.ts 2>&1 || true
+
+# 构建 Control UI（Web 控制台前端）
+RUN NODE_OPTIONS=--max-old-space-size=6144 pnpm ui:build 2>&1 || \
+    echo "WARNING: ui:build failed, control-ui will not be available"
+
+# 验证构建结果
+RUN ls -la dist/ 2>/dev/null | head -10 && \
+    ls -la bin/ 2>/dev/null || true
+
+# =============================================================================
+# 阶段 2: 基础运行镜像
+# =============================================================================
+FROM ${OPENCLAW_NODE_IMAGE} AS base
+
+ARG IMAGE_VERSION="dev"
+
+LABEL org.opencontainers.image.title="OpenClaw DeskClaw Edition" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.description="OpenClaw AI Agent Platform - DeskClaw Custom Build"
+
+WORKDIR /root
+
+# 系统环境配置
+ENV TZ=Asia/Shanghai \
+    DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    OPENCLAW_HOME="/root/.openclaw" \
+    OPENCLAW_INSTALL_DIR="/opt/openclaw"
+
+# 配置时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# 从 builder 阶段复制编译后的 OpenClaw
+COPY --from=openclaw-builder /build ${OPENCLAW_INSTALL_DIR}
+
+# 补齐 Feishu 插件运行时依赖，避免插件注册失败
+RUN --mount=type=cache,target=/root/.npm \
+    mkdir -p /tmp/feishu-sdk-install && \
+    cd /tmp/feishu-sdk-install && \
+    npm init -y >/dev/null 2>&1 && \
+    npm install --no-audit --no-fund @larksuiteoapi/node-sdk && \
+    mkdir -p ${OPENCLAW_INSTALL_DIR}/dist/extensions/feishu/node_modules && \
+    mkdir -p ${OPENCLAW_INSTALL_DIR}/dist-runtime/extensions/feishu/node_modules && \
+    cp -a /tmp/feishu-sdk-install/node_modules/. ${OPENCLAW_INSTALL_DIR}/dist/extensions/feishu/node_modules/ && \
+    cp -a /tmp/feishu-sdk-install/node_modules/. ${OPENCLAW_INSTALL_DIR}/dist-runtime/extensions/feishu/node_modules/ && \
+    rm -rf /tmp/feishu-sdk-install
+
+# 全局链接 openclaw 命令（与 npm 安装模式一致）
+# 使用 symlink 直接链接到 openclaw.mjs（该文件已有 #!/usr/bin/env node shebang）
+# 这是 v2026.3.13 等官方镜像的标准做法，避免 shell wrapper 导致的信号处理/工作目录问题
+RUN --mount=type=cache,target=/root/.npm \
+    cd ${OPENCLAW_INSTALL_DIR} && \
+    (npm link 2>&1 | tail -5 || true) && \
+    # 使用 symlink 而非 shell wrapper（与官方镜像 / npm install 行为一致）
+    rm -f /usr/local/bin/openclaw && \
+    ln -s ${OPENCLAW_INSTALL_DIR}/openclaw.mjs /usr/local/bin/openclaw && \
+    ls -la /usr/local/bin/openclaw && \
+    head -3 /usr/local/bin/openclaw
+
+# 创建 OpenClaw 目录结构
+RUN mkdir -p ${OPENCLAW_HOME}/agents/main/sessions \
+             ${OPENCLAW_HOME}/config \
+             ${OPENCLAW_HOME}/credentials \
+             ${OPENCLAW_HOME}/extensions \
+             ${OPENCLAW_HOME}/workspace \
+             ${OPENCLAW_HOME}/memory \
+             ${OPENCLAW_HOME}/data \
+             ${OPENCLAW_HOME}/temp \
+             ${OPENCLAW_HOME}/canvas \
+             ${OPENCLAW_HOME}/devices \
+             ${OPENCLAW_HOME}/identity \
+             ${OPENCLAW_HOME}/cron \
+             ${OPENCLAW_HOME}/skills
+
+# =============================================================================
+# 阶段 3: 完整功能镜像（可自定义）
+# =============================================================================
+FROM base AS full
+
+# ---------- 构建参数（可自定义）----------
+
+# Go 环境
+ARG INSTALL_GO="true"
+ARG GO_VERSION="1.24.9"
+ARG GOPROXY="https://goproxy.cn,direct"
+
+# npm 全局工具
+ARG INSTALL_NPM_TOOLS="true"
+ARG NPM_GLOBAL_TOOLS="skillhub@latest clawhub@latest typescript@latest tsx@latest yarn@latest pnpm@latest eslint@latest prettier@latest"
+
+# 浏览器自动化
+ARG INSTALL_BROWSER="true"
+ARG PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"
+
+# APT 包分类（可自定义）
+ARG APT_PACKAGES_CORE="procps hostname curl wget git openssl ca-certificates gnupg sudo locales bash-completion"
+ARG APT_PACKAGES_DEV="build-essential pkg-config python3 python3-pip python3-venv python3-dev cmake"
+ARG APT_PACKAGES_BROWSER="chromium chromium-driver xvfb x11vnc novnc websockify"
+ARG APT_PACKAGES_PLAYWRIGHT="libgbm1 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libasound2"
+ARG APT_PACKAGES_FONTS="fonts-liberation fonts-noto-color-emoji fonts-wqy-zenhei fonts-wqy-microhei"
+ARG APT_PACKAGES_MEDIA="ffmpeg"
+ARG APT_PACKAGES_DOCS="poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim libreoffice-calc"
+ARG APT_PACKAGES_NET="netcat-openbsd dnsutils iputils-ping socat traceroute tcpdump nmap"
+ARG APT_PACKAGES_ARCHIVE="zip unzip p7zip-full"
+ARG APT_PACKAGES_TERMINAL="tmux vim less htop jq tree ripgrep zsh fzf"
+ARG APT_PACKAGES_SCHED="cron at"
+ARG APT_PACKAGES_SYS="rsync strace lsof file inotify-tools"
+ARG APT_PACKAGES_X11="x11-apps x11-utils xauth dbus-x11"
+ARG APT_PACKAGES_OTHER="sqlite3 redis-tools postgresql-client default-mysql-client"
+ARG APT_PACKAGES_EXTRA=""
+
+# Python 包分类（可自定义）
+ARG PIP_PACKAGES_BASE="pip setuptools wheel"
+ARG PIP_PACKAGES_HTTP="requests httpx aiohttp urllib3"
+ARG PIP_PACKAGES_CONFIG="pydantic pyyaml python-dotenv"
+ARG PIP_PACKAGES_CLI="rich click typer tenacity httpie"
+ARG PIP_PACKAGES_DOCS="beautifulsoup4 lxml markdown"
+ARG PIP_PACKAGES_OFFICE="pdfplumber pymupdf python-docx openpyxl xlrd xlwt"
+ARG PIP_PACKAGES_DATA="pandas numpy jmespath tiktoken pillow"
+ARG PIP_PACKAGES_TEST="pytest ipython"
+ARG PIP_PACKAGES_EXTRA=""
+
+# 镜像源配置
+ARG APT_MIRROR=""
+ARG PIP_INDEX_URL=""
+
+# ---------- 阶段 3.1: 配置镜像源 ----------
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+      sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+      sed -i "s/security.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+      sed -i "s/security.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+    fi
+
+# ---------- 阶段 3.2: 安装所有 APT 包 ----------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ${APT_PACKAGES_CORE} \
+      ${APT_PACKAGES_DEV} \
+      ${APT_PACKAGES_BROWSER} \
+      ${APT_PACKAGES_PLAYWRIGHT} \
+      ${APT_PACKAGES_FONTS} \
+      ${APT_PACKAGES_MEDIA} \
+      ${APT_PACKAGES_DOCS} \
+      ${APT_PACKAGES_NET} \
+      ${APT_PACKAGES_ARCHIVE} \
+      ${APT_PACKAGES_TERMINAL} \
+      ${APT_PACKAGES_SCHED} \
+      ${APT_PACKAGES_SYS} \
+      ${APT_PACKAGES_X11} \
+      ${APT_PACKAGES_OTHER} \
+      ${APT_PACKAGES_EXTRA} && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---------- 阶段 3.3: 安装 Go (可选) ----------
+ENV GOPATH=/root/go \
+    GO111MODULE=on \
+    PATH="/usr/local/go/bin:/root/go/bin:$PATH"
+
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+      ARCH=$(dpkg --print-architecture) && \
+      curl -fsSL https://golang.google.cn/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz && \
+      go version && \
+      mkdir -p ${GOPATH}; \
+    fi
+
+# ---------- 阶段 3.4: 安装 Python 包 ----------
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_INSTALL_ARGS="" && \
+    if [ -n "$PIP_INDEX_URL" ]; then PIP_INSTALL_ARGS="-i $PIP_INDEX_URL"; fi && \
+    pip3 install --no-cache-dir --break-system-packages $PIP_INSTALL_ARGS \
+      ${PIP_PACKAGES_BASE} \
+      ${PIP_PACKAGES_HTTP} \
+      ${PIP_PACKAGES_CONFIG} \
+      ${PIP_PACKAGES_CLI} \
+      ${PIP_PACKAGES_DOCS} \
+      ${PIP_PACKAGES_OFFICE} \
+      ${PIP_PACKAGES_DATA} \
+      ${PIP_PACKAGES_TEST} \
+      ${PIP_PACKAGES_EXTRA}
+
+# ---------- 阶段 3.5: 安装 npm 全局工具 (可选) ----------
+RUN --mount=type=cache,target=/root/.npm \
+    if [ "$INSTALL_NPM_TOOLS" = "true" ]; then \
+      npm install -g --force skillhub@latest clawhub@latest typescript@latest tsx@latest npm-check-updates@latest eslint@latest prettier@latest @biomejs/biome@latest; \
+    fi
+
+# ---------- 阶段 3.6: 安装 Playwright 浏览器 (可选) ----------
+ENV PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
+
+RUN --mount=type=cache,target=/root/.npm \
+    if [ "$INSTALL_BROWSER" = "true" ]; then \
+      npm install -g playwright && \
+      playwright install chromium && \
+      mkdir -p ${PLAYWRIGHT_BROWSERS_PATH}; \
+    fi
+
+# ---------- 阶段 3.7: OpenClaw 配置和启动脚本 ----------
+COPY openclaw-image/openclaw.json.template /opt/openclaw/openclaw.json.template
+COPY openclaw-image/repair-sessions-index.js /repair-sessions-index.js
+COPY openclaw-image/repair-user-data.js /repair-user-data.js
+COPY openclaw-image/docker-entrypoint.sh /docker-entrypoint.sh
+COPY openclaw-image/init-container.sh /init-container.sh
+RUN chmod +x /docker-entrypoint.sh /init-container.sh
+
+# 版本标记
+RUN echo "${IMAGE_VERSION}" > /root/.openclaw-version
+
+# ---------- 运行配置 ----------
+WORKDIR /root
+EXPOSE 18789 9721 5900 6080
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

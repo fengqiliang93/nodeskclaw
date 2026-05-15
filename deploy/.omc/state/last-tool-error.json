@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"pkill -f \\\"kubectl port-forward\\\" 2>/dev/null || true\\nls nodeskclaw-backend/app/models/ | grep -i agent\",\"description\":\"查找AI员工模型\"}",
+  "error": "Exit code 144",
+  "timestamp": "2026-05-03T04:35:35.925Z",
+  "retry_count": 3
+}

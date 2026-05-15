@@ -1,0 +1,129 @@
+- generic [ref=e6]:
+  - banner [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9] [cursor=pointer]:
+        - img "DeskClaw" [ref=e10]
+        - generic [ref=e11]: DeskClaw
+        - generic [ref=e12]: dev
+      - navigation [ref=e13]:
+        - button "Office" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - text: Office
+        - button "AI Employees" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - text: AI Employees
+        - button "Genes" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+          - text: Genes
+        - button "Settings" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - text: Settings
+    - generic [ref=e36]:
+      - button [ref=e38] [cursor=pointer]:
+        - img [ref=e39]
+      - button [ref=e44] [cursor=pointer]:
+        - img [ref=e45]
+  - main [ref=e48]:
+    - generic [ref=e444]:
+      - generic [ref=e445]:
+        - button [ref=e446] [cursor=pointer]:
+          - img [ref=e447]
+        - heading "agent-02" [level=1] [ref=e449]
+        - generic [ref=e450]:
+          - img [ref=e451]
+          - text: Running
+      - generic [ref=e453]:
+        - navigation [ref=e454]:
+          - link "Overview" [ref=e455] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7
+            - img [ref=e456]
+            - text: Overview
+          - link "Runtime Status" [ref=e461] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/runtime
+            - img [ref=e462]
+            - text: Runtime Status
+          - link "Skill Genes" [ref=e464] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/genes
+            - img [ref=e465]
+            - text: Skill Genes
+          - link "Evolution Log" [ref=e477] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/evolution
+            - img [ref=e478]
+            - text: Evolution Log
+          - link "Channels" [ref=e482] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/channels
+            - img [ref=e483]
+            - text: Channels
+          - link "Model Config" [ref=e489] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/settings
+            - img [ref=e490]
+            - text: Model Config
+          - link "Files" [ref=e498] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/files
+            - img [ref=e499]
+            - text: Files
+          - link "Backups" [ref=e501] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/backups
+            - img [ref=e502]
+            - text: Backups
+          - link "Members" [ref=e505] [cursor=pointer]:
+            - /url: /instances/1b0f4bcf-3fe9-4cd2-9d04-bc6ef59bb2b7/members
+            - img [ref=e506]
+            - text: Members
+        - generic [ref=e514]:
+          - generic [ref=e515]:
+            - generic [ref=e516]:
+              - generic [ref=e517]:
+                - paragraph [ref=e518]: Access Token
+                - paragraph [ref=e519]: Use this token to connect to the AI employee. You can copy and paste it manually.
+              - button "Reset Token" [ref=e520] [cursor=pointer]:
+                - img [ref=e521]
+                - text: Reset Token
+            - generic [ref=e524]:
+              - generic [ref=e525]: 82d3d3********6404
+              - button [ref=e526] [cursor=pointer]:
+                - img [ref=e527]
+          - generic [ref=e530]:
+            - heading "Basic Info" [level=2] [ref=e531]
+            - generic [ref=e532]:
+              - generic [ref=e533]: Image Versionv2026.5.2
+              - generic [ref=e534]: CPU2 Cores
+              - generic [ref=e535]: Memory4Gi
+              - generic [ref=e536]: Storage20Gi
+              - generic [ref=e537]:
+                - text: Work Engine
+                - generic [ref=e538]: General Work Engine
+              - generic [ref=e539]: Created At5/3/2026, 11:03:08 PM
+              - generic [ref=e540]:
+                - text: Work Status
+                - generic [ref=e541]:
+                  - img [ref=e542]
+                  - generic [ref=e544]: Ready and working
+              - generic [ref=e545]:
+                - text: Endpoint URL
+                - link "http://agent-02.10.100.12.211.nip.io" [ref=e546] [cursor=pointer]:
+                  - /url: http://agent-02.10.100.12.211.nip.io
+              - generic [ref=e547]:
+                - text: Local Network Direct Access
+                - link "http://10.100.12.211:32209" [ref=e548] [cursor=pointer]:
+                  - /url: http://10.100.12.211:32209
+          - generic [ref=e549]:
+            - button "Refresh" [ref=e550] [cursor=pointer]:
+              - img [ref=e551]
+              - text: Refresh
+            - button "Restart AI Employee" [ref=e556] [cursor=pointer]:
+              - img [ref=e557]
+              - text: Restart AI Employee
+            - button "Create Backup" [ref=e560] [cursor=pointer]:
+              - img [ref=e561]
+              - text: Create Backup
+            - button "Clone" [ref=e564] [cursor=pointer]:
+              - img [ref=e565]
+              - text: Clone
+            - button "Delete AI Employee" [ref=e568] [cursor=pointer]:
+              - img [ref=e569]
+              - text: Delete AI Employee
+          - button "Role & Prompts" [ref=e573] [cursor=pointer]:
+            - generic [ref=e574]:
+              - img [ref=e575]
+              - generic [ref=e577]: Role & Prompts

@@ -21,6 +21,7 @@ from app.schemas.backup import CloneRequest, RestoreRequest
 from app.schemas.common import ApiResponse
 from app.schemas.deploy import DeployRecordInfo
 from app.schemas.instance import InstanceDetail, InstanceInfo, UpdateConfigRequest
+from app.services.config_service import get_config
 from app.services import instance_service
 from app.services import instance_member_service
 from app.services.runtime.registries.compute_registry import require_k8s_client
@@ -52,6 +53,7 @@ async def list_instances(
     current_user: User = Depends(get_current_user),
 ):
     effective_org_id = current_user.current_org_id
+    tls_enabled = (await get_config("ingress_tls_enabled", db)) != "false"
 
     query = (
         select(Instance, InstanceMember.role)
@@ -85,6 +87,7 @@ async def list_instances(
             inst.health_status = "healthy"
             health_corrected = True
         info = InstanceInfo.model_validate(inst)
+        info.endpoint_url = instance_service._compute_endpoint_url(inst, tls_enabled=tls_enabled)
         info.my_role = member_role or (
             InstanceRole.admin
             if await _is_org_admin(current_user.id, inst.org_id, db)

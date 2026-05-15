@@ -33,7 +33,7 @@ TRANSITIONAL_STATUSES = {
     InstanceStatus.deleting,
 }
 
-BACKUP_CHUNK_SIZE = 1_048_576  # 1MB per base64 chunk for K8s exec
+BACKUP_CHUNK_SIZE = 65_536  # keep exec output well below websocket frame limits
 
 
 def assert_not_transitional(instance: Instance) -> None:
@@ -80,6 +80,47 @@ def _get_runtime_backup_config(runtime: str) -> tuple[tuple[str, ...], tuple[str
         rel = spec.data_dir_container_path.lstrip("/root/").lstrip("/")
         return (rel,), spec.backup_exclude_patterns
     return (".openclaw",), ("node_modules", "dist", "__pycache__", ".git", "cache", "*.pyc")
+
+
+def _split_image_ref(image: str | None) -> tuple[str | None, str | None]:
+    if not image:
+        return None, None
+    ref = image.split("@", 1)[0]
+    last_slash = ref.rfind("/")
+    last_colon = ref.rfind(":")
+    if last_colon > last_slash:
+        return ref[:last_colon], ref[last_colon + 1:]
+    return ref, None
+
+
+async def _resolve_running_image_ref(
+    instance: Instance,
+    db: AsyncSession,
+) -> tuple[str | None, str | None]:
+    if instance.compute_provider != "k8s":
+        return None, None
+
+    try:
+        cluster = (await db.execute(
+            select(Cluster).where(Cluster.id == instance.cluster_id)
+        )).scalar_one()
+        from app.services.runtime.registries.compute_registry import require_k8s_client
+
+        k8s = await require_k8s_client(cluster)
+        dep = await k8s.get_deployment(instance.namespace, instance.slug or instance.name)
+        containers = dep.spec.template.spec.containers or []
+        target_name = instance.slug or instance.name
+        container = next((item for item in containers if item.name == target_name), None)
+        if container is None and containers:
+            container = containers[0]
+        return _split_image_ref(container.image if container else None)
+    except Exception:
+        logger.warning(
+            "读取源实例运行镜像失败，克隆将回退到系统默认仓库: instance=%s",
+            instance.id,
+            exc_info=True,
+        )
+        return None, None
 
 
 # ── CRUD ──────────────────────────────────────────────────
@@ -233,16 +274,37 @@ async def clone_instance(
     env_vars["OPENCLAW_GATEWAY_TOKEN"] = new_token
     env_vars["NODESKCLAW_TOKEN"] = new_token
 
+    from app.models.instance_provider_config import InstanceProviderConfig
     from app.schemas.deploy import DeployRequest
+    from app.schemas.llm import LlmConfigItem
     from app.models.user import User
 
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one()
 
+    cfg_result = await db.execute(
+        select(InstanceProviderConfig).where(
+            InstanceProviderConfig.instance_id == instance.id,
+            InstanceProviderConfig.deleted_at.is_(None),
+        )
+    )
+    source_llm_configs = cfg_result.scalars().all()
+    source_image_registry, source_image_tag = await _resolve_running_image_ref(instance, db)
+
+    from app.services.deploy_service import (
+        build_auto_slug,
+        deploy_instance,
+        execute_deploy_pipeline,
+        register_deploy_task,
+    )
+    source_slug = instance.slug or build_auto_slug(instance.name)
+    clone_slug = f"{source_slug}-clone-{backup.id[:8]}"
     deploy_req = DeployRequest(
         name=new_name,
+        slug=clone_slug,
         cluster_id=target_cluster_id,
-        image_version=instance.image_version,
+        image_version=source_image_tag or instance.image_version,
+        image_registry_override=source_image_registry,
         replicas=instance.replicas,
         cpu_request=instance.cpu_request,
         cpu_limit=instance.cpu_limit,
@@ -253,13 +315,21 @@ async def clone_instance(
         runtime=instance.runtime,
         env_vars=env_vars,
         advanced_config=json.loads(instance.advanced_config) if instance.advanced_config else None,
+        llm_configs=[
+            LlmConfigItem(
+                provider=item.provider,
+                key_source=item.key_source,
+                selected_models=item.selected_models,
+                base_url=item.base_url,
+                api_type=item.api_type,
+            )
+            for item in source_llm_configs
+        ] or None,
     )
-
-    from app.services.deploy_service import deploy_instance, execute_deploy_pipeline, register_deploy_task
     deploy_id, ctx = await deploy_instance(deploy_req, user, db, org_id)
 
     task = asyncio.create_task(
-        _execute_clone_pipeline(ctx, backup.id, deploy_id)
+        _execute_clone_pipeline(ctx, backup.id, deploy_id, instance.id)
     )
     register_deploy_task(deploy_id, task)
 
@@ -351,10 +421,16 @@ async def _backup_k8s(
     while offset < file_size:
         chunk_cmd = [
             "bash", "-c",
-            f"dd if=/tmp/backup.tar.gz bs={BACKUP_CHUNK_SIZE} skip={offset // BACKUP_CHUNK_SIZE} count=1 2>/dev/null | base64",
+            f"dd if=/tmp/backup.tar.gz bs={BACKUP_CHUNK_SIZE} skip={offset // BACKUP_CHUNK_SIZE} count=1 2>/dev/null | base64 | tr -d '\\n'",
         ]
         b64_chunk = await k8s.exec_in_pod(instance.namespace, pod_name, chunk_cmd)
-        chunks.append(base64.b64decode(b64_chunk.strip()))
+        try:
+            chunks.append(_decode_base64_chunk(b64_chunk))
+        except Exception as exc:
+            raise BadRequestError(
+                message=f"备份分片解码失败: offset={offset} size={BACKUP_CHUNK_SIZE}",
+                message_key="errors.backup.chunk_decode_failed",
+            ) from exc
         offset += BACKUP_CHUNK_SIZE
 
     await k8s.exec_in_pod(instance.namespace, pod_name, ["rm", "-f", "/tmp/backup.tar.gz"])
@@ -483,21 +559,40 @@ async def _restore_k8s_data(instance: Instance, db: AsyncSession, data: bytes) -
     from app.services.runtime.registries.compute_registry import require_k8s_client
     k8s = await require_k8s_client(cluster)
     pod = await _find_pod(k8s, instance.namespace, instance.slug or instance.name)
+    await asyncio.sleep(10)
+
+    async def _exec_retry(cmd: list[str], attempts: int = 5) -> str:
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await k8s.exec_in_pod(instance.namespace, pod, cmd)
+            except Exception as exc:
+                last_error = exc
+                if attempt == attempts:
+                    raise
+                logger.warning(
+                    "恢复实例数据时 Pod exec 失败，准备重试: instance=%s pod=%s attempt=%s/%s error=%s",
+                    instance.id,
+                    pod,
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                await asyncio.sleep(3)
+        raise last_error
 
     encoded = base64.b64encode(data).decode("ascii")
-    chunk_size = 98_000
+    chunk_size = 1_000
     tmp_b64 = "/tmp/backup.b64"
 
-    await k8s.exec_in_pod(instance.namespace, pod, ["rm", "-f", tmp_b64])
+    await _exec_retry(["rm", "-f", tmp_b64])
     for i in range(0, len(encoded), chunk_size):
         chunk = encoded[i:i + chunk_size]
-        await k8s.exec_in_pod(
-            instance.namespace, pod,
+        await _exec_retry(
             ["bash", "-c", f"printf '%s' '{chunk}' >> {tmp_b64}"],
         )
 
-    await k8s.exec_in_pod(
-        instance.namespace, pod,
+    await _exec_retry(
         ["bash", "-c", f"base64 -d {tmp_b64} > /tmp/backup.tar.gz && tar xzf /tmp/backup.tar.gz -C /root && rm -f /tmp/backup.tar.gz {tmp_b64}"],
     )
 
@@ -514,44 +609,148 @@ async def _restore_docker_data(instance: Instance, data: bytes) -> None:
 
 # ── Internal: clone pipeline ──────────────────────────────
 
-async def _execute_clone_pipeline(ctx, backup_id: str, deploy_id: str) -> None:
+async def _read_user_channel_configs_raw(instance: Instance, db: AsyncSession) -> dict:
+    from app.services.nfs_mount import remote_fs
+    from app.services.runtime.config_adapter import get_config_adapter
+
+    runtime = instance.runtime or "openclaw"
+    adapter = get_config_adapter(runtime)
+    async with remote_fs(instance, db) as fs:
+        config = await adapter.read_config(fs) or {}
+
+    all_channels: dict = adapter.extract_channels(config)
+    user_channels = {}
+    for cid, cfg in all_channels.items():
+        if cid == "nodeskclaw":
+            continue
+        if isinstance(cfg, dict):
+            user_channels[cid] = adapter.translate_from_runtime(cfg, cid)
+        else:
+            user_channels[cid] = cfg
+    return user_channels
+
+
+async def _execute_clone_pipeline(ctx, backup_id: str, deploy_id: str, source_instance_id: str) -> None:
     """Deploy new instance, then wait for backup + restore data."""
     from app.core.deps import async_session_factory
     from app.services.deploy_service import execute_deploy_pipeline
 
-    await execute_deploy_pipeline(ctx)
+    try:
+        await execute_deploy_pipeline(ctx)
 
-    async with async_session_factory() as db:
-        new_inst = (await db.execute(
-            select(Instance).where(Instance.id == ctx.instance_id, Instance.deleted_at.is_(None))
-        )).scalar_one_or_none()
-        if not new_inst or new_inst.status != InstanceStatus.running:
-            logger.warning("克隆目标实例部署未成功，跳过数据恢复: %s", ctx.instance_id)
-            return
+        async with async_session_factory() as db:
+            new_inst = (await db.execute(
+                select(Instance).where(Instance.id == ctx.instance_id, Instance.deleted_at.is_(None))
+            )).scalar_one_or_none()
+            source_inst = (await db.execute(
+                select(Instance).where(Instance.id == source_instance_id, Instance.deleted_at.is_(None))
+            )).scalar_one_or_none()
+            if not new_inst or new_inst.status != InstanceStatus.running:
+                logger.warning("克隆目标实例部署未成功，跳过数据恢复: %s", ctx.instance_id)
+                return
+            new_inst.status = InstanceStatus.restoring
+            await db.commit()
+            if not source_inst:
+                logger.warning("克隆源实例不存在，跳过通道配置复制: %s", source_instance_id)
 
-        backup = await _wait_for_backup(backup_id)
-        if not backup or backup.status != BackupStatus.completed:
-            logger.warning("克隆源备份未完成，跳过数据恢复: backup_id=%s", backup_id)
-            return
+            backup = await _wait_for_backup(backup_id)
+            if not backup:
+                raise RuntimeError(f"克隆源备份等待超时: backup_id={backup_id}")
+            if backup.status != BackupStatus.completed:
+                raise RuntimeError(
+                    f"克隆源备份失败: backup_id={backup_id} status={backup.status.value} message={backup.message or ''}".strip()
+                )
 
-        from app.services import storage_service
-        data = await storage_service.download_raw(backup.storage_key)
+            from app.services import storage_service
+            data = await storage_service.download_raw(backup.storage_key)
 
-        if new_inst.compute_provider == "docker":
-            await _restore_docker_data(new_inst, data)
-        else:
-            await _restore_k8s_data(new_inst, db, data)
+            if new_inst.compute_provider == "docker":
+                await _restore_docker_data(new_inst, data)
+            else:
+                await _restore_k8s_data(new_inst, db, data)
 
-        if new_inst.compute_provider != "docker":
-            cluster = (await db.execute(
-                select(Cluster).where(Cluster.id == new_inst.cluster_id)
-            )).scalar_one()
-            from app.services.runtime.registries.compute_registry import require_k8s_client
-            k8s = await require_k8s_client(cluster)
-            pod = await _find_pod(k8s, new_inst.namespace, new_inst.slug or new_inst.name)
-            await k8s.exec_in_pod(new_inst.namespace, pod, ["kill", "1"])
+            restarted = False
+            if new_inst.runtime == "openclaw":
+                from app.services.llm_config_service import (
+                    ensure_openclaw_gateway_config,
+                    sync_openclaw_llm_config,
+                )
+                from app.services.channel_config_service import write_channel_configs
+                await asyncio.sleep(10)
 
-    logger.info("克隆完成: source_backup=%s new_instance=%s", backup_id, ctx.instance_id)
+                async def _run_retry(label: str, runner, attempts: int = 4) -> bool:
+                    for attempt in range(1, attempts + 1):
+                        try:
+                            await runner()
+                            return True
+                        except Exception as exc:
+                            if attempt == attempts:
+                                logger.warning(
+                                    "克隆恢复后%s失败（非致命）: instance=%s error=%s",
+                                    label,
+                                    new_inst.id,
+                                    exc,
+                                )
+                                return False
+                            logger.warning(
+                                "克隆恢复后%s失败，准备重试: instance=%s attempt=%s/%s error=%s",
+                                label,
+                                new_inst.id,
+                                attempt,
+                                attempts,
+                                exc,
+                            )
+                            await asyncio.sleep(3)
+                    return False
+
+                await _run_retry(
+                    "同步网关配置",
+                    lambda: ensure_openclaw_gateway_config(new_inst, db),
+                )
+                await _run_retry(
+                    "同步 LLM 配置",
+                    lambda: sync_openclaw_llm_config(new_inst, db),
+                )
+                if source_inst:
+                    source_channels = await _read_user_channel_configs_raw(source_inst, db)
+                    if source_channels:
+                        restarted = await _run_retry(
+                            "复制通道配置",
+                            lambda: write_channel_configs(new_inst, db, source_channels),
+                        )
+
+            if new_inst.compute_provider != "docker" and not restarted:
+                cluster = (await db.execute(
+                    select(Cluster).where(Cluster.id == new_inst.cluster_id)
+                )).scalar_one()
+                from app.services.runtime.registries.compute_registry import require_k8s_client
+                k8s = await require_k8s_client(cluster)
+                pod = await _find_pod(k8s, new_inst.namespace, new_inst.slug or new_inst.name)
+                try:
+                    await k8s.exec_in_pod(new_inst.namespace, pod, ["kill", "1"])
+                except Exception as exc:
+                    logger.warning(
+                        "克隆恢复后 exec kill 失败，回退 Deployment 滚动重启: instance=%s pod=%s error=%s",
+                        new_inst.id,
+                        pod,
+                        exc,
+                    )
+                    await k8s.restart_deployment(new_inst.namespace, new_inst.slug or new_inst.name)
+
+            new_inst.status = InstanceStatus.running
+            await db.commit()
+
+        logger.info("克隆完成: source_backup=%s new_instance=%s", backup_id, ctx.instance_id)
+    except Exception:
+        logger.exception("克隆流程失败: new_instance=%s source_backup=%s", ctx.instance_id, backup_id)
+        async with async_session_factory() as db:
+            new_inst = (await db.execute(
+                select(Instance).where(Instance.id == ctx.instance_id, Instance.deleted_at.is_(None))
+            )).scalar_one_or_none()
+            if new_inst:
+                new_inst.status = InstanceStatus.failed
+                await db.commit()
+        raise
 
 
 async def _wait_for_backup(backup_id: str, timeout: int = 600) -> InstanceBackup | None:
@@ -567,6 +766,16 @@ async def _wait_for_backup(backup_id: str, timeout: int = 600) -> InstanceBackup
         await asyncio.sleep(2)
         elapsed += 2
     return None
+
+
+def _decode_base64_chunk(chunk: str) -> bytes:
+    normalized = "".join(chunk.split())
+    if not normalized:
+        raise ValueError("empty base64 chunk")
+    padding = (-len(normalized)) % 4
+    if padding:
+        normalized += "=" * padding
+    return base64.b64decode(normalized, validate=True)
 
 
 # ── Helpers ───────────────────────────────────────────────
@@ -585,11 +794,25 @@ async def _load_instance(
     return instance
 
 
-async def _find_pod(k8s, namespace: str, name: str) -> str:
-    pods = await k8s.core.list_namespaced_pod(namespace, label_selector=f"app={name}")
-    for pod in pods.items:
-        if pod.status.phase == "Running":
-            return pod.metadata.name
+async def _find_pod(k8s, namespace: str, name: str, timeout: int = 60) -> str:
+    elapsed = 0
+    while elapsed < timeout:
+        selectors = (
+            f"app.kubernetes.io/name={name}",
+            f"app={name}",
+        )
+        for selector in selectors:
+            pods = await k8s.core.list_namespaced_pod(namespace, label_selector=selector)
+            for pod in pods.items:
+                if pod.status.phase == "Running":
+                    return pod.metadata.name
+        pods = await k8s.core.list_namespaced_pod(namespace)
+        for pod in pods.items:
+            pod_name = pod.metadata.name or ""
+            if pod.status.phase == "Running" and pod_name.startswith(f"{name}-"):
+                return pod_name
+        await asyncio.sleep(2)
+        elapsed += 2
     raise BadRequestError(
         message=f"未找到运行中的 Pod: {namespace}/{name}",
         message_key="errors.backup.no_running_pod",

@@ -1,0 +1,255 @@
+- generic [ref=e3]:
+  - button "Collapse sidebar"
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Expand sidebar" [ref=e6]:
+        - img [ref=e8]
+      - generic [ref=e12]:
+        - generic [ref=e13]: OpenClaw
+        - generic [ref=e14]: ›
+        - generic [ref=e15]: Chat
+      - generic [ref=e16]:
+        - button "Open command palette" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: Search
+          - generic [ref=e19]: ⌘K
+        - group "Color mode" [ref=e21]:
+          - 'button "Color mode: System" [pressed] [ref=e22] [cursor=pointer]':
+            - img [ref=e23]
+          - 'button "Color mode: Light" [ref=e25] [cursor=pointer]':
+            - img [ref=e26]
+          - 'button "Color mode: Dark" [ref=e32] [cursor=pointer]':
+            - img [ref=e33]
+  - generic:
+    - complementary:
+      - generic:
+        - generic:
+          - generic:
+            - img "OpenClaw"
+            - generic:
+              - generic: Control
+              - generic: OpenClaw
+        - generic:
+          - navigation:
+            - generic:
+              - button "Chat" [expanded]:
+                - generic: Chat
+                - generic:
+                  - img
+              - generic:
+                - link "Chat":
+                  - /url: /chat
+                  - generic:
+                    - img
+                  - generic: Chat
+            - generic:
+              - button "Control" [expanded]:
+                - generic: Control
+                - generic:
+                  - img
+              - generic:
+                - link "Overview":
+                  - /url: /overview
+                  - generic:
+                    - img
+                  - generic: Overview
+                - link "Channels":
+                  - /url: /channels
+                  - generic:
+                    - img
+                  - generic: Channels
+                - link "Instances":
+                  - /url: /instances
+                  - generic:
+                    - img
+                  - generic: Instances
+                - link "Sessions":
+                  - /url: /sessions
+                  - generic:
+                    - img
+                  - generic: Sessions
+                - link "Usage":
+                  - /url: /usage
+                  - generic:
+                    - img
+                  - generic: Usage
+                - link "Cron Jobs":
+                  - /url: /cron
+                  - generic:
+                    - img
+                  - generic: Cron Jobs
+            - generic:
+              - button "Agent" [expanded]:
+                - generic: Agent
+                - generic:
+                  - img
+              - generic:
+                - link "Agents":
+                  - /url: /agents
+                  - generic:
+                    - img
+                  - generic: Agents
+                - link "Skills":
+                  - /url: /skills
+                  - generic:
+                    - img
+                  - generic: Skills
+                - link "Nodes":
+                  - /url: /nodes
+                  - generic:
+                    - img
+                  - generic: Nodes
+            - generic:
+              - button "Settings" [expanded]:
+                - generic: Settings
+                - generic:
+                  - img
+              - generic:
+                - link "Config":
+                  - /url: /config
+                  - generic:
+                    - img
+                  - generic: Config
+                - link "Communications":
+                  - /url: /communications
+                  - generic:
+                    - img
+                  - generic: Communications
+                - link "Appearance":
+                  - /url: /appearance
+                  - generic:
+                    - img
+                  - generic: Appearance
+                - link "Automation":
+                  - /url: /automation
+                  - generic:
+                    - img
+                  - generic: Automation
+                - link "Infrastructure":
+                  - /url: /infrastructure
+                  - generic:
+                    - img
+                  - generic: Infrastructure
+                - link "AI & Agents":
+                  - /url: /ai-agents
+                  - generic:
+                    - img
+                  - generic: AI & Agents
+                - link "Debug":
+                  - /url: /debug
+                  - generic:
+                    - img
+                  - generic: Debug
+                - link "Logs":
+                  - /url: /logs
+                  - generic:
+                    - img
+                  - generic: Logs
+        - generic:
+          - generic:
+            - link "Docs":
+              - /url: https://docs.openclaw.ai
+              - generic:
+                - img
+              - generic: Docs
+              - generic:
+                - img
+            - generic "v2026.3.14":
+              - generic: Version
+              - generic: v2026.3.14
+              - 'img "Gateway status: Online"'
+  - main [ref=e35]:
+    - alert [ref=e36]:
+      - strong [ref=e37]: "Update available:"
+      - text: v2026.5.3-1 (running v2026.3.14).
+      - button "Update now" [ref=e38] [cursor=pointer]
+      - button "Dismiss update banner" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+    - generic [ref=e43]:
+      - generic [ref=e45]:
+        - combobox [ref=e47] [cursor=pointer]:
+          - option "heartbeat" [selected]
+        - combobox "Chat model" [ref=e49] [cursor=pointer]:
+          - option "Default (deepseek-v3.2 · deepseek-proxy)"
+          - option "deepseek-proxy/deepseek-v3.2" [selected]
+      - generic [ref=e51]:
+        - button "Refresh chat data" [ref=e52] [cursor=pointer]:
+          - img [ref=e53]
+        - generic [ref=e56]: "|"
+        - button "Toggle assistant thinking/working output" [pressed] [ref=e57] [cursor=pointer]:
+          - img [ref=e58]
+        - button "Toggle tool calls and tool results" [pressed] [ref=e68] [cursor=pointer]:
+          - img [ref=e69]
+        - button "Toggle focus mode (hide sidebar + page header)" [ref=e71] [cursor=pointer]:
+          - img [ref=e72]
+        - button "Show cron sessions" [pressed] [ref=e78] [cursor=pointer]:
+          - img [ref=e80]
+    - generic [ref=e83]:
+      - log [ref=e86]:
+        - generic [ref=e88]:
+          - img [ref=e90]
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - generic:
+                - button "Open in canvas":
+                  - generic:
+                    - img
+                - button "Copy as markdown":
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - img
+              - paragraph [ref=e95]:
+                - text: "⚠️ Agent failed before reply: Unknown model: deepseek-proxy/deepseek-v3.2."
+                - text: "Logs: openclaw logs --follow"
+            - generic [ref=e96]:
+              - generic:
+                - button "Open in canvas":
+                  - generic:
+                    - img
+                - button "Copy as markdown":
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - img
+              - paragraph [ref=e98]:
+                - text: "⚠️ Agent failed before reply: Unknown model: deepseek-proxy/deepseek-v3.2."
+                - text: "Logs: openclaw logs --follow"
+            - generic [ref=e99]:
+              - generic:
+                - button "Open in canvas":
+                  - generic:
+                    - img
+                - button "Copy as markdown":
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - img
+              - paragraph [ref=e101]:
+                - text: "⚠️ Agent failed before reply: Unknown model: deepseek-proxy/deepseek-v3.2."
+                - text: "Logs: openclaw logs --follow"
+            - generic [ref=e102]:
+              - generic [ref=e103]: Assistant
+              - generic [ref=e104]: 3:48 PM
+              - button "Read aloud":
+                - img
+              - generic [ref=e105]:
+                - button "Delete message":
+                  - img
+      - generic [ref=e106]:
+        - textbox "Message Assistant (Enter to send)" [ref=e107]
+        - generic [ref=e108]:
+          - generic [ref=e109]:
+            - button "Attach file" [ref=e110] [cursor=pointer]:
+              - img [ref=e111]
+            - button "Voice input" [ref=e113] [cursor=pointer]:
+              - img [ref=e114]
+          - generic [ref=e117]:
+            - button "New session" [ref=e118] [cursor=pointer]:
+              - img [ref=e119]
+            - button "Export" [ref=e120] [cursor=pointer]:
+              - img [ref=e121]
+            - button "Send" [ref=e124] [cursor=pointer]:
+              - img [ref=e125]

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /home/x-ai/WorkSpace/OpenSourceCode/nodeskclaw && docker compose exec -T postgres psql -U nodeskclaw -d nodeskclaw -c \\\"SELECT extname FROM pg_extension WHERE extname = 'uuid-ossp';\\\" 2...",
+  "error": "Exit code 1\ntime=\"2026-05-03T13:13:59+08:00\" level=warning msg=\"The \\\"DESKCLAW_VERSION\\\" variable is not set. Defaulting to a blank string.\"\ntime=\"2026-05-03T13:13:59+08:00\" level=warning msg=\"The \\\"DESKCLAW_VERSION\\\" variable is not set. Defaulting to a blank string.\"\ntime=\"2026-05-03T13:13:59+08:00\" level=warning msg=\"The \\\"DESKCLAW_VERSION\\\" variable is not set. Defaulting to a blank string.\"\nservice \"postgres\" is not running",
+  "timestamp": "2026-05-03T05:13:59.207Z",
+  "retry_count": 1
+}

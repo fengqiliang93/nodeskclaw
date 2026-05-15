@@ -18,15 +18,21 @@
     "controlUi": {
       "enabled": true,
       "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": true
+      "dangerouslyDisableDeviceAuth": true,
+      "allowedOrigins": ["*"]
     }
   },
 
   "tools": {
+    "allow": ["*"],
     "exec": {
       "security": "full",
       "ask": "off"
     }
+  },
+
+  "browser": {
+    "noSandbox": true
   },
 
   "logging": {

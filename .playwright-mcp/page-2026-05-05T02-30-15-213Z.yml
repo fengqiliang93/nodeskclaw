@@ -1,0 +1,120 @@
+- generic [ref=e46]:
+  - banner [ref=e47]:
+    - generic [ref=e48]:
+      - generic [ref=e49] [cursor=pointer]:
+        - img "DeskClaw" [ref=e50]
+        - generic [ref=e51]: DeskClaw
+        - generic [ref=e52]: dev
+      - navigation [ref=e53]:
+        - button "Office" [ref=e54] [cursor=pointer]:
+          - img [ref=e55]
+          - text: Office
+        - button "AI Employees" [ref=e65] [cursor=pointer]:
+          - img [ref=e66]
+          - text: AI Employees
+        - button "Genes" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+          - text: Genes
+        - button "Settings" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - text: Settings
+    - generic [ref=e76]:
+      - button [ref=e78] [cursor=pointer]:
+        - img [ref=e79]
+      - button [ref=e84] [cursor=pointer]:
+        - img [ref=e85]
+  - main [ref=e88]:
+    - generic [ref=e269]:
+      - generic [ref=e270]:
+        - button [ref=e271] [cursor=pointer]:
+          - img [ref=e272]
+        - heading "冯起良" [level=1] [ref=e274]
+        - generic [ref=e275]:
+          - img [ref=e276]
+          - text: Checking
+      - generic [ref=e278]:
+        - navigation [ref=e279]:
+          - link "Overview" [ref=e280] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001
+            - img [ref=e281]
+            - text: Overview
+          - link "Runtime Status" [ref=e286] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/runtime
+            - img [ref=e287]
+            - text: Runtime Status
+          - link "Skill Genes" [ref=e289] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/genes
+            - img [ref=e290]
+            - text: Skill Genes
+          - link "Evolution Log" [ref=e302] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/evolution
+            - img [ref=e303]
+            - text: Evolution Log
+          - link "Channels" [ref=e307] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/channels
+            - img [ref=e308]
+            - text: Channels
+          - link "Model Config" [ref=e314] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/settings
+            - img [ref=e315]
+            - text: Model Config
+          - link "Files" [ref=e323] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/files
+            - img [ref=e324]
+            - text: Files
+          - link "Backups" [ref=e326] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/backups
+            - img [ref=e327]
+            - text: Backups
+          - link "Members" [ref=e330] [cursor=pointer]:
+            - /url: /instances/fengqiliang-001/members
+            - img [ref=e331]
+            - text: Members
+        - generic [ref=e339]:
+          - generic [ref=e340]:
+            - heading "Basic Info" [level=2] [ref=e341]
+            - generic [ref=e342]:
+              - generic [ref=e343]: Image Versionv2026.5.2
+              - generic [ref=e344]: CPU2 Cores
+              - generic [ref=e345]: Memory2Gi
+              - generic [ref=e346]: Storage1Gi
+              - generic [ref=e347]:
+                - text: Work Engine
+                - generic [ref=e348]:
+                  - text: General Work Engine
+                  - generic [ref=e349]:
+                    - generic [ref=e350]:
+                      - generic [ref=e351]: General Work Engine
+                      - generic [ref=e352]: Default
+                    - generic [ref=e353]: Supports tool calling, gene system, and multi-skill management
+                    - generic [ref=e354]: Powered by OpenClaw
+              - generic [ref=e355]: Created At5/5/2026, 9:50:08 AM
+              - generic [ref=e356]:
+                - text: Work Status
+                - generic [ref=e357]:
+                  - img [ref=e358]
+                  - generic [ref=e360]: Checking status...
+              - generic [ref=e361]:
+                - text: Endpoint URL
+                - link "http://fengqiliang.10.100.12.211.nip.io" [ref=e362] [cursor=pointer]:
+                  - /url: http://fengqiliang.10.100.12.211.nip.io
+          - generic [ref=e363]:
+            - button "Refresh" [ref=e364] [cursor=pointer]:
+              - img [ref=e365]
+              - text: Refresh
+            - button "Restart AI Employee" [ref=e370] [cursor=pointer]:
+              - img [ref=e371]
+              - text: Restart AI Employee
+            - button "Create Backup" [ref=e374] [cursor=pointer]:
+              - img [ref=e375]
+              - text: Create Backup
+            - button "Clone" [ref=e378] [cursor=pointer]:
+              - img [ref=e379]
+              - text: Clone
+            - button "Delete AI Employee" [ref=e382] [cursor=pointer]:
+              - img [ref=e383]
+              - text: Delete AI Employee
+          - button "Role & Prompts" [ref=e387] [cursor=pointer]:
+            - generic [ref=e388]:
+              - img [ref=e389]
+              - generic [ref=e391]: Role & Prompts

@@ -62,6 +62,28 @@ KUBE_CONTEXT="<YOUR_KUBECTL_CONTEXT>"
 
 ## 用法
 
+### 局域网访问与离线导镜像（新增）
+
+```bash
+# 1) 批量导入离线镜像 tar 到 k3s containerd
+./deploy/lan-access.sh import-images --dir /path/to/offline-images
+
+# 2) 确保 llm-proxy 与 backend LLM 配置正确
+./deploy/lan-access.sh ensure-llm-proxy --image nodeskclaw-llm-proxy:local
+
+# 3) 同步所有实例的 ingress/newapi/networkpolicy
+./deploy/lan-access.sh sync-instances --lan-ip 10.100.12.211
+
+# 4) 输出控制台与实例访问地址
+./deploy/lan-access.sh show-urls --lan-ip 10.100.12.211
+```
+
+说明：
+
+- `sync-instances` 会将实例域名统一为 `<实例名>.<LAN_IP>.sslip.io`，局域网设备无需再配 hosts。
+- 若实例数量较多，建议在每次创建新实例后再执行一次 `sync-instances`。
+- 离线镜像导入使用 `sudo k3s ctr -n k8s.io images import`。
+
 ### 日常部署（默认 CE 模式，staging）
 
 ```bash
