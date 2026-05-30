@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from app.utils.jsonc import (
     DEFAULT_SEARXNG_BASE_URL,
+    ensure_agent_defaults,
     ensure_browser_no_sandbox,
     ensure_channel_plugin_integrity,
     ensure_exec_security,
@@ -94,6 +95,7 @@ class OpenClawConfigAdapter(RuntimeConfigAdapter):
         ensure_nodeskclaw_tool_allow(data)
         ensure_exec_security(data)
         ensure_browser_no_sandbox(data)
+        ensure_agent_defaults(data)
         ensure_searxng_web_search(data, DEFAULT_SEARXNG_BASE_URL)
         ensure_channel_plugin_integrity(data)
         await fs.write_text(

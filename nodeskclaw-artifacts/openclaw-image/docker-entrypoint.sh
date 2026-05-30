@@ -34,13 +34,34 @@ text = text.replace(/^\s*\/\/.*$/gm, '');
 const c = JSON.parse(text);
 let changed = false;
 
+function hasCompleteNodeskclawAccount(channel) {
+  if (!channel || typeof channel !== 'object') return false;
+  const accounts = channel.accounts;
+  if (!accounts || typeof accounts !== 'object') return false;
+  const defaultAccount = typeof channel.defaultAccount === 'string' && channel.defaultAccount
+    ? channel.defaultAccount
+    : 'default';
+  const account = accounts[defaultAccount] || accounts.default;
+  return Boolean(
+    account &&
+    typeof account === 'object' &&
+    account.instanceId &&
+    account.apiUrl &&
+    account.apiToken
+  );
+}
+
 const hasNodeskclawEnv = Boolean(
   process.env.NODESKCLAW_INSTANCE_ID &&
   process.env.NODESKCLAW_API_URL &&
   process.env.NODESKCLAW_TOKEN
 );
 
-if (!hasNodeskclawEnv && c.channels?.nodeskclaw) {
+if (
+  !hasNodeskclawEnv &&
+  c.channels?.nodeskclaw &&
+  !hasCompleteNodeskclawAccount(c.channels.nodeskclaw)
+) {
   delete c.channels.nodeskclaw;
   if (Object.keys(c.channels).length === 0) {
     delete c.channels;
@@ -329,9 +350,29 @@ if [ -f "${CONFIG_FILE}" ]; then
     const NODESKCLAW_TOKEN = process.env.NODESKCLAW_TOKEN;
     const NODESKCLAW_TUNNEL_URL = process.env.NODESKCLAW_TUNNEL_URL;
 
+    function hasCompleteNodeskclawAccount(channel) {
+      if (!channel || typeof channel !== 'object') return false;
+      const accounts = channel.accounts;
+      if (!accounts || typeof accounts !== 'object') return false;
+      const defaultAccount = typeof channel.defaultAccount === 'string' && channel.defaultAccount
+        ? channel.defaultAccount
+        : 'default';
+      const account = accounts[defaultAccount] || accounts.default;
+      return Boolean(
+        account &&
+        typeof account === 'object' &&
+        account.instanceId &&
+        account.apiUrl &&
+        account.apiToken
+      );
+    }
+
     // 仅在 nodeskclaw 扩展存在时注入 channel 配置。
     // 某些构建变体可能未包含该扩展，强行注入会导致配置校验失败。
-    const hasNodeskclawExtension = fs.existsSync('/opt/openclaw/dist-runtime/extensions/nodeskclaw');
+    const hasNodeskclawExtension =
+      fs.existsSync('/opt/openclaw/dist-runtime/extensions/nodeskclaw') ||
+      fs.existsSync('/root/.openclaw/extensions/openclaw-channel-nodeskclaw/index.ts') ||
+      fs.existsSync('/root/.openclaw/extensions/openclaw-channel-nodeskclaw/openclaw.plugin.json');
 
     if (NODESKCLAW_INSTANCE_ID && NODESKCLAW_API_URL && NODESKCLAW_TOKEN && hasNodeskclawExtension) {
       const channels = c.channels ?? (c.channels = {});
@@ -361,16 +402,17 @@ if [ -f "${CONFIG_FILE}" ]; then
         changed = true;
         console.log('[entrypoint] 已注入 NoDeskClaw 隧道配置');
       }
-    } else {
-      // 环境未启用或扩展缺失时，清理历史残留配置，避免旧 PVC 配置触发隧道重连循环。
-      if (c.channels?.nodeskclaw) {
+    } else if (
+      c.channels?.nodeskclaw &&
+      !hasCompleteNodeskclawAccount(c.channels.nodeskclaw)
+    ) {
+      // 只清理无法建立隧道的坏残留；保留后端写入的完整 workspace channel 配置。
         delete c.channels.nodeskclaw;
         if (Object.keys(c.channels).length === 0) {
           delete c.channels;
         }
         changed = true;
         console.log('[entrypoint] 已清理陈旧的 NoDeskClaw 通道配置');
-      }
     }
 
     if (changed) {
@@ -415,10 +457,13 @@ if [ -f "${CONFIG_FILE}" ]; then
     }
     if (c.channels && typeof c.channels === 'object') {
       const channels = JSON.parse(JSON.stringify(c.channels));
-      delete channels.nodeskclaw;
       if (Object.keys(channels).length > 0) {
         snapshot.channels = channels;
+      } else {
+        delete snapshot.channels;
       }
+    } else {
+      delete snapshot.channels;
     }
     if (c.agents?.defaults?.model) {
       snapshot.agents = {
@@ -615,19 +660,30 @@ if [ -f "${RUNTIME_CONFIG}" ]; then
       }
     }
 
-    // 检查 NoDeskClaw 隧道配置环境变量。
-    // 若未设置则清理历史残留的 channels.nodeskclaw，避免旧 PVC 配置导致隧道重连失败。
-    const NODESKCLAW_INSTANCE_ID = process.env.NODESKCLAW_INSTANCE_ID;
-    const NODESKCLAW_API_URL = process.env.NODESKCLAW_API_URL;
-    if (!NODESKCLAW_INSTANCE_ID || !NODESKCLAW_API_URL) {
-      if (c.channels?.nodeskclaw) {
+    function hasCompleteNodeskclawAccount(channel) {
+      if (!channel || typeof channel !== 'object') return false;
+      const accounts = channel.accounts;
+      if (!accounts || typeof accounts !== 'object') return false;
+      const defaultAccount = typeof channel.defaultAccount === 'string' && channel.defaultAccount
+        ? channel.defaultAccount
+        : 'default';
+      const account = accounts[defaultAccount] || accounts.default;
+      return Boolean(
+        account &&
+        typeof account === 'object' &&
+        account.instanceId &&
+        account.apiUrl &&
+        account.apiToken
+      );
+    }
+
+    if (c.channels?.nodeskclaw && !hasCompleteNodeskclawAccount(c.channels.nodeskclaw)) {
         delete c.channels.nodeskclaw;
         if (Object.keys(c.channels).length === 0) {
           delete c.channels;
         }
         changed = true;
         console.log('[entrypoint] 已清理运行时配置中的陈旧 NoDeskClaw 通道配置');
-      }
     }
 
     if (changed) {

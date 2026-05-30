@@ -38,6 +38,7 @@ from app.services.nfs_mount import NFSMountError, RemoteFS, remote_fs
 from app.services.openclaw_persistence import write_persistent_config_snapshot
 from app.utils.jsonc import (
     DEFAULT_SEARXNG_BASE_URL,
+    ensure_agent_defaults,
     NODESKCLAW_TOOL_NAMES,
     ensure_browser_no_sandbox,
     ensure_channel_plugin_integrity,
@@ -327,23 +328,21 @@ def _ensure_nodeskclaw_channel_config(config: dict, instance: Instance) -> None:
     The tunnel client reads from `channels.nodeskclaw.accounts.default` to establish
     the WebSocket connection to DeskClaw backend, which is used for health checking.
     """
-    from app.core.config import settings
-
     channels = config.setdefault("channels", {})
     nodeskclaw = channels.setdefault("nodeskclaw", {})
     accounts = nodeskclaw.setdefault("accounts", {})
-    default = accounts.setdefault("default", {})
+    default = accounts.get("default")
+    if not isinstance(default, dict):
+        default = {}
+        accounts["default"] = default
 
     api_url = get_agent_api_base_url().rstrip("/")
     if instance.compute_provider == "docker":
         api_url = _docker_rewrite_url(api_url)
-    # Use slug for instanceId to match what container's NODESKCLAW_INSTANCE_ID env var sends
-    # The tunnel adapter supports both id and slug lookup
-    default["instanceId"] = str(instance.slug or instance.id)
-    default["apiToken"] = instance.proxy_token or ""
+    default.setdefault("instanceId", str(instance.slug or instance.id))
+    default["apiToken"] = default.get("apiToken") or instance.proxy_token or ""
     default["apiUrl"] = api_url
-    # workspaceId is required for `configured` check in channel plugin
-    default["workspaceId"] = "default"
+    default.setdefault("workspaceId", "default")
 
     nodeskclaw["enabled"] = True
 
@@ -411,6 +410,7 @@ async def _write_config_file(fs: RemoteFS, data: dict) -> None:
     ensure_nodeskclaw_tool_allow(data)
     ensure_exec_security(data)
     ensure_browser_no_sandbox(data)
+    ensure_agent_defaults(data)
     ensure_searxng_web_search(data, DEFAULT_SEARXNG_BASE_URL)
     ensure_channel_plugin_integrity(data)
     await fs.write_text(
@@ -923,7 +923,12 @@ def _make_account_entry(instance: Instance, workspace_id: str) -> dict:
         "apiUrl": api_url,
         "workspaceId": workspace_id,
         "instanceId": instance.id,
-        "apiToken": _env.get("GATEWAY_TOKEN") or _env.get("OPENCLAW_GATEWAY_TOKEN", ""),
+        "apiToken": (
+            _env.get("GATEWAY_TOKEN")
+            or _env.get("OPENCLAW_GATEWAY_TOKEN")
+            or getattr(instance, "proxy_token", "")
+            or ""
+        ),
     }
 
 
@@ -1633,7 +1638,6 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
     )
     instances = list(inst_result.scalars().all())
 
-    new_api_url = get_agent_api_base_url()
     repaired = []
     skipped = []
     failed = []
@@ -1668,30 +1672,34 @@ async def repair_channel_account_urls(db: AsyncSession) -> dict:
                 if config is None:
                     config = {}
 
-                ch = config.setdefault("channels", {}).setdefault("nodeskclaw", {})
-                accounts = ch.setdefault("accounts", {})
+                before = json.dumps(config, sort_keys=True)
 
-                changed = False
+                _inject_channel_config(config, inst, workspace_ids[0])
+                accounts = config["channels"]["nodeskclaw"]["accounts"]
 
                 for ws_id in workspace_ids:
                     correct = _make_account_entry(inst, ws_id)
                     existing = accounts.get(ws_id)
                     if not isinstance(existing, dict) or existing != correct:
                         accounts[ws_id] = correct
-                        changed = True
 
                 primary_entry = _make_account_entry(inst, workspace_ids[0])
                 cur_default = accounts.get("default")
                 if not isinstance(cur_default, dict) or cur_default != primary_entry:
                     accounts["default"] = primary_entry
-                    changed = True
 
                 for key, acct in list(accounts.items()):
-                    if isinstance(acct, dict) and acct.get("apiUrl") != new_api_url:
-                        acct["apiUrl"] = new_api_url
-                        changed = True
+                    if not isinstance(acct, dict):
+                        continue
+                    workspace_id = acct.get("workspaceId")
+                    if workspace_id not in workspace_ids:
+                        continue
+                    correct = _make_account_entry(inst, workspace_id)
+                    if acct != correct:
+                        accounts[key] = correct
 
-                if changed:
+                after = json.dumps(config, sort_keys=True)
+                if after != before:
                     await _write_config_file(fs, config)
                     repaired.append({"id": inst.id, "name": inst.name, "workspaces": workspace_ids})
                 else:

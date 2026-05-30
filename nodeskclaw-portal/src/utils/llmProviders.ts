@@ -27,10 +27,14 @@ export const WP_PROVIDERS = new Set(['minimax-openai', 'minimax-anthropic'])
 export const ALL_KNOWN_PROVIDERS: Set<string> = new Set([...PROVIDERS])
 
 export const isCodexProvider = (provider: string) => provider === 'codex'
+export const isSharedCustomProvider = (provider: string) => provider === 'custom'
 
 // SYNC: 与 nodeskclaw-backend/app/services/codex_provider.py CODEX_MODELS[0] 保持同步
 export const DEFAULT_CODEX_MODEL: ModelItem = { id: 'gpt-5.4', name: 'gpt-5.4' }
+export const DEFAULT_SHARED_CUSTOM_MODEL: ModelItem = { id: 'ark-code-latest', name: 'ark-code-latest' }
 
 export function defaultModelForProvider(provider: string): ModelItem | null {
-  return isCodexProvider(provider) ? { ...DEFAULT_CODEX_MODEL } : null
+  if (isCodexProvider(provider)) return { ...DEFAULT_CODEX_MODEL }
+  if (isSharedCustomProvider(provider)) return { ...DEFAULT_SHARED_CUSTOM_MODEL }
+  return null
 }

@@ -18,6 +18,7 @@ from app.services.runtime.gene_install_adapter import GeneInstallAdapter
 from app.utils.jsonc import (
     DEFAULT_SEARXNG_BASE_URL,
     deep_merge_config,
+    ensure_agent_defaults,
     ensure_browser_no_sandbox,
     ensure_channel_plugin_integrity,
     ensure_exec_security,
@@ -146,6 +147,7 @@ class OpenClawGeneInstallAdapter(GeneInstallAdapter):
         ensure_nodeskclaw_tool_allow(config)
         ensure_exec_security(config)
         ensure_browser_no_sandbox(config)
+        ensure_agent_defaults(config)
         ensure_searxng_web_search(config, DEFAULT_SEARXNG_BASE_URL)
         ensure_channel_plugin_integrity(config)
         await fs.write_text(

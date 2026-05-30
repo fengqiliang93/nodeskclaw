@@ -74,6 +74,8 @@ NODESKCLAW_TOOL_NAMES = (
 )
 
 DEFAULT_SEARXNG_BASE_URL = "http://searxng-web.nodeskclaw-staging.svc.cluster.local:8080"
+DEFAULT_OPENCLAW_PRIMARY_MODEL = "custom/ark-code-latest"
+DEFAULT_OPENCLAW_PRIMARY_MODEL_ID = "ark-code-latest"
 
 
 def ensure_tools_allow_full_default(config: dict) -> dict:
@@ -202,4 +204,39 @@ def ensure_searxng_web_search(config: dict, base_url: str | None = None) -> dict
     search_cfg["provider"] = "searxng"
     search_cfg.setdefault("maxResults", 5)
     search_cfg.setdefault("timeoutSeconds", 30)
+    return config
+
+
+def ensure_agent_defaults(config: dict) -> dict:
+    """Enforce shared agent defaults for all OpenClaw AI employee instances."""
+    agents = config.setdefault("agents", {})
+    defaults = agents.setdefault("defaults", {})
+
+    heartbeat = defaults.setdefault("heartbeat", {})
+    heartbeat["every"] = "2h"
+    heartbeat["lightContext"] = True
+    heartbeat["isolatedSession"] = True
+
+    model_cfg = defaults.setdefault("model", {})
+    model_cfg["primary"] = DEFAULT_OPENCLAW_PRIMARY_MODEL
+
+    providers = config.get("models", {}).get("providers", {})
+    custom_provider = providers.get("custom")
+    if isinstance(custom_provider, dict):
+        models = custom_provider.get("models")
+        if isinstance(models, list):
+            existing_ids = {
+                str(item.get("id")).strip()
+                for item in models
+                if isinstance(item, dict) and str(item.get("id")).strip()
+            }
+            if DEFAULT_OPENCLAW_PRIMARY_MODEL_ID not in existing_ids:
+                models.insert(
+                    0,
+                    {
+                        "id": DEFAULT_OPENCLAW_PRIMARY_MODEL_ID,
+                        "name": DEFAULT_OPENCLAW_PRIMARY_MODEL_ID,
+                    },
+                )
+
     return config

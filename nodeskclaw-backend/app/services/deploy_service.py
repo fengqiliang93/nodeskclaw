@@ -504,8 +504,15 @@ async def deploy_instance(
         gateway_token = _secrets.token_hex(24)
     env_vars["GATEWAY_TOKEN"] = gateway_token
     env_vars["OPENCLAW_GATEWAY_TOKEN"] = gateway_token
-    # 说明：当前部署不启用 nodeskclaw 隧道通道，避免在未部署 tunnel-bridge 时
-    # 实例持续尝试连接导致健康状态长期为 unreachable。
+    env_vars["NODESKCLAW_TOKEN"] = gateway_token
+    env_vars.setdefault("NODESKCLAW_INSTANCE_ID", slug)
+    api_url = get_agent_api_base_url()
+    if is_docker:
+        api_url = api_url.replace("localhost", "host.docker.internal").replace(
+            "127.0.0.1", "host.docker.internal",
+        )
+    if api_url:
+        env_vars.setdefault("NODESKCLAW_API_URL", api_url)
 
     # 确保 openclaw 从正确路径读取配置（OPENCLAW_HOME=/root/.openclaw 会导致
     # openclaw 在 HOME 后追加 .openclaw，变成 /root/.openclaw/.openclaw。

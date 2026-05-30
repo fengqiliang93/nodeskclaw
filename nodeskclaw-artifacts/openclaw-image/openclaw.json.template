@@ -55,6 +55,19 @@
     "noSandbox": true
   },
 
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "custom/ark-code-latest"
+      },
+      "heartbeat": {
+        "every": "2h",
+        "lightContext": true,
+        "isolatedSession": true
+      }
+    }
+  },
+
   "logging": {
     "level": "${OPENCLAW_LOG_LEVEL}"
   }

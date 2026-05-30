@@ -5,12 +5,14 @@ import logging
 import os
 import secrets
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CE_ADMIN_EMAIL = "admin@deskclaw.com"
 
 
 async def run_seed(
@@ -80,16 +82,45 @@ async def _seed_initial_admin(
 
         plain_password: str | None = None
 
+        if admin is None:
+            result = await db.execute(
+                select(User)
+                .where(
+                    User.deleted_at.is_(None),
+                    or_(
+                        User.email == DEFAULT_CE_ADMIN_EMAIL,
+                        User.is_super_admin.is_(True),
+                    ),
+                )
+                .order_by(User.is_super_admin.desc(), User.created_at.asc())
+                .limit(1)
+            )
+            admin = result.scalar_one_or_none()
+            if admin is not None:
+                logger.info(
+                    "种子数据：已存在 CE 超管用户 [%s]，跳过 INIT_ADMIN_ACCOUNT=%s 创建",
+                    admin.username,
+                    account,
+                )
+
         if admin is not None and not admin.email:
-            admin.email = "admin@deskclaw.com"
-            await db.commit()
+            email_owner = (await db.execute(
+                select(User).where(
+                    User.email == DEFAULT_CE_ADMIN_EMAIL,
+                    User.deleted_at.is_(None),
+                    User.id != admin.id,
+                )
+            )).scalar_one_or_none()
+            if email_owner is None:
+                admin.email = DEFAULT_CE_ADMIN_EMAIL
+                await db.commit()
 
         if admin is None:
             plain_password = secrets.token_urlsafe(9)
             admin = User(
                 name="Admin",
                 username=account,
-                email="admin@deskclaw.com",
+                email=DEFAULT_CE_ADMIN_EMAIL,
                 role=UserRole.admin,
                 is_super_admin=True,
                 is_active=True,

@@ -157,7 +157,7 @@ function addCustomProvider() {
     apiType: 'openai-completions',
     isCustom: true,
     showBaseUrl: true,
-    selectedModel: null,
+    selectedModel: defaultModelForProvider(slug),
     skipSslVerify: false,
   })
   customSlug.value = ''
@@ -174,7 +174,7 @@ function addOrgCustomProvider(orgProvider: any) {
     apiType: orgProvider.api_type || 'openai-completions',
     isCustom: true,
     showBaseUrl: true,
-    selectedModel: null,
+    selectedModel: defaultModelForProvider(orgProvider.provider),
     skipSslVerify: orgProvider.skip_ssl_verify ?? false,
   })
 }

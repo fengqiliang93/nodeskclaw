@@ -18,6 +18,7 @@ from app.services.feishu_config import normalize_openclaw_feishu_config
 from app.services.openclaw_persistence import write_persistent_config_snapshot
 from app.utils.jsonc import (
     DEFAULT_SEARXNG_BASE_URL,
+    ensure_agent_defaults,
     ensure_browser_no_sandbox,
     ensure_channel_plugin_integrity,
     ensure_exec_security,
@@ -79,6 +80,7 @@ async def _do_reconcile(
                     ensure_nodeskclaw_tool_allow(after)
                     ensure_exec_security(after)
                     ensure_browser_no_sandbox(after)
+                    ensure_agent_defaults(after)
                     ensure_searxng_web_search(after, DEFAULT_SEARXNG_BASE_URL)
                     ensure_channel_plugin_integrity(after)
 

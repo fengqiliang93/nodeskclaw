@@ -194,8 +194,8 @@ cd /path/to/nodeskclaw/nodeskclaw-artifacts
 
 ./build-full.sh \
   --source-path /path/to/openclaw \
-  --version 2026.5.18 \
-  --image <LAN_IP>:5000/deskclaw-openclaw:v2026.5.18
+  --version 2026.5.27-tunnel1 \
+  --image <LAN_IP>:5000/deskclaw-openclaw:v2026.5.27-tunnel1
 ```
 
 要求：
@@ -244,12 +244,12 @@ docker save deskclaw-openclaw:2026.5.5 | sudo k3s ctr -n k8s.io images import -
 
 ## 运行时定制约束（entrypoint / 配置修复）
 
-2026.5.18 这一轮验证后，`nodeskclaw-artifacts/openclaw-image/docker-entrypoint.sh` 的定制原则明确如下：
+2026.5.27-tunnel1 这一轮验证后，`nodeskclaw-artifacts/openclaw-image/docker-entrypoint.sh` 的定制原则明确如下：
 
 1. **不要粗暴删除整个 `plugins` 节点**。  
    旧做法会把合法的 `plugins.entries.searxng` 一并删掉，导致搜索能力在重启或升级后丢失。
 2. **只清理失效的托管残留**。  
-   允许清除缺少对应 channel 配置的托管 plugin `paths/entries`，以及缺少 `NODESKCLAW_*` 环境变量时的陈旧 `channels.nodeskclaw`。
+   允许清除缺少对应 channel 配置的托管 plugin `paths/entries`；`channels.nodeskclaw` 只有在缺少 `accounts.default.instanceId/apiUrl/apiToken` 等必需字段时才允许清理。后端已经写入的完整 workspace tunnel 配置必须保留，不能因为缺少 `NODESKCLAW_*` 环境变量而删除。
 3. **默认补齐 SearXNG 搜索配置**。  
    模板与运行时修复链都应确保：
    - `plugins.entries.searxng.config.webSearch.baseUrl`
@@ -257,8 +257,16 @@ docker save deskclaw-openclaw:2026.5.5 | sudo k3s ctr -n k8s.io images import -
    - `tools.web.search.provider=searxng`
    - `tools.web.search.maxResults=5`
    - `tools.web.search.timeoutSeconds=30`
-4. **函数定义必须早于首次调用**。  
+4. **默认补齐 AI 员工默认心跳与默认模型**。
+   后端运行时修复链与创建/更新写回链都应确保：
+   - `agents.defaults.heartbeat.every=2h`
+   - `agents.defaults.heartbeat.lightContext=true`
+   - `agents.defaults.heartbeat.isolatedSession=true`
+   - `agents.defaults.model.primary=custom/ark-code-latest`
+5. **函数定义必须早于首次调用**。
    Bash 入口脚本新增函数时，必须放在首次调用之前；否则会在容器启动早期直接 `command not found`。
+6. **持久快照必须保留 channel 配置**。
+   `persistent-config.snapshot.json` 需要保留完整 `channels`，避免升级或重启时 workspace tunnel 配置无法从快照恢复，导致赛博实验室 AI 员工显示 `disconnected`。
 
 当前默认使用的集群内 SearXNG 地址：
 
