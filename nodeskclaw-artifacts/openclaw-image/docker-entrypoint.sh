@@ -484,7 +484,18 @@ fi
 if command -v openclaw >/dev/null 2>&1; then
   # 新版本 OpenClaw 对配置校验更严格（插件条目、channel id 等）。
   # 这里进行一次无交互修复，避免因为历史配置差异导致启动失败。
-  openclaw doctor --fix >/tmp/openclaw-doctor.log 2>&1 || true
+  OPENCLAW_DOCTOR_TIMEOUT_SECONDS="${OPENCLAW_DOCTOR_TIMEOUT_SECONDS:-45}"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${OPENCLAW_DOCTOR_TIMEOUT_SECONDS}s" openclaw doctor --fix >/tmp/openclaw-doctor.log 2>&1 || {
+      status=$?
+      if [ "${status}" -eq 124 ]; then
+        echo "[entrypoint] openclaw doctor --fix 超时 ${OPENCLAW_DOCTOR_TIMEOUT_SECONDS}s，跳过并继续启动"
+      fi
+      true
+    }
+  else
+    openclaw doctor --fix >/tmp/openclaw-doctor.log 2>&1 || true
+  fi
   if [ -s /tmp/openclaw-doctor.log ]; then
     echo "[entrypoint] openclaw doctor --fix 输出:"
     cat /tmp/openclaw-doctor.log
