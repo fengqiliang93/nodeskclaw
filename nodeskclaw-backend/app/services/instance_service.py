@@ -262,6 +262,7 @@ def _normalize_gateway_env_vars(env_vars: dict[str, str], token: str) -> dict[st
     normalized["GATEWAY_TOKEN"] = token
     normalized["OPENCLAW_GATEWAY_TOKEN"] = token
     normalized["NODESKCLAW_TOKEN"] = token
+    normalized.setdefault("OPENCLAW_DISABLE_UPDATES", "1")
     return normalized
 
 

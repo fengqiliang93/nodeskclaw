@@ -292,6 +292,9 @@ RUN chmod +x /docker-entrypoint.sh /init-container.sh
 # 版本标记
 RUN echo "${IMAGE_VERSION}" > /root/.openclaw-version
 
+# 默认禁用 OpenClaw 自检/自更新（NoDeskClaw 统一控制升级）
+ENV OPENCLAW_DISABLE_UPDATES=1
+
 # ---------- 运行配置 ----------
 WORKDIR /root
 EXPOSE 18789 9721 5900 6080
