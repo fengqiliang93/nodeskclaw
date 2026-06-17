@@ -213,7 +213,7 @@ def ensure_agent_defaults(config: dict) -> dict:
     defaults = agents.setdefault("defaults", {})
 
     heartbeat = defaults.setdefault("heartbeat", {})
-    heartbeat["every"] = "2h"
+    heartbeat["every"] = "3h"
     heartbeat["lightContext"] = True
     heartbeat["isolatedSession"] = True
 
