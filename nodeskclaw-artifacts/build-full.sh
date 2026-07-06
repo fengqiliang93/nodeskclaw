@@ -242,14 +242,22 @@ trap cleanup_temp_dir EXIT INT TERM
 log_info "准备源码..."
 cleanup_temp_dir
 
-# 使用 cp -a 复制源码（排除 node_modules 等大文件，加快复制）
+# 使用 rsync 复制源码：排除 node_modules / .git / dist 等大文件以避免复制后再删除的浪费
+# fallback 到 cp -a + rm -rf 以保持脚本在没有 rsync 的环境下也能工作
 log_info "复制源码到构建上下文..."
 mkdir -p "${TEMP_SOURCE_DIR}"
-cp -a "${SOURCE_PATH}/"* "${TEMP_SOURCE_DIR}/"
-# 复制隐藏文件
-cp -a "${SOURCE_PATH}/.[!.]*" "${TEMP_SOURCE_DIR}/" 2>/dev/null || true
-# 删除不需要的大文件
-rm -rf "${TEMP_SOURCE_DIR}/node_modules" "${TEMP_SOURCE_DIR}/.git" "${TEMP_SOURCE_DIR}/dist" 2>/dev/null || true
+if command -v rsync &>/dev/null; then
+  rsync -a \
+    --exclude '/node_modules' \
+    --exclude '/.git' \
+    --exclude '/dist' \
+    --exclude '/dist-runtime' \
+    "${SOURCE_PATH}/" "${TEMP_SOURCE_DIR}/"
+else
+  cp -a "${SOURCE_PATH}/"* "${TEMP_SOURCE_DIR}/"
+  cp -a "${SOURCE_PATH}/.[!.]*" "${TEMP_SOURCE_DIR}/" 2>/dev/null || true
+  rm -rf "${TEMP_SOURCE_DIR}/node_modules" "${TEMP_SOURCE_DIR}/.git" "${TEMP_SOURCE_DIR}/dist" 2>/dev/null || true
+fi
 log_info "源码复制完成"
 
 # 更新 package.json 版本号（确保镜像内版本与标签一致）
